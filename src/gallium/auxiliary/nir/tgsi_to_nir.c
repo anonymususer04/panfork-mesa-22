@@ -2564,7 +2564,7 @@ tgsi_to_nir(const void *tgsi_tokens,
    uint8_t key[CACHE_KEY_SIZE];
    unsigned processor;
 
-   if (allow_disk_cache)
+   if (allow_disk_cache && screen->get_disk_shader_cache)
       cache = screen->get_disk_shader_cache(screen);
 
    /* Look first in the cache */

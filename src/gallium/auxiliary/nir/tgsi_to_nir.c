@@ -2565,7 +2565,7 @@ tgsi_to_nir(const void *tgsi_tokens,
    unsigned processor;
    bool debug = env_var_as_boolean("TGSI_TO_NIR_DEBUG", false);
 
-   if (allow_disk_cache)
+   if (allow_disk_cache && screen->get_disk_shader_cache)
       cache = screen->get_disk_shader_cache(screen);
 
    /* Look first in the cache */

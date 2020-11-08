@@ -26,7 +26,7 @@ project(
     check : true
   ).stdout(),
   license : 'MIT',
-  meson_version : '>= 0.53',
+  meson_version : '>= 0.57',
   default_options : ['buildtype=debugoptimized', 'b_ndebug=if-release', 'c_std=c11', 'cpp_std=c++14']
 )
 
@@ -946,6 +946,20 @@ if _opencl != 'disabled'
 else
   with_gallium_opencl = false
   with_opencl_icd = false
+endif
+
+_rusticl = get_option('gallium-rusticl')
+if _rusticl
+  if not with_gallium
+    error('rusticl requires at least one gallium driver.')
+  endif
+
+  add_languages('rust', required: true)
+
+  with_clc = true
+  with_gallium_rusticl = true
+else
+  with_gallium_rusticl = false
 endif
 
 dep_clc = null_dep

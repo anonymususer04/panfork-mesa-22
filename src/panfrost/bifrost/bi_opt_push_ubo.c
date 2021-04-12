@@ -131,14 +131,8 @@ bi_pick_ubo(struct panfrost_ubo_push *push, struct bi_ubo_analysis *analysis,
                         if (push->count > PAN_MAX_PUSH - util_bitcount(used))
                                 return;
 
-                        u_foreach_bit(offs, used) {
-                                struct panfrost_ubo_word word = {
-                                        .ubo = ubo,
-                                        .offset = r * 16 + offs * 4
-                                };
-
-                                push->words[push->count++] = word;
-                        }
+                        u_foreach_bit(offs, used)
+                                pan_add_pushed_ubo(push, ubo, r * 16 + offs * 4);
 
                         /* Mark it as pushed so we can rewrite */
                         BITSET_SET(block->pushed, r);

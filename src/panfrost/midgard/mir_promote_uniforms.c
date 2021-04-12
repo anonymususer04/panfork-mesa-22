@@ -118,14 +118,8 @@ mir_pick_ubo(struct panfrost_ubo_push *push, struct mir_ubo_analysis *analysis, 
                         if (push->count > max_words - 4)
                                 return;
 
-                        for (unsigned offs = 0; offs < 4; ++offs) {
-                                struct panfrost_ubo_word word = {
-                                        .ubo = ubo,
-                                        .offset = (vec4 * 16) + (offs * 4)
-                                };
-
-                                push->words[push->count++] = word;
-                        }
+                        for (unsigned offs = 0; offs < 4; ++offs)
+                                pan_add_pushed_ubo(push, ubo, (vec4 * 16) + (offs * 4));
 
                         /* Mark it as pushed so we can rewrite */
                         BITSET_SET(block->pushed, vec4);

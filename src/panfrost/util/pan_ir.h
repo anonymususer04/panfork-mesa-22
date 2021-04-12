@@ -125,12 +125,16 @@ struct panfrost_sysvals {
 
 struct panfrost_ubo_range {
         uint8_t ubo;
-        uint8_t size;
+        union {
+                uint8_t size;
+                uint8_t index;
+        };
         uint16_t offset;
 };
 
 struct panfrost_ubo_push {
         unsigned count;
+        unsigned num_ranges;
         struct panfrost_ubo_range ranges[PAN_MAX_PUSH];
 };
 
@@ -142,6 +146,12 @@ pan_lookup_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned off
 
 void
 pan_add_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned offs);
+
+/* Get a panfrost_ubo_range struct corresponding to the index in the push
+ * contants buffer, with the range index pointing to the range. */
+
+struct panfrost_ubo_range
+pan_index_pushed_ubo(struct panfrost_ubo_push *push, unsigned push_word);
 
 struct hash_table_u64 *
 panfrost_init_sysvals(struct panfrost_sysvals *sysvals, void *memctx);

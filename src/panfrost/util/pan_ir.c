@@ -135,14 +135,21 @@ pan_print_alu_type(nir_alu_type t, FILE *fp)
 unsigned
 pan_lookup_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned offs)
 {
-        struct panfrost_ubo_range range = {
-                .ubo = ubo,
-                .offset = offs
-        };
+        unsigned count = 0;
 
-        for (unsigned i = 0; i < push->count; ++i) {
-                if (memcmp(push->ranges + i, &range, sizeof(range)) == 0)
-                        return i;
+        for (unsigned i = 0; i < push->num_ranges; ++i) {
+                struct panfrost_ubo_range range = push->ranges[i];
+
+                count += range.size;
+
+                if (range.ubo != ubo)
+                        continue;
+
+                unsigned start = range.offset;
+                unsigned end = range.offset + (range.size * 4);
+
+                if (offs >= start && offs < end)
+                        return count - (end - offs) / 4;
         }
 
         unreachable("UBO not pushed");
@@ -152,10 +159,46 @@ pan_lookup_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned off
 void
 pan_add_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned offs)
 {
+        ++push->count;
+
+        if (push->num_ranges) {
+                struct panfrost_ubo_range *prev;
+                prev = &push->ranges[push->num_ranges - 1];
+
+                if (prev->ubo == ubo &&
+                    prev->offset + prev->size * 4 == offs) {
+                        ++prev->size;
+                        return;
+                }
+        }
+
         struct panfrost_ubo_range range = {
                 .ubo = ubo,
+                .size = 1,
                 .offset = offs,
         };
 
-        push->ranges[push->count++] = range;
+        push->ranges[push->num_ranges++] = range;
+}
+
+struct panfrost_ubo_range
+pan_index_pushed_ubo(struct panfrost_ubo_push *push, unsigned push_word)
+{
+        assert(push_word < push->count);
+
+        for (unsigned i = 0; i < push->num_ranges; ++i) {
+                struct panfrost_ubo_range range = push->ranges[i];
+
+                if (range.size > push_word) {
+                        return (struct panfrost_ubo_range){
+                                .ubo = range.ubo,
+                                .offset = range.offset + push_word * 4,
+                                .index = i,
+                        };
+                }
+
+                push_word -= range.size;
+        }
+
+        unreachable("Invalid panfrost_ubo_push state");
 }

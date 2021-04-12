@@ -137,6 +137,9 @@ struct panfrost_ubo_push {
 unsigned
 pan_lookup_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned offs);
 
+void
+pan_add_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned offs);
+
 struct hash_table_u64 *
 panfrost_init_sysvals(struct panfrost_sysvals *sysvals, void *memctx);
 

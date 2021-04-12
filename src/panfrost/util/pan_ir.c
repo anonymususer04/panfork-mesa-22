@@ -148,3 +148,14 @@ pan_lookup_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned off
         unreachable("UBO not pushed");
 
 }
+
+void
+pan_add_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned offs)
+{
+        struct panfrost_ubo_word word = {
+                .ubo = ubo,
+                .offset = offs,
+        };
+
+        push->words[push->count++] = word;
+}

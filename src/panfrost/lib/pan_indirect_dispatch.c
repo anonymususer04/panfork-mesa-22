@@ -105,8 +105,11 @@ get_push_uniforms(struct pan_pool *pool,
         uint32_t *out = push_consts_buf.cpu;
         uint8_t *in = (uint8_t *)inputs;
 
-        for (unsigned i = 0; i < dev->indirect_dispatch.push.count; ++i)
-                memcpy(out + i, in + dev->indirect_dispatch.push.ranges[i].offset, 4);
+        for (unsigned i = 0; i < dev->indirect_dispatch.push.num_ranges; ++i) {
+                struct panfrost_ubo_range src = dev->indirect_dispatch.push.ranges[i];
+                memcpy(out, in + src.offset, src.size * 4);
+                out += src.size;
+        }
 
         return push_consts_buf.gpu;
 }

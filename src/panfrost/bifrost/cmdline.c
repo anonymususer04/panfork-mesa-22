@@ -249,6 +249,18 @@ disassemble(const char *filename)
         free(code);
 }
 
+void bi_parse(FILE *f);
+
+static void
+assemble(const char *filename)
+{
+        FILE *fp = fopen(filename, "rb");
+        assert(fp);
+
+        bi_parse(fp);
+        printf("\n");
+}
+
 int
 main(int argc, char **argv)
 {
@@ -327,6 +339,8 @@ main(int argc, char **argv)
                 compile_shader(argc - optind - 1, &argv[optind + 1]);
         else if (strcmp(argv[optind], "disasm") == 0)
                 disassemble(argv[optind + 1]);
+        else if (strcmp(argv[optind], "asm") == 0)
+                assemble(argv[optind + 1]);
         else {
                 fprintf(stderr, "Unknown command. Valid: compile/disasm\n");
                 return 1;

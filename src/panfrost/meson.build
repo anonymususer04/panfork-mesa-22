@@ -64,7 +64,8 @@ bifrost_compiler = executable(
     libglsl_standalone,
     libpanfrost_bifrost,
   ],
-  build_by_default : with_tools.contains('panfrost')
+  build_by_default : true,
+                     #with_tools.contains('panfrost')
 )
 
 if with_panfrost_vk

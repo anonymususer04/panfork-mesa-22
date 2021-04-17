@@ -120,6 +120,32 @@ bifrost_nir_algebraic_c = custom_target(
   depend_files : nir_algebraic_py,
 )
 
+bifrost_gen_assemble = custom_target(
+  'bi_{parser.y,lexer.l}',
+  input : ['gen_assemble.py', 'ISA.xml'],
+  output : ['bi_parser.y', 'bi_lexer.l'],
+  command : [prog_python, '@INPUT@', '@OUTPUT@'],
+  depend_files : files('bifrost_isa.py'),
+)
+
+bi_parser = custom_target(
+  'bi_parser.[ch]',
+  input: bifrost_gen_assemble[0],
+  output: ['bi_parser.c', 'bi_parser.h'],
+  command: [
+    prog_bison, '@INPUT@', '--name-prefix=bi_yy', '--defines=@OUTPUT1@', '--output=@OUTPUT0@'
+  ],
+)
+
+bi_lexer = custom_target(
+  'bi_lexer.c',
+  input: bifrost_gen_assemble[1],
+  output: 'bi_lexer.c',
+  command: [
+    prog_flex, '-d', '-o', '@OUTPUT@', '@INPUT@'
+  ],
+)
+
 libpanfrost_bifrost_disasm = static_library(
   'panfrost_bifrost_disasm',
   ['disassemble.c', 'bi_print_common.c', bifrost_gen_disasm_c],
@@ -133,11 +159,11 @@ libpanfrost_bifrost_disasm = static_library(
 
 libpanfrost_bifrost = static_library(
   'panfrost_bifrost',
-  [libpanfrost_bifrost_files, bi_opcodes_c, bi_printer_c, bi_packer_c, bifrost_nir_algebraic_c],
+  [libpanfrost_bifrost_files, bi_opcodes_c, bi_printer_c, bi_packer_c, bifrost_nir_algebraic_c, bi_parser[0], bi_parser[1], bi_lexer],
   include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_panfrost_hw],
   dependencies: [idep_nir, idep_bi_opcodes_h, idep_bi_builder_h],
   link_with: [libpanfrost_util, libpanfrost_bifrost_disasm],
-  c_args : [no_override_init_args],
+  c_args : [no_override_init_args, '-DYYDEBUG'],
   gnu_symbol_visibility : 'hidden',
   build_by_default : false,
 )

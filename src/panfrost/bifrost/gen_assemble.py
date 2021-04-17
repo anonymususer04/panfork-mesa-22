@@ -151,19 +151,34 @@ for group_num, group in enumerate(ops_grouped):
         if num in "0123" and mod != "bytes2":
             srcs[int(num)].append(mod_name(mod[:-1]))
 
-    name = (group_name + " " +
-            " ',' ".join([
-                "dst_reg",
-                *[" ".join(x) for x in srcs],
-                *([" ".join([
-                    "imm_" + i for i in ins["immediates"]
-                ])] if ins["immediates"] else []),
-                # TODO: immediates: ", {}:%u" e.g. attribute_index:0
-                # TODO: if staging, srcs should be offset by one
-                *(["staging_reg"] if ins["staging"] else []),
-            ]))
+    name = []
+    code = []
 
-    ins_rule.append((name, ""))
+    sep = "','"
+
+    def n_add(rule, split=False):
+        if split: n_add(sep)
+        name.append(rule)
+        return len(name)
+
+    n_add(group_name)
+    n_add("dst_reg")
+
+    for s in srcs:
+        n_add(sep)
+        for i in s:
+            n_add(i)
+
+    # TODO: if staging, srcs should be offset by one
+
+    for i in ins["immediates"]:
+        imm = n_add("imm_" + i, True)
+        code.append(f"instr->{i} = ${imm};")
+
+    if ins["staging"]:
+        n_add("staging_reg", True)
+
+    ins_rule.append((" ".join(name), " ".join(code)))
 
 yacc += yacc_rule("instr", ins_rule)
 
@@ -200,9 +215,10 @@ tokens += [
     ("td", "T_TD"),
     ("ncph", "T_NCPH"),
     ("next_", "T_NEXT"),
+    ("dwb", "T_DEP_WAIT"),
 
     ("foo", "imm_shift"),
-    ("foo2", "imm_attribute_index"),
+#    ("foo2", "imm_attribute_index"),
     ("foo3", "imm_texture_index"),
     ("foo4", "imm_index"),
     ("foo5", "imm_sampler_index"),
@@ -210,12 +226,26 @@ tokens += [
     ("foo7", "imm_fill"),
 ]
 
-for tok in "T_CLAUSE", "T_DEPSLOT", "T_REGISTER", "T_T0_T1", "T_ZERO_T", "T_FAU":
+for tok in ("T_CLAUSE", "T_DEPSLOT",
+            "T_REGISTER", "T_T0_T1", "T_T", "T_ZERO",
+            "T_FAU", "T_OFFSET",
+
+            "T_IMM_ATTRIBUTE_INDEX",
+            ):
     tokens.append((None, tok))
 
 yacc += """
 
-tuple: '*' instr '+' instr { } ;
+imm_attribute_index:
+  T_IMM_ATTRIBUTE_INDEX
+;
+
+instr_s:
+  { memset(instr, 0, sizeof(*instr)); }
+  instr { bi_print_instr(instr, stdout); }
+;
+
+tuple: '*' instr_s '+' instr_s { } ;
 
 // TODO: Use bi_register and bi_null()
 dst_reg:
@@ -225,13 +255,15 @@ dst_reg:
 
 src_reg:
   T_REGISTER
-| T_ZERO_T
-| T_FAU
+| T_ZERO
+| T_FAU T_OFFSET
+| T_T
 | T_T0_T1
 ;
 
 // Ugggggghhh
 mod_swizzle:
+  %empty
 ;
 
 // UGGGGGGGGGGGGGGGGhhhhhhhhhhhhhhhh
@@ -245,8 +277,8 @@ tuples:
 ;
 
 clause_staging:
-  %empty
-| T_OSRB
+  %empty            { $$ = false; }
+| T_OSRB            { $$ = true; }
 ;
 
 clause_flow:
@@ -317,7 +349,10 @@ clause_prefetch:
 | T_NCPH            { $$ = true; }
 ;
 
+// HACK!!
 clause_dep_wait:
+  %empty            { $$ = 0; }
+| T_DEP_WAIT '(' '0' ')' { $$ = 1; }
 ;
 
 clause_header:
@@ -339,14 +374,13 @@ clause_header:
           .next_message_type = $clause_next_message,
           .dependency_wait = $clause_dep_wait,
       };
+  if (0)
+      dump_header(stdout, header, false);
 }
 ;
 
-clause_num:
-;
-
 clause:
-  T_CLAUSE clause_num ':' clause_header '{' tuples '}'
+  T_CLAUSE clause_header '{' tuples '}'
 ;
 
 """
@@ -403,6 +437,8 @@ instr = &a_instr;
 
 extern int yylex(void);
 
+void dump_header(FILE *fp, struct bifrost_header header, bool verbose);
+
 %}
 
 """
@@ -422,7 +458,10 @@ shader:
 lex_pre = COPYRIGHT + """
 %{
 #include <stdlib.h>
+
 #include "bi_parser.h"
+#include "compiler.h"
+
 //#include "asm.h"
 
 #define YY_NO_INPUT
@@ -459,6 +498,13 @@ static int parse_reg(const char *str)
 	return num;
 }
 
+static int parse_imm(const char *str)
+{
+        while (*str++ != ':')
+                ;
+        return strtol(str, NULL, 10);
+}
+
 %}
 
 %option noyywrap
@@ -468,13 +514,30 @@ static int parse_reg(const char *str)
 "\\n"                              yylineno++;
 [ \\t]+                             ; /* ignore whitespace */
 ";"[^\\n]*"\\n"                     yylineno++; /* ignore comments */
+"/* "[-0-9.e]*" */"                 ; /* ignore commented floats */
 
 "r"[0-9]+ bi_yylval = parse_reg(yytext); return T_REGISTER;
 
 "t"[01] return TOKEN(T_T0_T1);
-"#0"|"t" return TOKEN(T_ZERO_T);
-clause_[0-9]+ return TOKEN(T_CLAUSE);
-"ds("[0-9]"u)" return TOKEN(T_DEPSLOT);
+"t" return TOKEN(T_T);
+"#0"(".x"|".y")? return TOKEN(T_ZERO);
+"clause_"[0-9]+":" return TOKEN(T_CLAUSE);
+"ds("[0-9]"u)"                    bi_yylval = yytext[3] - '0'; return T_DEPSLOT;
+
+ /* #0 is handled as T_ZERO */
+"lane_id"                         bi_yylval = BIR_FAU_LANE_ID;  return T_FAU;
+"warp_id"                         bi_yylval = BIR_FAU_WARP_ID;  return T_FAU;
+"core_id"                         bi_yylval = BIR_FAU_CORE_ID;  return T_FAU;
+"framebuffer_size"                bi_yylval = BIR_FAU_FB_EXTENT;  return T_FAU;
+"atest_datum"                     bi_yylval = BIR_FAU_ATEST_PARAM;  return T_FAU;
+"sample"                          bi_yylval = BIR_FAU_SAMPLE_POS_ARRAY;  return T_FAU;
+"blend_descriptor_"[0-9]+         bi_yylval = BIR_FAU_BLEND_0 | strtol(yytext + 17, NULL, 10); return T_FAU;
+"u"[0-9]+                         bi_yylval = BIR_FAU_UNIFORM | parse_reg(yytext); return T_FAU;
+
+".w0"|".x"                        bi_yylval = 0; return T_OFFSET;
+".w1"|".y"                        bi_yylval = 1; return T_OFFSET;
+
+"attribute_index:"[0-9]+          bi_yylval = parse_imm(yytext); return T_IMM_ATTRIBUTE_INDEX;
 
 """
 # But we only need hex??
@@ -491,7 +554,7 @@ lex_foo = """
 """
 
 lex_post = "\n"
-for tok in ":", "{", "}", "*", "+", ",", "@":
+for tok in ":", "{", "}", "*", "+", ",", "@", "(", ")", '0': ## HCAK!!
     # TODO: Remove use of f-strings
     lex_post += f"\"{tok}\" return '{tok}';\n"
 

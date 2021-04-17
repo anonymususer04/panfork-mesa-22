@@ -73,7 +73,8 @@ struct bifrost_reg_ctrl {
         struct bifrost_reg_ctrl_23 slot23;
 };
 
-static void dump_header(FILE *fp, struct bifrost_header header, bool verbose)
+void dump_header(FILE *fp, struct bifrost_header header, bool verbose);
+void dump_header(FILE *fp, struct bifrost_header header, bool verbose)
 {
         fprintf(fp, "ds(%u) ", header.dependency_slot);
 

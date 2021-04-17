@@ -173,6 +173,7 @@ for group_num, group in enumerate(ops_grouped):
         # TODO: Remove all the f-strings for old Python versions
         code.append(f"instr->src[{src}] = {reg};")
 
+        # TODO: Fix source modifiers
         for i in srcs[src]:
             n_add(i)
 
@@ -243,6 +244,7 @@ tokens += [
     (None, "T_FAU", "num"),
     (None, "T_OFFSET", "num"),
     (None, "T_IMM_ATTRIBUTE_INDEX", "num"),
+    (None, "T_NUM", "num"),
 ]
 
 yacc += """
@@ -252,11 +254,16 @@ imm_attribute_index:
 ;
 
 instr_s:
-  { memset(instr, 0, sizeof(*instr)); }
-  instr { bi_print_instr(instr, stdout); }
+  { instr = rzalloc(builder->shader, bi_instr); }
+  instr { bi_builder_insert(&builder->cursor, instr); }
 ;
 
-tuple: '*' instr_s '+' instr_s { } ;
+// Just hack the scheduler to keep instructions in the same places?
+
+tuple:
+  '*' instr_s
+  '+' instr_s
+;
 
 t_t0_t1:
   T_T0
@@ -268,6 +275,7 @@ dst_reg:
 | t_t0_t1        { $$ = bi_null(); }
 ;
 
+// TODO: jump offsets
 src_reg:
   T_REGISTER     { $$ = bi_register($1); }
 | T_ZERO         { $$ = bi_null(); }
@@ -275,6 +283,7 @@ src_reg:
 | T_T            { $$ = bi_passthrough(BIFROST_SRC_STAGE); }
 | T_T0           { $$ = bi_passthrough(BIFROST_SRC_PASS_FMA); }
 | T_T1           { $$ = bi_passthrough(BIFROST_SRC_PASS_ADD); }
+| T_NUM          { $$ = bi_imm_u32($1); }
 ;
 
 // Ugggggghhh
@@ -425,6 +434,7 @@ pre = COPYRIGHT + """
 
 #include "compiler.h"
 
+bi_builder *builder;
 bi_instr *instr;
 
 int yydebug;
@@ -438,7 +448,7 @@ static void yyerror(const char *error)
 	fprintf(stderr, "error at line %d: %s\\n", bi_yyget_lineno(), error);
 }
 
-void bi_parse(/*struct ir3_shader_variant *v,
+void bi_parse(bi_builder *b, /*struct ir3_shader_variant *v,
               struct ir3_kernel_info *k, */FILE *f);
 
 void bi_yyset_input(FILE *f);
@@ -446,16 +456,15 @@ void bi_yyset_lineno(int line);
 
 int yyparse(void);
 
-void bi_parse(/*struct ir3_shader_variant *v,
-              struct ir3_kernel_info *k, */FILE *f)
+/* rename function? */
+void bi_parse(bi_builder *b, FILE *f)
 {
         bi_yyset_lineno(1);
         bi_yyset_input(f);
 //#ifdef YYDEBUG
         yydebug = 1;
 //#endif
-bi_instr a_instr = {0};
-instr = &a_instr;
+builder = b;
     yyparse();
 //        info = k;
 //        variant = v;
@@ -476,10 +485,7 @@ void dump_header(FILE *fp, struct bifrost_header header, bool verbose);
 
 %union {
         int tok;
-        int num;
-        uint32_t unum;
-        uint64_t u64;
-        double flt;
+        uint32_t num;
         bi_index index;
 }
 
@@ -577,6 +583,9 @@ static int parse_imm(const char *str)
 
 "attribute_index:"[0-9]+          bi_yylval.num = parse_imm(yytext); return T_IMM_ATTRIBUTE_INDEX;
 
+ /* TODO: Why not just create the bi_index structs in the lexer? */
+ /* TODO: Check for out of range (by using endptr?) */
+0x[0-9a-f]+                       bi_yylval.num = strtoul(yytext, NULL, 0); return T_NUM;
 """
 # But we only need hex??
 lex_foo = """

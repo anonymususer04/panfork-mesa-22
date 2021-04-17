@@ -249,7 +249,29 @@ disassemble(const char *filename)
         free(code);
 }
 
-void bi_parse(FILE *f);
+// This was stolen from bi_scheduler.c
+static bi_builder *
+bit_builder(void *memctx)
+{
+        bi_context *ctx = rzalloc(memctx, bi_context);
+        list_inithead(&ctx->blocks);
+
+        bi_block *blk = rzalloc(ctx, bi_block);
+
+        blk->base.predecessors = _mesa_set_create(blk,
+                        _mesa_hash_pointer,
+                        _mesa_key_pointer_equal);
+
+        list_addtail(&blk->base.link, &ctx->blocks);
+        list_inithead(&blk->base.instructions);
+
+        bi_builder *b = rzalloc(memctx, bi_builder);
+        b->shader = ctx;
+        b->cursor = bi_after_block(blk);
+        return b;
+}
+
+void bi_parse(bi_builder *b, FILE *f);
 
 static void
 assemble(const char *filename)
@@ -257,8 +279,9 @@ assemble(const char *filename)
         FILE *fp = fopen(filename, "rb");
         assert(fp);
 
-        bi_parse(fp);
-        printf("\n");
+        bi_builder *b = bit_builder(NULL);
+        bi_parse(b, fp);
+        bi_print_shader(b->shader, stdout);
 }
 
 int

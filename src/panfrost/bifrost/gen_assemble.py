@@ -165,27 +165,25 @@ for group_num, group in enumerate(ops_grouped):
         return "$" + str(len(name))
 
     n_add(group_name)
-    n_add("dst_reg")
-
-    src_offset = bool(ins["staging"])
+    dst_reg = n_add("dst_reg")
+    code.append(f"instr->dest[0] = {dst_reg};")
 
     for src in range(num_srcs):
         reg = n_add("src_reg", True)
-        # TODO: Use types here
         # TODO: Remove all the f-strings for old Python versions
-        code.append(f"instr->src[{src + src_offset}] = {reg};")
+        code.append(f"instr->src[{src}] = {reg};")
 
         for i in srcs[src]:
             n_add(i)
-
-    # TODO: if staging, srcs should be offset by one
 
     for i in ins["immediates"]:
         imm = n_add("imm_" + i, True)
         code.append(f"instr->{i} = {imm};")
 
     if ins["staging"]:
-        n_add("staging_reg", True)
+        # TODO: Is this correct?
+        st = n_add("staging_reg", True)
+        code.append(f"instr->dest[0] = {st};")
 
     ins_rule.append((" ".join(name), " ".join(code)))
 
@@ -265,7 +263,6 @@ t_t0_t1:
 | T_T1
 ;
 
-// TODO: Use bi_register and bi_null()
 dst_reg:
   T_REGISTER ':' t_t0_t1 { $$ = bi_register($1); }
 | t_t0_t1        { $$ = bi_null(); }

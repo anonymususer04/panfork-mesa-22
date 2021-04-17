@@ -59,12 +59,14 @@ for mod in modifier_lists:
     def set_mod(value):
         return "instr->{} = {};".format(mod_field, value)
 
+    # TODO: This is completely broken...
+    # eg: ".lod_mode" instead of ".computed_lod"
     if len(mods) > 2:
         options = []
         for option in mods:
             if option == "reserved":
                 continue
-            elif option == "none":
+            elif option == "none" or option == "nan_suppress": # HACK!!
                 # This is a GNU extension...
                 tok_name = "%empty"
             else:
@@ -183,6 +185,7 @@ for group_num, group in enumerate(ops_grouped):
 
     if ins["staging"]:
         # TODO: Is this correct?
+        # TODO: sr_count can get lost, is this a problem?
         st = n_add("staging_reg", True)
         code.append(f"instr->dest[0] = {st};")
 
@@ -228,7 +231,7 @@ tokens += [
     ("foo", "imm_shift"),
 #    ("foo2", "imm_attribute_index"),
     ("foo3", "imm_texture_index"),
-    ("foo4", "imm_index"),
+#    ("foo4", "imm_index"),
     ("foo5", "imm_sampler_index"),
     ("foo6", "imm_varying_index"),
     ("foo7", "imm_fill"),
@@ -243,14 +246,20 @@ tokens += [
     (None, "T_ZERO"),
     (None, "T_FAU", "num"),
     (None, "T_OFFSET", "num"),
-    (None, "T_IMM_ATTRIBUTE_INDEX", "num"),
     (None, "T_NUM", "num"),
+
+    (None, "T_IMM_ATTRIBUTE_INDEX", "num"),
+    (None, "T_IMM_INDEX", "num"),
 ]
 
 yacc += """
 
 imm_attribute_index:
   T_IMM_ATTRIBUTE_INDEX
+;
+
+imm_index:
+  T_IMM_INDEX
 ;
 
 instr_s:
@@ -378,6 +387,8 @@ clause_prefetch:
 clause_dep_wait:
   %empty            { $$ = 0; }
 | T_DEP_WAIT '(' '0' ')' { $$ = 1; }
+| T_DEP_WAIT '(' '0' ',' '6' ')' { $$ = 65; }
+| T_DEP_WAIT '(' '0' ',' '6' ',' '7' ')' { $$ = 193; }
 ;
 
 clause_header:
@@ -415,7 +426,7 @@ types["num"] += ["clause_staging", "clause_flow", "clause_inf_suppress",
                  "clause_message", "clause_next_message", "clause_td",
                  "clause_prefetch", "clause_dep_wait"]
 
-types["num"] += ["imm_attribute_index"]
+types["num"] += ["imm_attribute_index", "imm_index"]
 
 types["index"] += ["src_reg", "dst_reg", "staging_reg"]
 
@@ -582,6 +593,7 @@ static int parse_imm(const char *str)
 ".w1"|".y"                        bi_yylval.num = 1; return T_OFFSET;
 
 "attribute_index:"[0-9]+          bi_yylval.num = parse_imm(yytext); return T_IMM_ATTRIBUTE_INDEX;
+"index:"[0-9]+                    bi_yylval.num = parse_imm(yytext); return T_IMM_INDEX;
 
  /* TODO: Why not just create the bi_index structs in the lexer? */
  /* TODO: Check for out of range (by using endptr?) */
@@ -601,7 +613,7 @@ lex_foo = """
 """
 
 lex_post = "\n"
-for tok in ":", "{", "}", "*", "+", ",", "@", "(", ")", '0': ## HCAK!!
+for tok in ":", "{", "}", "*", "+", ",", "@", "(", ")", "0", "6", "7": ## HCAK!!
     # TODO: Remove use of f-strings
     lex_post += f"\"{tok}\" return '{tok}';\n"
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# TODO: Stick copyright notice here, mention everything was ~~stolen~~
+# borrowed from freedreno/ir3
+
 from bifrost_isa import *
 import sys
 import itertools
@@ -21,7 +24,7 @@ i = 0
 # TODO: Use a dict or something for tokens
 tokens = []
 yacc = ""
-#types = collections.defaultdict([])
+types = collections.defaultdict(lambda: [])
 
 SWIZZLES = {"lane", "lanes", "replicate", "swz", "widen", "swap"}
 
@@ -145,7 +148,7 @@ for group_num, group in enumerate(ops_grouped):
 
     num_srcs = ins["srcs"]
 
-    srcs = [["src_reg"] for s in range(num_srcs)]
+    srcs = [[] for s in range(num_srcs)]
     for mod in ins["modifiers"]:
         num = mod[-1]
         if num in "0123" and mod != "bytes2":
@@ -159,21 +162,27 @@ for group_num, group in enumerate(ops_grouped):
     def n_add(rule, split=False):
         if split: n_add(sep)
         name.append(rule)
-        return len(name)
+        return "$" + str(len(name))
 
     n_add(group_name)
     n_add("dst_reg")
 
-    for s in srcs:
-        n_add(sep)
-        for i in s:
+    src_offset = bool(ins["staging"])
+
+    for src in range(num_srcs):
+        reg = n_add("src_reg", True)
+        # TODO: Use types here
+        # TODO: Remove all the f-strings for old Python versions
+        code.append(f"instr->src[{src + src_offset}] = {reg};")
+
+        for i in srcs[src]:
             n_add(i)
 
     # TODO: if staging, srcs should be offset by one
 
     for i in ins["immediates"]:
         imm = n_add("imm_" + i, True)
-        code.append(f"instr->{i} = ${imm};")
+        code.append(f"instr->{i} = {imm};")
 
     if ins["staging"]:
         n_add("staging_reg", True)
@@ -224,15 +233,19 @@ tokens += [
     ("foo5", "imm_sampler_index"),
     ("foo6", "imm_varying_index"),
     ("foo7", "imm_fill"),
+
+    ("t0", "T_T0"),
+    ("t1", "T_T1"),
+    ("t", "T_T"),
+
+    (None, "T_CLAUSE"),
+    (None, "T_DEPSLOT", "num"),
+    (None, "T_REGISTER", "num"),
+    (None, "T_ZERO"),
+    (None, "T_FAU", "num"),
+    (None, "T_OFFSET", "num"),
+    (None, "T_IMM_ATTRIBUTE_INDEX", "num"),
 ]
-
-for tok in ("T_CLAUSE", "T_DEPSLOT",
-            "T_REGISTER", "T_T0_T1", "T_T", "T_ZERO",
-            "T_FAU", "T_OFFSET",
-
-            "T_IMM_ATTRIBUTE_INDEX",
-            ):
-    tokens.append((None, tok))
 
 yacc += """
 
@@ -247,18 +260,24 @@ instr_s:
 
 tuple: '*' instr_s '+' instr_s { } ;
 
+t_t0_t1:
+  T_T0
+| T_T1
+;
+
 // TODO: Use bi_register and bi_null()
 dst_reg:
-  T_REGISTER ':' T_T0_T1
-| T_T0_T1
+  T_REGISTER ':' t_t0_t1 { $$ = bi_register($1); }
+| t_t0_t1        { $$ = bi_null(); }
 ;
 
 src_reg:
-  T_REGISTER
-| T_ZERO
-| T_FAU T_OFFSET
-| T_T
-| T_T0_T1
+  T_REGISTER     { $$ = bi_register($1); }
+| T_ZERO         { $$ = bi_null(); }
+| T_FAU T_OFFSET { $$ = bi_fau($1, $2); }
+| T_T            { $$ = bi_passthrough(BIFROST_SRC_STAGE); }
+| T_T0           { $$ = bi_passthrough(BIFROST_SRC_PASS_FMA); }
+| T_T1           { $$ = bi_passthrough(BIFROST_SRC_PASS_ADD); }
 ;
 
 // Ugggggghhh
@@ -268,7 +287,7 @@ mod_swizzle:
 
 // UGGGGGGGGGGGGGGGGhhhhhhhhhhhhhhhh
 staging_reg:
-  '@' T_REGISTER
+  '@' T_REGISTER { $$ = bi_register($2); }
 ;
 
 tuples:
@@ -385,9 +404,24 @@ clause:
 
 """
 
+types["num"] += ["clause_staging", "clause_flow", "clause_inf_suppress",
+                 "clause_nan_suppress", "clause_ftz", "clause_fpe",
+                 "clause_message", "clause_next_message", "clause_td",
+                 "clause_prefetch", "clause_dep_wait"]
+
+types["num"] += ["imm_attribute_index"]
+
+types["index"] += ["src_reg", "dst_reg", "staging_reg"]
+
 pre = COPYRIGHT + """
-%define api.value.type {int}
 %define parse.error detailed
+
+%code requires {
+#include "compiler.h"
+
+//struct ir3 * ir3_parse(struct ir3_shader_variant *v,
+//                struct ir3_kernel_info *k, FILE *f);
+}
 
 %{
 #include <stdio.h>
@@ -397,6 +431,8 @@ pre = COPYRIGHT + """
 bi_instr *instr;
 
 int yydebug;
+
+bool isFMA;
 
 int bi_yyget_lineno(void);
 
@@ -441,9 +477,16 @@ void dump_header(FILE *fp, struct bifrost_header header, bool verbose);
 
 %}
 
-"""
+%union {
+        int tok;
+        int num;
+        uint32_t unum;
+        uint64_t u64;
+        double flt;
+        bi_index index;
+}
 
-# TODO: Do we need types?
+"""
 
 mid = """
 %%
@@ -516,28 +559,26 @@ static int parse_imm(const char *str)
 ";"[^\\n]*"\\n"                     yylineno++; /* ignore comments */
 "/* "[-0-9.e]*" */"                 ; /* ignore commented floats */
 
-"r"[0-9]+ bi_yylval = parse_reg(yytext); return T_REGISTER;
+"r"[0-9]+ bi_yylval.num = parse_reg(yytext); return T_REGISTER;
 
-"t"[01] return TOKEN(T_T0_T1);
-"t" return TOKEN(T_T);
 "#0"(".x"|".y")? return TOKEN(T_ZERO);
 "clause_"[0-9]+":" return TOKEN(T_CLAUSE);
-"ds("[0-9]"u)"                    bi_yylval = yytext[3] - '0'; return T_DEPSLOT;
+"ds("[0-9]"u)"                    bi_yylval.num = yytext[3] - '0'; return T_DEPSLOT;
 
  /* #0 is handled as T_ZERO */
-"lane_id"                         bi_yylval = BIR_FAU_LANE_ID;  return T_FAU;
-"warp_id"                         bi_yylval = BIR_FAU_WARP_ID;  return T_FAU;
-"core_id"                         bi_yylval = BIR_FAU_CORE_ID;  return T_FAU;
-"framebuffer_size"                bi_yylval = BIR_FAU_FB_EXTENT;  return T_FAU;
-"atest_datum"                     bi_yylval = BIR_FAU_ATEST_PARAM;  return T_FAU;
-"sample"                          bi_yylval = BIR_FAU_SAMPLE_POS_ARRAY;  return T_FAU;
-"blend_descriptor_"[0-9]+         bi_yylval = BIR_FAU_BLEND_0 | strtol(yytext + 17, NULL, 10); return T_FAU;
-"u"[0-9]+                         bi_yylval = BIR_FAU_UNIFORM | parse_reg(yytext); return T_FAU;
+"lane_id"                         bi_yylval.num = BIR_FAU_LANE_ID;  return T_FAU;
+"warp_id"                         bi_yylval.num = BIR_FAU_WARP_ID;  return T_FAU;
+"core_id"                         bi_yylval.num = BIR_FAU_CORE_ID;  return T_FAU;
+"framebuffer_size"                bi_yylval.num = BIR_FAU_FB_EXTENT;  return T_FAU;
+"atest_datum"                     bi_yylval.num = BIR_FAU_ATEST_PARAM;  return T_FAU;
+"sample"                          bi_yylval.num = BIR_FAU_SAMPLE_POS_ARRAY;  return T_FAU;
+"blend_descriptor_"[0-9]+         bi_yylval.num = BIR_FAU_BLEND_0 | strtol(yytext + 17, NULL, 10); return T_FAU;
+"u"[0-9]+                         bi_yylval.num = BIR_FAU_UNIFORM | parse_reg(yytext); return T_FAU;
 
-".w0"|".x"                        bi_yylval = 0; return T_OFFSET;
-".w1"|".y"                        bi_yylval = 1; return T_OFFSET;
+".w0"|".x"                        bi_yylval.num = 0; return T_OFFSET;
+".w1"|".y"                        bi_yylval.num = 1; return T_OFFSET;
 
-"attribute_index:"[0-9]+          bi_yylval = parse_imm(yytext); return T_IMM_ATTRIBUTE_INDEX;
+"attribute_index:"[0-9]+          bi_yylval.num = parse_imm(yytext); return T_IMM_ATTRIBUTE_INDEX;
 
 """
 # But we only need hex??
@@ -571,7 +612,11 @@ lex_post += """
 # <tok> if using multiple types...
 with open(sys.argv[2], "w") as f:
     f.write(pre)
-    f.write("\n".join(map(lambda t: "%token " + t[1], tokens)))
+    for t in tokens:
+        typ = t[2] if len(t) > 2 else "tok"
+        f.write("%token <{}> {}\n".format(typ, t[1]))
+    for t in types:
+        f.write("%type <{}> {}\n".format(t, " ".join(types[t])))
     f.write(mid)
     f.write(yacc)
 

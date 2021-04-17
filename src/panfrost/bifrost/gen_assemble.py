@@ -170,10 +170,15 @@ for group_num, group in enumerate(ops_grouped):
     dst_reg = n_add("dst_reg")
     code.append(f"instr->dest[0] = {dst_reg};")
 
+    # TODO: Maybe this is wrong?
+    src_offset = bool(ins["staging"] in ["r", "rw"])
+
     for src in range(num_srcs):
         reg = n_add("src_reg", True)
         # TODO: Remove all the f-strings for old Python versions
-        code.append(f"instr->src[{src}] = {reg};")
+        if src_offset:
+            code.append(f'printf("Setting src {src} to %i\\n", {reg}.value);')
+        code.append(f"instr->src[{src + src_offset}] = {reg};")
 
         # TODO: Fix source modifiers
         for i in srcs[src]:
@@ -187,7 +192,8 @@ for group_num, group in enumerate(ops_grouped):
         # TODO: Is this correct?
         # TODO: sr_count can get lost, is this a problem?
         st = n_add("staging_reg", True)
-        code.append(f"instr->dest[0] = {st};")
+        snum = 0 if src_offset else num_srcs
+        code.append(f"instr->src[{snum}] = {st};")
 
     ins_rule.append((" ".join(name), " ".join(code)))
 
@@ -264,7 +270,7 @@ imm_index:
 
 instr_s:
   { instr = rzalloc(builder->shader, bi_instr); }
-  instr { bi_builder_insert(&builder->cursor, instr); }
+  instr { if (instr->op != BI_OPCODE_NOP_I32) bi_builder_insert(&builder->cursor, instr); }
 ;
 
 // Just hack the scheduler to keep instructions in the same places?

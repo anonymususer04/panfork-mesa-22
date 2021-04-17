@@ -28,7 +28,9 @@
 #include "compiler/glsl/glsl_to_nir.h"
 #include "compiler/nir_types.h"
 #include "compiler/nir/nir_builder.h"
+#include "compiler/nir/nir_serialize.h"
 #include "util/u_debug.h"
+#include "util/mesa-sha1.h"
 
 #include "disassemble.h"
 #include "bifrost_compile.h"
@@ -36,6 +38,8 @@
 #include "bi_quirks.h"
 #include "bi_builder.h"
 #include "bifrost_nir.h"
+
+void bi_parse(bi_builder *b, FILE *f);
 
 static const struct debug_named_value bifrost_debug_options[] = {
         {"msgs",      BIFROST_DBG_MSGS,		"Print debug messages"},
@@ -47,6 +51,7 @@ static const struct debug_named_value bifrost_debug_options[] = {
         {"inorder",   BIFROST_DBG_INORDER, 	"Force in-order bundling"},
         {"novalidate",BIFROST_DBG_NOVALIDATE,   "Skip IR validation"},
         {"noopt",     BIFROST_DBG_NOOPT,        "Skip optimization passes"},
+        {"replace",   BIFROST_DBG_REPLACE,      "Replace shaders with assembly"},
         DEBUG_NAMED_VALUE_END
 };
 
@@ -3732,6 +3737,31 @@ bifrost_compile_shader_nir(nir_shader *nir,
 
         info->tls_size = nir->scratch_size;
 
+        FILE *rep = NULL;
+
+        if (bifrost_debug & BIFROST_DBG_REPLACE) {
+		unsigned char sha1[21];
+		char sha1buf[45];
+
+                struct blob blob;
+                blob_init(&blob);
+                nir_serialize(&blob, nir, true);
+
+		_mesa_sha1_compute(blob.data, blob.size, sha1);
+		_mesa_sha1_format(sha1buf, sha1);
+
+                // TODO: Support disassembling to files as well
+
+                strcpy(sha1buf + 40, ".asm");
+
+                printf("%s - %s: %s\n", ctx->nir->info.label ?: "",
+                        ctx->inputs->is_blend ? "PAN_SHADER_BLEND" :
+                        gl_shader_stage_name(ctx->stage),
+                        sha1buf);
+
+                rep = fopen(sha1buf, "r");
+        }
+
         nir_foreach_function(func, nir) {
                 if (!func->impl)
                         continue;
@@ -3818,6 +3848,28 @@ bifrost_compile_shader_nir(nir_shader *nir,
 
         if (likely(optimize))
                 bi_opt_post_ra(ctx);
+
+        if (rep) {
+                // TODO: Free old instrs
+                list_inithead(&ctx->blocks);
+
+                bi_block *blk = rzalloc(ctx, bi_block);
+
+                blk->base.predecessors = _mesa_set_create(blk,
+                                                          _mesa_hash_pointer,
+                                                          _mesa_key_pointer_equal);
+
+                list_addtail(&blk->base.link, &ctx->blocks);
+                list_inithead(&blk->base.instructions);
+
+                bi_builder _b = {0};
+                bi_builder *b = &_b;
+                b->shader = ctx;
+                b->cursor = bi_after_block(blk);
+
+                printf("Replacing shader\n");
+                bi_parse(b, rep);
+        }
 
         if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal)
                 bi_print_shader(ctx, stdout);

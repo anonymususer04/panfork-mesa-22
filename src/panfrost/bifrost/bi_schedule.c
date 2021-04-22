@@ -1142,8 +1142,41 @@ bi_take_instr(bi_context *ctx, struct bi_worklist st,
                 struct bi_clause_state *clause,
                 struct bi_tuple_state *tuple,
                 uint64_t live_after_temp,
-                bool fma)
+                bool fma, struct util_dynarray *override)
 {
+        if (override) {
+                if (!util_dynarray_num_elements(override, int))
+                        return NULL;
+                printf("top: %i ", util_dynarray_top(override, int));
+                if (!((util_dynarray_top(override, int))--)) {
+                        if (!fma) ++util_dynarray_top(override, int);
+                        else util_dynarray_pop(override, int);
+                        printf("end clause fma %i\n", (int)fma);
+                        return NULL;
+                }
+
+                // All this worklist tracking seems like a waste of time if it
+                // isn't used
+                unsigned idx = BITSET_LAST_BIT_SIZED(st.worklist, DIV_ROUND_UP(st.count, BITSET_WORDBITS)) - 1;
+
+                if (idx == ~0) {
+                        printf("Shouldn't happen\n");
+                        return NULL;
+                }
+
+                /* Update state to reflect taking the instruction */
+                bi_instr *instr = st.instructions[idx];
+
+                printf("sched: ");
+                bi_print_instr(instr, stdout);
+
+                BITSET_CLEAR(st.worklist, idx);
+                bi_update_worklist(st, idx);
+                bi_pop_instr(clause, tuple, instr, live_after_temp, fma);
+
+                return instr;
+        }
+
         if (tuple->add && tuple->add->op == BI_OPCODE_CUBEFACE)
                 return bi_lower_cubeface(ctx, clause, tuple);
         else if (tuple->add && tuple->add->op == BI_OPCODE_PATOM_C_I32)
@@ -1563,7 +1596,8 @@ bi_apply_constant_modifiers(struct bi_const_state *consts,
 /* Schedule a single clause. If no instructions remain, return NULL. */
 
 static bi_clause *
-bi_schedule_clause(bi_context *ctx, bi_block *block, struct bi_worklist st, uint64_t *live)
+bi_schedule_clause(bi_context *ctx, bi_block *block, struct bi_worklist st, uint64_t *live,
+                   struct util_dynarray *override)
 {
         struct bi_clause_state clause_state = { 0 };
         bi_clause *clause = rzalloc(ctx, bi_clause);
@@ -1588,7 +1622,9 @@ bi_schedule_clause(bi_context *ctx, bi_block *block, struct bi_worklist st, uint
         uint64_t live_after_temp = *live;
         uint64_t live_next_tuple = live_after_temp;
 
+        printf("clause:\n");
         do {
+                printf("tuple:\n");
                 struct bi_tuple_state tuple_state = {
                         .last = (clause->tuple_count == 0),
                         .reg = reg_state,
@@ -1610,8 +1646,8 @@ bi_schedule_clause(bi_context *ctx, bi_block *block, struct bi_worklist st, uint
                 }
 
                 /* Since we schedule backwards, we schedule ADD first */
-                tuple_state.add = bi_take_instr(ctx, st, &clause_state, &tuple_state, live_after_temp, false);
-                tuple->fma = bi_take_instr(ctx, st, &clause_state, &tuple_state, live_after_temp, true);
+                tuple_state.add = bi_take_instr(ctx, st, &clause_state, &tuple_state, live_after_temp, false, override);
+                tuple->fma = bi_take_instr(ctx, st, &clause_state, &tuple_state, live_after_temp, true, override);
                 tuple->add = tuple_state.add;
 
                 /* Update liveness from the new instructions */
@@ -1716,6 +1752,9 @@ bi_schedule_clause(bi_context *ctx, bi_block *block, struct bi_worklist st, uint
         if (!clause->tuple_count)
                 return NULL;
 
+        if (override && (clause->tuple_count == 8 || !bi_space_for_more_constants(&clause_state)))
+                util_dynarray_pop(override, int);
+
         /* Before merging, rewrite away any tuples that read only zero */
         for (unsigned i = max_tuples - clause->tuple_count; i < max_tuples; ++i) {
                 bi_tuple *tuple = &clause->tuples[i];
@@ -1795,7 +1834,7 @@ bi_schedule_clause(bi_context *ctx, bi_block *block, struct bi_worklist st, uint
 }
 
 static void
-bi_schedule_block(bi_context *ctx, bi_block *block)
+bi_schedule_block(bi_context *ctx, bi_block *block, struct util_dynarray *override)
 {
         list_inithead(&block->clauses);
 
@@ -1813,7 +1852,7 @@ bi_schedule_block(bi_context *ctx, bi_block *block)
 
         /* Schedule as many clauses as needed to fill the block */
         bi_clause *u = NULL;
-        while((u = bi_schedule_clause(ctx, block, st, &live)))
+        while((u = bi_schedule_clause(ctx, block, st, &live, override)))
                 list_add(&u->link, &block->clauses);
 
         /* Back-to-back bit affects only the last clause of a block,
@@ -1968,13 +2007,13 @@ bi_add_nop_for_atest(bi_context *ctx)
 }
 
 void
-bi_schedule(bi_context *ctx)
+bi_schedule(bi_context *ctx, struct util_dynarray *override)
 {
         /* Fed into both scheduling and DCE */
         bi_postra_liveness(ctx);
 
         bi_foreach_block(ctx, block) {
-                bi_schedule_block(ctx, block);
+                bi_schedule_block(ctx, block, override);
         }
 
         bi_opt_dce_post_ra(ctx);

@@ -45,6 +45,8 @@ extern "C" {
 #define BIFROST_DBG_NOVALIDATE  0x0080
 #define BIFROST_DBG_NOOPT       0x0100
 #define BIFROST_DBG_REPLACE     0x0200
+#define BIFROST_DBG_SHADERS_FS  0x0400
+#define BIFROST_DBG_SHADERS_VS  0x0800
 
 extern int bifrost_debug;
 

@@ -39,7 +39,8 @@
 #include "bi_builder.h"
 #include "bifrost_nir.h"
 
-void bi_parse(bi_builder *b, FILE *f);
+// TODO: Use a header file
+void bi_parse(bi_builder *b, struct util_dynarray *sizes, FILE *f);
 
 static const struct debug_named_value bifrost_debug_options[] = {
         {"msgs",      BIFROST_DBG_MSGS,		"Print debug messages"},
@@ -52,6 +53,8 @@ static const struct debug_named_value bifrost_debug_options[] = {
         {"novalidate",BIFROST_DBG_NOVALIDATE,   "Skip IR validation"},
         {"noopt",     BIFROST_DBG_NOOPT,        "Skip optimization passes"},
         {"replace",   BIFROST_DBG_REPLACE,      "Replace shaders with assembly"},
+        {"fs",        BIFROST_DBG_SHADERS_FS,   "Dump fragment shaders"},
+        {"vs",        BIFROST_DBG_SHADERS_VS,   "Dump vertex shaders"},
         DEBUG_NAMED_VALUE_END
 };
 
@@ -3731,7 +3734,13 @@ bifrost_compile_shader_nir(nir_shader *nir,
         bool skip_internal = nir->info.internal;
         skip_internal &= !(bifrost_debug & BIFROST_DBG_INTERNAL);
 
-        if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal) {
+        bool disassemble = (bifrost_debug & BIFROST_DBG_SHADERS) ||
+                (ctx->stage == MESA_SHADER_VERTEX &&
+                 (bifrost_debug & BIFROST_DBG_SHADERS_VS)) ||
+                (ctx->stage == MESA_SHADER_FRAGMENT &&
+                 (bifrost_debug & BIFROST_DBG_SHADERS_FS));
+
+        if (disassemble && !skip_internal) {
                 nir_print_shader(nir, stdout);
         }
 
@@ -3849,18 +3858,18 @@ bifrost_compile_shader_nir(nir_shader *nir,
         if (likely(optimize))
                 bi_opt_post_ra(ctx);
 
+        struct util_dynarray sched_override = {0};
+
         if (rep) {
                 // TODO: Free old instrs
                 list_inithead(&ctx->blocks);
 
                 bi_block *blk = rzalloc(ctx, bi_block);
 
-                blk->base.predecessors = _mesa_set_create(blk,
-                                                          _mesa_hash_pointer,
-                                                          _mesa_key_pointer_equal);
+                util_dynarray_init(&blk->predecessors, blk);
 
-                list_addtail(&blk->base.link, &ctx->blocks);
-                list_inithead(&blk->base.instructions);
+                list_addtail(&blk->link, &ctx->blocks);
+                list_inithead(&blk->instructions);
 
                 bi_builder _b = {0};
                 bi_builder *b = &_b;
@@ -3868,21 +3877,21 @@ bifrost_compile_shader_nir(nir_shader *nir,
                 b->cursor = bi_after_block(blk);
 
                 printf("Replacing shader\n");
-                bi_parse(b, rep);
+                bi_parse(b, &sched_override, rep);
         }
 
-        if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal)
+        if (disassemble && !skip_internal)
                 bi_print_shader(ctx, stdout);
 
         if (ctx->arch <= 8) {
-                bi_schedule(ctx);
+                bi_schedule(ctx, rep ? &sched_override : NULL);
                 bi_assign_scoreboard(ctx);
         }
 
         /* Analyze after scheduling since we depend on instruction order. */
         bi_analyze_helper_terminate(ctx);
 
-        if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal)
+        if (disassemble && !skip_internal)
                 bi_print_shader(ctx, stdout);
 
         if (ctx->arch <= 8) {
@@ -3893,7 +3902,7 @@ bifrost_compile_shader_nir(nir_shader *nir,
 
         info->ubo_mask = ctx->ubo_mask & BITSET_MASK(ctx->nir->info.num_ubos);
 
-        if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal) {
+        if (disassemble && !skip_internal) {
                 disassemble_bifrost(stdout, binary->data, binary->size,
                                     bifrost_debug & BIFROST_DBG_VERBOSE);
                 fflush(stdout);

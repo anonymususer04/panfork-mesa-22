@@ -257,13 +257,10 @@ bit_builder(void *memctx)
         list_inithead(&ctx->blocks);
 
         bi_block *blk = rzalloc(ctx, bi_block);
+        util_dynarray_init(&blk->predecessors, blk);
 
-        blk->base.predecessors = _mesa_set_create(blk,
-                        _mesa_hash_pointer,
-                        _mesa_key_pointer_equal);
-
-        list_addtail(&blk->base.link, &ctx->blocks);
-        list_inithead(&blk->base.instructions);
+        list_addtail(&blk->link, &ctx->blocks);
+        list_inithead(&blk->instructions);
 
         bi_builder *b = rzalloc(memctx, bi_builder);
         b->shader = ctx;
@@ -271,7 +268,7 @@ bit_builder(void *memctx)
         return b;
 }
 
-void bi_parse(bi_builder *b, FILE *f);
+void bi_parse(bi_builder *b, struct util_dynarray *clause_sizes, FILE *f);
 
 static void
 assemble(const char *filename)
@@ -279,8 +276,10 @@ assemble(const char *filename)
         FILE *fp = fopen(filename, "rb");
         assert(fp);
 
+        struct util_dynarray dyn = {0};
+
         bi_builder *b = bit_builder(NULL);
-        bi_parse(b, fp);
+        bi_parse(b, &dyn, fp);
         bi_print_shader(b->shader, stdout);
 }
 

@@ -53,10 +53,27 @@ for mod in modifier_lists:
         mod_field = "dest[0]." + SRC_MODS[mod]
     elif mod[:-1] in SRC_MODS:
         mod_field = "src[" + mod[-1] + "]." + SRC_MODS[mod[:-1]]
+    elif mod == "lane_dest":
+        mod_field = "dest[0].swizzle"
     else:
         mod_field = mod
 
     def set_mod(value):
+        if mod == "lane_dest":
+            DEST_MAP = {
+                "BI_LANE_DEST_B0": "BI_SWIZZLE_B0000",
+                "BI_LANE_DEST_B1": "BI_SWIZZLE_B1111",
+                "BI_LANE_DEST_B2": "BI_SWIZZLE_B2222",
+                "BI_LANE_DEST_B3": "BI_SWIZZLE_B3333",
+                "BI_LANE_DEST_H0": "BI_SWIZZLE_H00",
+                "BI_LANE_DEST_H1": "BI_SWIZZLE_H11",
+                "BI_LANE_DEST_W0": "BI_SWIZZLE_H01",
+                "BI_LANE_DEST_D0": "BI_SWIZZLE_H01", # This is wrong
+                "BI_LANE_DEST_NONE": "BI_SWIZZLE_H01",
+            }
+
+            value = DEST_MAP[value]
+
         return "instr->{} = {};".format(mod_field, value)
 
     # TODO: This is completely broken...
@@ -270,7 +287,7 @@ imm_index:
 
 instr_s:
   { instr = rzalloc(builder->shader, bi_instr); }
-  instr { if (instr->op != BI_OPCODE_NOP_I32) bi_builder_insert(&builder->cursor, instr); }
+  instr { bi_builder_insert(&builder->cursor, instr); ++clause_size; }
 ;
 
 // Just hack the scheduler to keep instructions in the same places?
@@ -295,6 +312,7 @@ src_reg:
   T_REGISTER     { $$ = bi_register($1); }
 | T_ZERO         { $$ = bi_null(); }
 | T_FAU T_OFFSET { $$ = bi_fau($1, $2); }
+| T_FAU T_MOD_W0 { $$ = bi_fau($1, 0); }
 | T_T            { $$ = bi_passthrough(BIFROST_SRC_STAGE); }
 | T_T0           { $$ = bi_passthrough(BIFROST_SRC_PASS_FMA); }
 | T_T1           { $$ = bi_passthrough(BIFROST_SRC_PASS_ADD); }
@@ -422,7 +440,10 @@ clause_header:
 ;
 
 clause:
-  T_CLAUSE clause_header '{' tuples '}'
+T_CLAUSE clause_header '{' tuples '}' {
+        util_dynarray_append(clause_sizes, int, clause_size);
+        clause_size = 0;
+}
 ;
 
 """
@@ -454,6 +475,9 @@ pre = COPYRIGHT + """
 bi_builder *builder;
 bi_instr *instr;
 
+int clause_size;
+struct util_dynarray *clause_sizes;
+
 int yydebug;
 
 bool isFMA;
@@ -465,8 +489,7 @@ static void yyerror(const char *error)
 	fprintf(stderr, "error at line %d: %s\\n", bi_yyget_lineno(), error);
 }
 
-void bi_parse(bi_builder *b, /*struct ir3_shader_variant *v,
-              struct ir3_kernel_info *k, */FILE *f);
+void bi_parse(bi_builder *b, struct util_dynarray *sizes, FILE *f);
 
 void bi_yyset_input(FILE *f);
 void bi_yyset_lineno(int line);
@@ -474,7 +497,7 @@ void bi_yyset_lineno(int line);
 int yyparse(void);
 
 /* rename function? */
-void bi_parse(bi_builder *b, FILE *f)
+void bi_parse(bi_builder *b, struct util_dynarray *sizes, FILE *f)
 {
         bi_yyset_lineno(1);
         bi_yyset_input(f);
@@ -482,7 +505,14 @@ void bi_parse(bi_builder *b, FILE *f)
         yydebug = 1;
 //#endif
 builder = b;
+clause_size = 0;
+clause_sizes = sizes;
     yyparse();
+    printf("clauses:\\n");
+    util_dynarray_foreach(clause_sizes, int, elem) {
+            printf("%i\\n", *elem);
+    }
+printf("/clauses\\n");
 //        info = k;
 //        variant = v;
 //        if (yyparse() || !resolve_labels()) {
@@ -595,7 +625,8 @@ static int parse_imm(const char *str)
 "blend_descriptor_"[0-9]+         bi_yylval.num = BIR_FAU_BLEND_0 | strtol(yytext + 17, NULL, 10); return T_FAU;
 "u"[0-9]+                         bi_yylval.num = BIR_FAU_UNIFORM | parse_reg(yytext); return T_FAU;
 
-".w0"|".x"                        bi_yylval.num = 0; return T_OFFSET;
+ /* .w0 is handled as T_MOD_W0 */
+".x"                              bi_yylval.num = 0; return T_OFFSET;
 ".w1"|".y"                        bi_yylval.num = 1; return T_OFFSET;
 
 "attribute_index:"[0-9]+          bi_yylval.num = parse_imm(yytext); return T_IMM_ATTRIBUTE_INDEX;

@@ -907,7 +907,7 @@ void bi_register_allocate(bi_context *ctx);
 
 void bi_lower_opt_instruction(bi_instr *I);
 
-void bi_schedule(bi_context *ctx);
+void bi_schedule(bi_context *ctx, struct util_dynarray *override);
 bool bi_can_fma(bi_instr *ins);
 bool bi_can_add(bi_instr *ins);
 bool bi_must_message(bi_instr *ins);

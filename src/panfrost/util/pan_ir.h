@@ -121,14 +121,15 @@ struct panfrost_sysvals {
 /* Architectural invariants (Midgard and Bifrost): UBO must be <= 2^16 bytes so
  * an offset to a word must be < 2^16. There are less than 2^8 UBOs */
 
-struct panfrost_ubo_word {
-        uint16_t ubo;
+struct panfrost_ubo_range {
+        uint8_t ubo;
+        uint8_t size;
         uint16_t offset;
 };
 
 struct panfrost_ubo_push {
         unsigned count;
-        struct panfrost_ubo_word words[PAN_MAX_PUSH];
+        struct panfrost_ubo_range ranges[PAN_MAX_PUSH];
 };
 
 /* Helper for searching the above. Note this is O(N) to the number of pushed

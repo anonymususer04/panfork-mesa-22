@@ -574,21 +574,7 @@ void bi_yyset_input(FILE *f)
 
 static int parse_reg(const char *str)
 {
-	int num = 0;
-//	if (str[0] == 'h') {
-//		str++;
-//		num++;
-//	}
-	str++;
-	num = strtol(str, (char **)&str, 10);
-//	switch (str[1]) {
-//	case 'x': num += 0; break;
-//	case 'y': num += 2; break;
-//	case 'z': num += 4; break;
-//	case 'w': num += 6; break;
-//	default: assert(0); break;
-//	}
-	return num;
+	return strtol(str + 1, NULL, 10);
 }
 
 static int parse_imm(const char *str)
@@ -604,24 +590,24 @@ static int parse_imm(const char *str)
 %option prefix="bi_yy"
 
 %%
-"\\n"                              yylineno++;
-[ \\t]+                             ; /* ignore whitespace */
-";"[^\\n]*"\\n"                     yylineno++; /* ignore comments */
-"/* "[-0-9.e]*" */"                 ; /* ignore commented floats */
+"\\n"                             yylineno++;
+[ \\t]+                           ; /* ignore whitespace */
+";"[^\\n]*"\\n"                   yylineno++; /* ignore comments */
+"/* "[-0-9.e]*" */"               ; /* ignore commented floats */
 
-"r"[0-9]+ bi_yylval.num = parse_reg(yytext); return T_REGISTER;
+"r"[0-9]+                         bi_yylval.num = parse_reg(yytext); return T_REGISTER;
 
-"#0"(".x"|".y")? return TOKEN(T_ZERO);
-"clause_"[0-9]+":" return TOKEN(T_CLAUSE);
+"#0"(".x"|".y")?                  return TOKEN(T_ZERO);
+"clause_"[0-9]+":"                return TOKEN(T_CLAUSE);
 "ds("[0-9]"u)"                    bi_yylval.num = yytext[3] - '0'; return T_DEPSLOT;
 
  /* #0 is handled as T_ZERO */
-"lane_id"                         bi_yylval.num = BIR_FAU_LANE_ID;  return T_FAU;
-"warp_id"                         bi_yylval.num = BIR_FAU_WARP_ID;  return T_FAU;
-"core_id"                         bi_yylval.num = BIR_FAU_CORE_ID;  return T_FAU;
-"framebuffer_size"                bi_yylval.num = BIR_FAU_FB_EXTENT;  return T_FAU;
-"atest_datum"                     bi_yylval.num = BIR_FAU_ATEST_PARAM;  return T_FAU;
-"sample"                          bi_yylval.num = BIR_FAU_SAMPLE_POS_ARRAY;  return T_FAU;
+"lane_id"                         bi_yylval.num = BIR_FAU_LANE_ID; return T_FAU;
+"warp_id"                         bi_yylval.num = BIR_FAU_WARP_ID; return T_FAU;
+"core_id"                         bi_yylval.num = BIR_FAU_CORE_ID; return T_FAU;
+"framebuffer_size"                bi_yylval.num = BIR_FAU_FB_EXTENT; return T_FAU;
+"atest_datum"                     bi_yylval.num = BIR_FAU_ATEST_PARAM; return T_FAU;
+"sample"                          bi_yylval.num = BIR_FAU_SAMPLE_POS_ARRAY; return T_FAU;
 "blend_descriptor_"[0-9]+         bi_yylval.num = BIR_FAU_BLEND_0 | strtol(yytext + 17, NULL, 10); return T_FAU;
 "u"[0-9]+                         bi_yylval.num = BIR_FAU_UNIFORM | parse_reg(yytext); return T_FAU;
 

@@ -270,9 +270,9 @@ panvk_meta_clear_attachment_emit_push_constants(struct panfrost_device *pdev,
 
    for (unsigned i = 0; i < pushmap->count; i++) {
       assert(i < ARRAY_SIZE(pushvals));
-      assert(pushmap->words[i].ubo == 0);
-      assert(pushmap->words[i].offset < sizeof(*clear_value));
-      pushvals[i] = in[pushmap->words[i].offset / 4];
+      assert(pushmap->ranges[i].ubo == 0);
+      assert(pushmap->ranges[i].offset < sizeof(*clear_value));
+      pushvals[i] = in[pushmap->ranges[i].offset / 4];
    }
 
    return pan_pool_upload_aligned(pool, pushvals, sizeof(pushvals), 16);

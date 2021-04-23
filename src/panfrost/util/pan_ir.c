@@ -135,13 +135,13 @@ pan_print_alu_type(nir_alu_type t, FILE *fp)
 unsigned
 pan_lookup_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned offs)
 {
-        struct panfrost_ubo_word word = {
+        struct panfrost_ubo_range range = {
                 .ubo = ubo,
                 .offset = offs
         };
 
         for (unsigned i = 0; i < push->count; ++i) {
-                if (memcmp(push->words + i, &word, sizeof(word)) == 0)
+                if (memcmp(push->ranges + i, &range, sizeof(range)) == 0)
                         return i;
         }
 
@@ -152,10 +152,10 @@ pan_lookup_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned off
 void
 pan_add_pushed_ubo(struct panfrost_ubo_push *push, unsigned ubo, unsigned offs)
 {
-        struct panfrost_ubo_word word = {
+        struct panfrost_ubo_range range = {
                 .ubo = ubo,
                 .offset = offs,
         };
 
-        push->words[push->count++] = word;
+        push->ranges[push->count++] = range;
 }

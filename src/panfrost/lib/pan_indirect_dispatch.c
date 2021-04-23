@@ -106,7 +106,7 @@ get_push_uniforms(struct pan_pool *pool,
         uint8_t *in = (uint8_t *)inputs;
 
         for (unsigned i = 0; i < dev->indirect_dispatch.push.count; ++i)
-                memcpy(out + i, in +  dev->indirect_dispatch.push.words[i].offset, 4);
+                memcpy(out + i, in + dev->indirect_dispatch.push.ranges[i].offset, 4);
 
         return push_consts_buf.gpu;
 }

@@ -1062,7 +1062,7 @@ mir_demote_uniforms(compiler_context *ctx, unsigned new_cutoff)
                                 unsigned idx = (23 - SSA_REG_FROM_FIXED(ins->src[i])) * 4;
                                 assert(idx < ctx->info->push.count);
 
-                                ctx->ubo_mask |= BITSET_BIT(ctx->info->push.words[idx].ubo);
+                                ctx->ubo_mask |= BITSET_BIT(ctx->info->push.ranges[idx].ubo);
 
                                 midgard_instruction ld = {
                                         .type = TAG_LOAD_STORE_4,
@@ -1075,11 +1075,11 @@ mir_demote_uniforms(compiler_context *ctx, unsigned new_cutoff)
                                         .load_store = {
                                                 .index_reg = REGISTER_LDST_ZERO,
                                         },
-                                        .constants.u32[0] = ctx->info->push.words[idx].offset
+                                        .constants.u32[0] = ctx->info->push.ranges[idx].offset
                                 };
 
                                 midgard_pack_ubo_index_imm(&ld.load_store,
-                                                           ctx->info->push.words[idx].ubo);
+                                                           ctx->info->push.ranges[idx].ubo);
 
                                 mir_insert_instruction_before_scheduled(ctx, block, before, ld);
 

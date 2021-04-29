@@ -941,6 +941,83 @@ panfrost_upload_rt_conversion_sysval(struct panfrost_batch *batch,
 #endif
 
 static void
+panfrost_upload_sysval(struct panfrost_batch *batch,
+                       enum pipe_shader_type st,
+                       int sysval,
+                       struct sysval_uniform *uniform,
+                       mali_ptr gpu)
+{
+        switch (PAN_SYSVAL_TYPE(sysval)) {
+        case PAN_SYSVAL_VIEWPORT_SCALE:
+                panfrost_upload_viewport_scale_sysval(batch, uniform);
+                break;
+        case PAN_SYSVAL_VIEWPORT_OFFSET:
+                panfrost_upload_viewport_offset_sysval(batch, uniform);
+                break;
+        case PAN_SYSVAL_TEXTURE_SIZE:
+                panfrost_upload_txs_sysval(batch, st,
+                                           PAN_SYSVAL_ID(sysval),
+                                           uniform);
+                break;
+        case PAN_SYSVAL_SSBO:
+                panfrost_upload_ssbo_sysval(batch, st,
+                                            PAN_SYSVAL_ID(sysval),
+                                            uniform);
+                break;
+        case PAN_SYSVAL_NUM_WORK_GROUPS:
+                for (unsigned j = 0; j < 3; j++)
+                        batch->num_wg_sysval[j] = gpu + (j * 4);
+                panfrost_upload_num_work_groups_sysval(batch, uniform);
+                break;
+        case PAN_SYSVAL_LOCAL_GROUP_SIZE:
+                panfrost_upload_local_group_size_sysval(batch, uniform);
+                break;
+        case PAN_SYSVAL_WORK_DIM:
+                panfrost_upload_work_dim_sysval(batch, uniform);
+                break;
+        case PAN_SYSVAL_SAMPLER:
+                panfrost_upload_sampler_sysval(batch, st,
+                                               PAN_SYSVAL_ID(sysval),
+                                               uniform);
+                break;
+        case PAN_SYSVAL_IMAGE_SIZE:
+                panfrost_upload_image_size_sysval(batch, st,
+                                                  PAN_SYSVAL_ID(sysval),
+                                                  uniform);
+                break;
+        case PAN_SYSVAL_SAMPLE_POSITIONS:
+                panfrost_upload_sample_positions_sysval(batch, uniform);
+                break;
+        case PAN_SYSVAL_MULTISAMPLED:
+                panfrost_upload_multisampled_sysval(batch, uniform);
+                break;
+#if PAN_ARCH >= 6
+        case PAN_SYSVAL_RT_CONVERSION:
+                panfrost_upload_rt_conversion_sysval(batch,
+                                                     PAN_SYSVAL_ID(sysval),
+                                                     uniform);
+                break;
+#endif
+        case PAN_SYSVAL_VERTEX_INSTANCE_OFFSETS:
+                batch->ctx->first_vertex_sysval_ptr = gpu;
+                batch->ctx->base_vertex_sysval_ptr =
+                        batch->ctx->first_vertex_sysval_ptr + 4;
+                batch->ctx->base_instance_sysval_ptr =
+                        batch->ctx->first_vertex_sysval_ptr + 8;
+
+                uniform->u[0] = batch->ctx->offset_start;
+                uniform->u[1] = batch->ctx->base_vertex;
+                uniform->u[2] = batch->ctx->base_instance;
+                break;
+        case PAN_SYSVAL_DRAWID:
+                uniform->u[0] = batch->ctx->drawid;
+                break;
+        default:
+                assert(0);
+        }
+}
+
+static void
 panfrost_upload_sysvals(struct panfrost_batch *batch,
                         const struct panfrost_ptr *ptr,
                         struct panfrost_shader_state *ss,
@@ -950,84 +1027,8 @@ panfrost_upload_sysvals(struct panfrost_batch *batch,
 
         for (unsigned i = 0; i < ss->info.sysvals.ubo_count; ++i) {
                 int sysval = ss->info.sysvals.sysvals[i];
-
-                switch (PAN_SYSVAL_TYPE(sysval)) {
-                case PAN_SYSVAL_VIEWPORT_SCALE:
-                        panfrost_upload_viewport_scale_sysval(batch,
-                                                              &uniforms[i]);
-                        break;
-                case PAN_SYSVAL_VIEWPORT_OFFSET:
-                        panfrost_upload_viewport_offset_sysval(batch,
-                                                               &uniforms[i]);
-                        break;
-                case PAN_SYSVAL_TEXTURE_SIZE:
-                        panfrost_upload_txs_sysval(batch, st,
-                                                   PAN_SYSVAL_ID(sysval),
-                                                   &uniforms[i]);
-                        break;
-                case PAN_SYSVAL_SSBO:
-                        panfrost_upload_ssbo_sysval(batch, st,
-                                                    PAN_SYSVAL_ID(sysval),
-                                                    &uniforms[i]);
-                        break;
-                case PAN_SYSVAL_NUM_WORK_GROUPS:
-                        for (unsigned j = 0; j < 3; j++) {
-                                batch->num_wg_sysval[j] =
-                                        ptr->gpu + (i * sizeof(*uniforms)) + (j * 4);
-                        }
-                        panfrost_upload_num_work_groups_sysval(batch,
-                                                               &uniforms[i]);
-                        break;
-                case PAN_SYSVAL_LOCAL_GROUP_SIZE:
-                        panfrost_upload_local_group_size_sysval(batch,
-                                                                &uniforms[i]);
-                        break;
-                case PAN_SYSVAL_WORK_DIM:
-                        panfrost_upload_work_dim_sysval(batch,
-                                                        &uniforms[i]);
-                        break;
-                case PAN_SYSVAL_SAMPLER:
-                        panfrost_upload_sampler_sysval(batch, st,
-                                                       PAN_SYSVAL_ID(sysval),
-                                                       &uniforms[i]);
-                        break;
-                case PAN_SYSVAL_IMAGE_SIZE:
-                        panfrost_upload_image_size_sysval(batch, st,
-                                                          PAN_SYSVAL_ID(sysval),
-                                                          &uniforms[i]);
-                        break;
-                case PAN_SYSVAL_SAMPLE_POSITIONS:
-                        panfrost_upload_sample_positions_sysval(batch,
-                                                        &uniforms[i]);
-                        break;
-                case PAN_SYSVAL_MULTISAMPLED:
-                        panfrost_upload_multisampled_sysval(batch,
-                                                               &uniforms[i]);
-                        break;
-#if PAN_ARCH >= 6
-                case PAN_SYSVAL_RT_CONVERSION:
-                        panfrost_upload_rt_conversion_sysval(batch,
-                                        PAN_SYSVAL_ID(sysval), &uniforms[i]);
-                        break;
-#endif
-                case PAN_SYSVAL_VERTEX_INSTANCE_OFFSETS:
-                        batch->ctx->first_vertex_sysval_ptr =
-                                ptr->gpu + (i * sizeof(*uniforms));
-                        batch->ctx->base_vertex_sysval_ptr =
-                                batch->ctx->first_vertex_sysval_ptr + 4;
-                        batch->ctx->base_instance_sysval_ptr =
-                                batch->ctx->first_vertex_sysval_ptr + 8;
-
-                        uniforms[i].u[0] = batch->ctx->offset_start;
-                        uniforms[i].u[1] = batch->ctx->base_vertex;
-                        uniforms[i].u[2] = batch->ctx->base_instance;
-                        break;
-                case PAN_SYSVAL_DRAWID:
-                        uniforms[i].u[0] = batch->ctx->drawid;
-                        break;
-                default:
-                        assert(0);
-                }
+                mali_ptr gpu = ptr->gpu + (i * sizeof(*uniforms));
+                panfrost_upload_sysval(batch, st, sysval, &uniforms[i], gpu);
         }
 }
 

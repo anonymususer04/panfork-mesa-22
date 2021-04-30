@@ -96,18 +96,17 @@ panfrost_block_dim(uint64_t modifier, bool width, unsigned plane)
 #define CHECKSUM_TILE_HEIGHT 16
 #define CHECKSUM_BYTES_PER_TILE 8
 
-unsigned
-panfrost_compute_checksum_size(
-        struct pan_image_slice_layout *slice,
-        unsigned width,
-        unsigned height)
+struct pan_image_slice_crc
+panfrost_compute_checksum_size(unsigned width, unsigned height)
 {
         unsigned tile_count_x = DIV_ROUND_UP(width, CHECKSUM_TILE_WIDTH);
         unsigned tile_count_y = DIV_ROUND_UP(height, CHECKSUM_TILE_HEIGHT);
 
-        slice->crc.stride = tile_count_x * CHECKSUM_BYTES_PER_TILE;
+        struct pan_image_slice_crc ret = {0};
+        ret.stride = tile_count_x * CHECKSUM_BYTES_PER_TILE;
+        ret.size = ret.stride * tile_count_y;
 
-        return slice->crc.stride * tile_count_y;
+        return ret;
 }
 
 unsigned
@@ -274,8 +273,7 @@ pan_image_layout_init(const struct panfrost_device *dev,
 
                 /* Add a checksum region if necessary */
                 if (crc_mode != PAN_IMAGE_CRC_NONE) {
-                        slice->crc.size =
-                                panfrost_compute_checksum_size(slice, width, height);
+                        slice->crc = panfrost_compute_checksum_size(width, height);
 
                         if (crc_mode == PAN_IMAGE_CRC_INBAND) {
                                 slice->crc.offset = offset;

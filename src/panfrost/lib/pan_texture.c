@@ -147,12 +147,11 @@ pan_image_layout_init(const struct panfrost_device *dev,
                       const struct pan_image_explicit_layout *explicit_layout)
 {
         /* Explicit stride only work with non-mipmap, non-array; single-sample
-         * 2D image, and in-band CRC can't be used.
+         * 2D image.
          */
         if (explicit_layout &&
 	    (depth > 1 || nr_samples > 1 || array_size > 1 ||
-             dim != MALI_TEXTURE_DIMENSION_2D || nr_slices > 1 ||
-             crc_mode == PAN_IMAGE_CRC_INBAND))
+             dim != MALI_TEXTURE_DIMENSION_2D || nr_slices > 1))
                 return false;
 
         /* Mandate 64 byte alignement */

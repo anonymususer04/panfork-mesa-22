@@ -53,7 +53,7 @@
 #include "panfrost-quirks.h"
 
 static bool
-panfrost_should_checksum(const struct panfrost_device *dev, const struct panfrost_resource *pres);
+panfrost_should_checksum(const struct panfrost_device *dev, const struct pipe_resource *pres);
 
 static struct pipe_resource *
 panfrost_resource_from_handle(struct pipe_screen *pscreen,
@@ -351,10 +351,10 @@ panfrost_create_scanout_res(struct pipe_screen *screen,
 }
 
 static inline bool
-panfrost_is_2d(const struct panfrost_resource *pres)
+panfrost_is_2d(const struct pipe_resource *pres)
 {
-        return (pres->base.target == PIPE_TEXTURE_2D)
-                || (pres->base.target == PIPE_TEXTURE_RECT);
+        return (pres->target == PIPE_TEXTURE_2D)
+                || (pres->target == PIPE_TEXTURE_RECT);
 }
 
 /* Based on the usage, determine if it makes sense to use u-inteleaved tiling.
@@ -447,7 +447,7 @@ panfrost_should_tile(struct panfrost_device *dev,
                 bpp == 8 || bpp == 16 || bpp == 24 || bpp == 32 ||
                 bpp == 64 || bpp == 128;
 
-        bool can_tile = panfrost_is_2d(pres)
+        bool can_tile = panfrost_is_2d(&pres->base)
                 && is_sane_bpp
                 && ((pres->base.bind & ~valid_binding) == 0);
 
@@ -479,7 +479,7 @@ panfrost_best_modifier(struct panfrost_device *dev,
 }
 
 static bool
-panfrost_should_checksum(const struct panfrost_device *dev, const struct panfrost_resource *pres)
+panfrost_should_checksum(const struct panfrost_device *dev, const struct pipe_resource *pres)
 {
         /* When checksumming is enabled, the tile data must fit in the
          * size of the writeback buffer, so don't checksum formats
@@ -487,13 +487,13 @@ panfrost_should_checksum(const struct panfrost_device *dev, const struct panfros
 
         unsigned bytes_per_pixel_max = (dev->arch == 6) ? 6 : 4;
 
-        unsigned bytes_per_pixel = MAX2(pres->base.nr_samples, 1) *
-                util_format_get_blocksize(pres->base.format);
+        unsigned bytes_per_pixel = MAX2(pres->nr_samples, 1) *
+                util_format_get_blocksize(pres->format);
 
-        return pres->base.bind & PIPE_BIND_RENDER_TARGET &&
+        return pres->bind & PIPE_BIND_RENDER_TARGET &&
                 panfrost_is_2d(pres) &&
                 bytes_per_pixel <= bytes_per_pixel_max &&
-                pres->base.last_level == 0 &&
+                pres->last_level == 0 &&
                 !(dev->debug & PAN_DBG_NO_CRC);
 }
 
@@ -505,7 +505,7 @@ panfrost_resource_setup(struct panfrost_device *dev,
         uint64_t chosen_mod = modifier != DRM_FORMAT_MOD_INVALID ?
                               modifier : panfrost_best_modifier(dev, pres, fmt);
         enum pan_image_crc_mode crc_mode =
-                panfrost_should_checksum(dev, pres) ?
+                panfrost_should_checksum(dev, &pres->base) ?
                 PAN_IMAGE_CRC_INBAND : PAN_IMAGE_CRC_NONE;
         enum mali_texture_dimension dim =
                 panfrost_translate_texture_dimension(pres->base.target);

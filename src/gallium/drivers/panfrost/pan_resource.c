@@ -82,9 +82,10 @@ panfrost_resource_from_handle(struct pipe_screen *pscreen,
                        DRM_FORMAT_MOD_LINEAR : whandle->modifier;
         enum mali_texture_dimension dim =
                 panfrost_translate_texture_dimension(templat->target);
+        /* Guess at CRC, but change it later if needed */
         enum pan_image_crc_mode crc_mode =
-                panfrost_should_checksum(dev, rsc) ?
-                PAN_IMAGE_CRC_OOB : PAN_IMAGE_CRC_NONE;
+                panfrost_should_checksum(dev, prsc) ?
+                PAN_IMAGE_CRC_INBAND : PAN_IMAGE_CRC_NONE;
         struct pan_image_explicit_layout explicit_layout = {
                 .offset = whandle->offset,
                 .line_stride = whandle->stride,
@@ -110,8 +111,10 @@ panfrost_resource_from_handle(struct pipe_screen *pscreen,
                 FREE(rsc);
                 return NULL;
         }
-        if (rsc->image.layout.crc_mode == PAN_IMAGE_CRC_OOB)
-                rsc->image.crc.bo = panfrost_bo_create(dev, rsc->image.layout.crc_size, 0, "CRC data");
+
+        /* Was our guess at CRC wrong? */
+        if (rsc->image.layout.data_size > rsc->image.data.bo->size)
+                rsc->image.layout.crc_mode = PAN_IMAGE_CRC_NONE;
 
         rsc->modifier_constant = true;
 

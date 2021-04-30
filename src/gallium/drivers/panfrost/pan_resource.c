@@ -330,6 +330,21 @@ panfrost_create_scanout_res(struct pipe_screen *screen,
                 scanout_templat.height0 = ALIGN_POT(template->height0, 16) + header_rows;
         }
 
+        // todo: align linear here?
+
+        if (panfrost_should_checksum(dev, &scanout_templat)) {
+                unsigned crc_size = panfrost_compute_checksum_size(
+                        scanout_templat.width0, scanout_templat.height0
+                        ).size;
+
+                unsigned pitch = ALIGN_POT(template->width0, 16) *
+                        util_format_get_blocksize(template->format);
+
+                unsigned crc_rows = DIV_ROUND_UP(crc_size, pitch);
+
+                scanout_templat.height0 += crc_rows;
+        }
+
         scanout = renderonly_scanout_for_resource(&scanout_templat,
                         dev->ro, &handle);
         if (!scanout)

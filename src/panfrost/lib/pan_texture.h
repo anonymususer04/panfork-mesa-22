@@ -43,6 +43,12 @@
 #define PAN_MODIFIER_COUNT 4
 extern uint64_t pan_best_modifiers[PAN_MODIFIER_COUNT];
 
+struct pan_image_slice_crc {
+        unsigned offset;
+        unsigned stride;
+        unsigned size;
+};
+
 struct pan_image_slice_layout {
         unsigned offset;
         unsigned line_stride;
@@ -70,11 +76,7 @@ struct pan_image_slice_layout {
 
         /* If checksumming is enabled following the slice, what
          * is its offset/stride? */
-        struct {
-                unsigned offset;
-                unsigned stride;
-                unsigned size;
-        } crc;
+        struct pan_image_slice_crc crc;
 
         unsigned size;
 };
@@ -136,11 +138,8 @@ struct pan_image_view {
         } buf;
 };
 
-unsigned
-panfrost_compute_checksum_size(
-        struct pan_image_slice_layout *slice,
-        unsigned width,
-        unsigned height);
+struct pan_image_slice_crc
+panfrost_compute_checksum_size(unsigned width, unsigned height);
 
 /* AFBC */
 

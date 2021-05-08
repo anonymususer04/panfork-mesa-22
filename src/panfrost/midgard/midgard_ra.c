@@ -1091,6 +1091,12 @@ mir_demote_uniforms(compiler_context *ctx, unsigned new_cutoff)
         }
 
         ctx->info->push.count = MIN2(ctx->info->push.count, new_cutoff * 4);
+
+        unsigned push_sysvals = ctx->info->sysvals.push_count;
+        if (push_sysvals > new_cutoff) {
+                ctx->info->sysvals.ubo_count += push_sysvals - new_cutoff;
+                ctx->info->sysvals.push_count = new_cutoff;
+        }
 }
 
 /* Run register allocation in a loop, spilling until we succeed */

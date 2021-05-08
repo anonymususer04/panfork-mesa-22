@@ -1088,7 +1088,6 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
         /* Next up, attach UBOs. UBO count includes gaps but no sysval UBO */
         struct panfrost_shader_state *shader = panfrost_get_shader_state(ctx, stage);
         unsigned ubo_count = shader->info.ubo_count - (sys_size ? 1 : 0);
-        unsigned sysval_ubo = sys_size ? ubo_count : ~0;
 
         struct panfrost_ptr ubos =
                 pan_pool_alloc_desc_array(&batch->pool.base,
@@ -1145,46 +1144,12 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
         for (unsigned i = sys_push ? 1 : 0; i < ss->info.push.num_ranges; ++i) {
                 struct panfrost_ubo_range src = ss->info.push.ranges[i];
 
-                if (src.ubo == sysval_ubo) {
-                        unsigned sysval_idx = src.offset / 16;
-                        unsigned sysval_comp = (src.offset % 16) / 4;
-                        unsigned sysval_type = PAN_SYSVAL_TYPE(ss->info.sysvals.sysvals[sysval_idx]);
-                        mali_ptr ptr = push_transfer.gpu + (4 * i);
-
-                        switch (sysval_type) {
-                        case PAN_SYSVAL_VERTEX_INSTANCE_OFFSETS:
-                                switch (sysval_comp) {
-                                case 0:
-                                        batch->ctx->first_vertex_sysval_ptr = ptr;
-                                        break;
-                                case 1:
-                                        batch->ctx->base_vertex_sysval_ptr = ptr;
-                                        break;
-                                case 2:
-                                        batch->ctx->base_instance_sysval_ptr = ptr;
-                                        break;
-                                case 3:
-                                        /* Spurious (Midgard doesn't pack) */
-                                        break;
-                                default:
-                                        unreachable("Invalid vertex/instance offset component\n");
-                                }
-                                break;
-
-                        case PAN_SYSVAL_NUM_WORK_GROUPS:
-                                batch->num_wg_sysval[sysval_comp] = ptr;
-                                break;
-
-                        default:
-                                break;
-                        }
-                }
                 /* Map the UBO, this should be cheap. However this is reading
                  * from write-combine memory which is _very_ slow. It might pay
-                 * off to upload sysvals to a staging buffer on the CPU on the
-                 * assumption sysvals will get pushed (TODO) */
+                 * off to upload UBOs to a staging buffer on the CPU on the
+                 * assumption they will get pushed. */
 
-                const void *mapped_ubo = (src.ubo == sysval_ubo) ? sysval_ptr.cpu :
+                const void *mapped_ubo =
                         panfrost_map_constant_buffer_cpu(ctx, buf, src.ubo);
 
                 memcpy(push_cpu, (uint8_t *) mapped_ubo + src.offset,

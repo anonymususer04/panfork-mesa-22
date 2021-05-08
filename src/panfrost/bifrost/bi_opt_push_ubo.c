@@ -99,13 +99,30 @@ bi_analyze_ranges(bi_context *ctx)
         }
 }
 
+static void
+bi_set_sysval_push(struct bi_shader_info *info, unsigned sysval_ubo)
+{
+        if (info->push->num_ranges &&
+            info->push->ranges[0].ubo == sysval_ubo) {
+
+                unsigned pushed_sysvals = info->push->ranges[0].size / 4;
+
+                info->sysvals->ubo_count -= pushed_sysvals;
+                info->sysvals->push_count += pushed_sysvals;
+
+                /* The sysval upload code can only handle a single range */
+                assert(!(info->push->num_ranges > 1 &&
+                         info->push->ranges[1].ubo == sysval_ubo));
+        }
+}
+
 /* Select UBO words to push. A sophisticated implementation would consider the
  * number of uses and perhaps the control flow to estimate benefit. This is not
  * sophisticated. Select from the last UBO first to prioritize sysvals. */
 
 static void
 bi_pick_ubo(struct panfrost_ubo_push *push, struct bi_ubo_analysis *analysis,
-            unsigned sysval_ubo)
+            unsigned sysval_ubo, struct bi_shader_info *info)
 {
         if (analysis->done_pick)
                 return;
@@ -129,7 +146,7 @@ bi_pick_ubo(struct panfrost_ubo_push *push, struct bi_ubo_analysis *analysis,
 
                         /* Don't push more than possible */
                         if (push->count > PAN_MAX_PUSH - util_bitcount(used))
-                                return;
+                                continue;
 
                         u_foreach_bit(offs, used)
                                 pan_add_pushed_ubo(push, ubo, r * 16 + offs * 4);
@@ -137,7 +154,13 @@ bi_pick_ubo(struct panfrost_ubo_push *push, struct bi_ubo_analysis *analysis,
                         /* Mark it as pushed so we can rewrite */
                         BITSET_SET(block->pushed, r);
                 }
+
+                /* Stop if we aren't likely to be able to fit another entry */
+                if (push->count > PAN_MAX_PUSH - 4)
+                        break;
         }
+
+        bi_set_sysval_push(info, sysval_ubo);
 
         analysis->done_pick = true;
 }
@@ -159,7 +182,7 @@ bi_opt_push_ubo(bi_context *ctx)
                 MAX2(ctx->inputs->sysval_ubo, ctx->nir->info.num_ubos);
 
         struct bi_ubo_analysis *analysis = *ctx->analysis;
-        bi_pick_ubo(ctx->info.push, analysis, sysval_ubo);
+        bi_pick_ubo(ctx->info.push, analysis, sysval_ubo, &ctx->info);
 
         ctx->ubo_mask = 0;
 

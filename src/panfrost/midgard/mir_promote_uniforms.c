@@ -286,6 +286,8 @@ midgard_promote_uniforms(compiler_context *ctx)
         mir_pick_ubo(&ctx->info->push, &analysis, promoted_count, sysval_ubo);
         ctx->info->push.count = ALIGN_POT(ctx->info->push.count, 4);
 
+        pan_set_sysval_push(ctx->info, sysval_ubo);
+
         /* First, figure out special indices a priori so we don't recompute a lot */
         BITSET_WORD *special = mir_special_indices(ctx);
 

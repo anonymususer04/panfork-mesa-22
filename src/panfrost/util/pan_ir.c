@@ -202,3 +202,20 @@ pan_index_pushed_ubo(struct panfrost_ubo_push *push, unsigned push_word)
 
         unreachable("Invalid panfrost_ubo_push state");
 }
+
+void
+pan_set_sysval_push(struct pan_shader_info *info, unsigned sysval_ubo)
+{
+        if (info->push.num_ranges &&
+            info->push.ranges[0].ubo == sysval_ubo) {
+
+                unsigned pushed_sysvals = info->push.ranges[0].size / 4;
+
+                info->sysvals.ubo_count -= pushed_sysvals;
+                info->sysvals.push_count += pushed_sysvals;
+
+                /* The sysval upload code can only handle a single range */
+                assert(!(info->push.num_ranges > 1 &&
+                         info->push.ranges[1].ubo == sysval_ubo));
+        }
+}

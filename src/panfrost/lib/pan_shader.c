@@ -287,7 +287,7 @@ GENX(pan_shader_compile)(nir_shader *s,
         info->outputs_written = s->info.outputs_written;
 
         /* Sysvals have dedicated UBO */
-        if (info->sysvals.sysval_count)
+        if (info->sysvals.ubo_count)
                 info->ubo_count = MAX2(s->info.num_ubos + 1, inputs->sysval_ubo + 1);
         else
                 info->ubo_count = s->info.num_ubos;

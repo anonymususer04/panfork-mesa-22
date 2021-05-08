@@ -1144,7 +1144,8 @@ create_indirect_draw_shader(struct panfrost_device *dev,
 
         assert(!shader_info.tls_size);
         assert(!shader_info.wls_size);
-        assert(!shader_info.sysvals.sysval_count);
+        assert(!shader_info.sysvals.push_count);
+        assert(!shader_info.sysvals.ubo_count);
 
         unsigned shader_id = get_shader_id(flags, index_size, index_min_max_search);
         struct pan_indirect_draw_shader *draw_shader =

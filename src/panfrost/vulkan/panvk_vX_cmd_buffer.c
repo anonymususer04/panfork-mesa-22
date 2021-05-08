@@ -328,7 +328,7 @@ panvk_cmd_prepare_sysvals(struct panvk_cmd_buffer *cmdbuf,
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(desc_state->sysvals); i++) {
-      unsigned sysval_count = pipeline->sysvals[i].ids.sysval_count;
+      unsigned sysval_count = pipeline->sysvals[i].ids.ubo_count;
       if (!sysval_count || pipeline->sysvals[i].ubo ||
           (desc_state->sysvals[i] &&
            !(cmdbuf->state.dirty & pipeline->sysvals[i].dirty_mask)))
@@ -338,7 +338,7 @@ panvk_cmd_prepare_sysvals(struct panvk_cmd_buffer *cmdbuf,
          pan_pool_alloc_aligned(&cmdbuf->desc_pool.base, sysval_count * 16, 16);
       union panvk_sysval_data *data = sysvals.cpu;
 
-      for (unsigned s = 0; s < pipeline->sysvals[i].ids.sysval_count; s++) {
+      for (unsigned s = 0; s < pipeline->sysvals[i].ids.ubo_count; s++) {
          panvk_cmd_upload_sysval(cmdbuf, pipeline->sysvals[i].ids.sysvals[s],
                                  &data[s]);
       }

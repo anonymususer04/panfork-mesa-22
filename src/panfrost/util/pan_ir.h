@@ -107,9 +107,11 @@ enum {
 };
 
 struct panfrost_sysvals {
-        /* The mapping of sysvals to uniforms, the count, and the off-by-one inverse */
+        /* The mapping of sysvals to uniforms, and the count of pushed and ubo
+         * sysvals */
         unsigned sysvals[MAX_SYSVAL_COUNT];
-        unsigned sysval_count;
+        unsigned push_count;
+        unsigned ubo_count;
 };
 
 /* Technically Midgard could go up to 92 in a pathological case but we don't

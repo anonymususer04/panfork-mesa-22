@@ -148,7 +148,7 @@ pan_lookup_sysval(struct hash_table_u64 *sysval_to_id,
 
         /* Else assign */
 
-        unsigned id = sysvals->sysval_count++;
+        unsigned id = sysvals->ubo_count++;
         assert(id < MAX_SYSVAL_COUNT);
         _mesa_hash_table_u64_insert(sysval_to_id, sysval, (void *) ((uintptr_t) id + 1));
         sysvals->sysvals[id] = sysval;
@@ -159,6 +159,7 @@ pan_lookup_sysval(struct hash_table_u64 *sysval_to_id,
 struct hash_table_u64 *
 panfrost_init_sysvals(struct panfrost_sysvals *sysvals, void *memctx)
 {
-        sysvals->sysval_count = 0;
+        sysvals->push_count = 0;
+        sysvals->ubo_count = 0;
         return _mesa_hash_table_u64_create(memctx);
 }

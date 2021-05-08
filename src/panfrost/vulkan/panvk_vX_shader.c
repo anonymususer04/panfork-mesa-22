@@ -599,7 +599,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
 
    /* Patch the descriptor count */
    shader->info.ubo_count =
-      shader->info.sysvals.sysval_count ? sysval_ubo + 1 : layout->num_ubos;
+      shader->info.sysvals.ubo_count ? sysval_ubo + 1 : layout->num_ubos;
    shader->info.sampler_count = layout->num_samplers;
    shader->info.texture_count = layout->num_textures;
    if (ctx.has_img_access)

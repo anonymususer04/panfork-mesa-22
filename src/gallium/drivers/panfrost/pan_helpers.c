@@ -31,7 +31,8 @@ panfrost_analyze_sysvals(struct panfrost_shader_state *ss)
         unsigned dirty_shader =
                 PAN_DIRTY_STAGE_RENDERER | PAN_DIRTY_STAGE_CONST;
 
-        for (unsigned i = 0; i < ss->info.sysvals.sysval_count; ++i) {
+        for (unsigned i = 0; i < ss->info.sysvals.push_count +
+                     ss->info.sysvals.ubo_count; ++i) {
                 switch (PAN_SYSVAL_TYPE(ss->info.sysvals.sysvals[i])) {
                 case PAN_SYSVAL_VIEWPORT_SCALE:
                 case PAN_SYSVAL_VIEWPORT_OFFSET:

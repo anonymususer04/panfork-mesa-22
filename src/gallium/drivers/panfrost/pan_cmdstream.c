@@ -1019,15 +1019,27 @@ panfrost_upload_sysval(struct panfrost_batch *batch,
 
 static void
 panfrost_upload_sysvals(struct panfrost_batch *batch,
-                        const struct panfrost_ptr *ptr,
+                        const struct panfrost_ptr *ptr_push,
+                        const struct panfrost_ptr *ptr_ubo,
                         struct panfrost_shader_state *ss,
                         enum pipe_shader_type st)
 {
-        struct sysval_uniform *uniforms = ptr->cpu;
+        unsigned push_count = ss->info.sysvals.push_count;
+        unsigned ubo_count = ss->info.sysvals.ubo_count;
 
-        for (unsigned i = 0; i < ss->info.sysvals.ubo_count; ++i) {
+        struct sysval_uniform *uniforms = ptr_push->cpu;
+
+        for (unsigned i = 0; i < push_count; ++i) {
                 int sysval = ss->info.sysvals.sysvals[i];
-                mali_ptr gpu = ptr->gpu + (i * sizeof(*uniforms));
+                mali_ptr gpu = ptr_push->gpu + (i * sizeof(*uniforms));
+                panfrost_upload_sysval(batch, st, sysval, &uniforms[i], gpu);
+        }
+
+        uniforms = ptr_ubo->cpu;
+
+        for (unsigned i = 0; i < ubo_count; ++i) {
+                int sysval = ss->info.sysvals.sysvals[push_count + i];
+                mali_ptr gpu = ptr_ubo->gpu + (i * sizeof(*uniforms));
                 panfrost_upload_sysval(batch, st, sysval, &uniforms[i], gpu);
         }
 }
@@ -1072,7 +1084,7 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
                 pan_pool_alloc_aligned(&batch->pool.base, sys_size, 16);
 
         /* Upload sysvals requested by the shader */
-        panfrost_upload_sysvals(batch, &transfer, ss, stage);
+        panfrost_upload_sysvals(batch, NULL, &transfer, ss, stage);
 
         /* Next up, attach UBOs. UBO count includes gaps but no sysval UBO */
         struct panfrost_shader_state *shader = panfrost_get_shader_state(ctx, stage);

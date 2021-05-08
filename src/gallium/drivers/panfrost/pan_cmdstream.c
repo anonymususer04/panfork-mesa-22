@@ -948,7 +948,7 @@ panfrost_upload_sysvals(struct panfrost_batch *batch,
 {
         struct sysval_uniform *uniforms = ptr->cpu;
 
-        for (unsigned i = 0; i < ss->info.sysvals.sysval_count; ++i) {
+        for (unsigned i = 0; i < ss->info.sysvals.ubo_count; ++i) {
                 int sysval = ss->info.sysvals.sysvals[i];
 
                 switch (PAN_SYSVAL_TYPE(sysval)) {
@@ -1066,7 +1066,7 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
         struct panfrost_shader_state *ss = &all->variants[all->active_variant];
 
         /* Allocate room for the sysval and the uniforms */
-        size_t sys_size = sizeof(float) * 4 * ss->info.sysvals.sysval_count;
+        size_t sys_size = sizeof(float) * 4 * ss->info.sysvals.ubo_count;
         struct panfrost_ptr transfer =
                 pan_pool_alloc_aligned(&batch->pool.base, sys_size, 16);
 

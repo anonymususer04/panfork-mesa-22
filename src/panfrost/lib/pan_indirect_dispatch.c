@@ -229,7 +229,8 @@ GENX(pan_indirect_dispatch_init)(struct panfrost_device *dev)
 
         assert(!shader_info.tls_size);
         assert(!shader_info.wls_size);
-        assert(!shader_info.sysvals.sysval_count);
+        assert(!shader_info.sysvals.push_count);
+        assert(!shader_info.sysvals.ubo_count);
 
         dev->indirect_dispatch.bin =
                 panfrost_bo_create(dev, binary.size, PAN_BO_EXECUTE,

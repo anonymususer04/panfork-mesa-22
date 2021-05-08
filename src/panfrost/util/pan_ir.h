@@ -403,6 +403,8 @@ void pan_print_alu_type(nir_alu_type t, FILE *fp);
 bool pan_has_source_mod(nir_alu_src *src, nir_op op);
 bool pan_has_dest_mod(nir_dest **dest, nir_op op);
 
+void pan_set_sysval_push(struct pan_shader_info *info, unsigned sysval_ubo);
+
 /* NIR passes to do some backend-specific lowering */
 
 #define PAN_WRITEOUT_C 1

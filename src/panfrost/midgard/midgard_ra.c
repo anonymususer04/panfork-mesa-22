@@ -1090,7 +1090,19 @@ mir_demote_uniforms(compiler_context *ctx, unsigned new_cutoff)
                 }
         }
 
-        ctx->info->push.count = MIN2(ctx->info->push.count, new_cutoff * 4);
+        unsigned new_push_count = new_cutoff * 4;
+        if (new_push_count && new_push_count < ctx->info->push.count) {
+                struct panfrost_ubo_range last_pushed =
+                        pan_index_pushed_ubo(&ctx->info->push, new_push_count - 1);
+
+                ctx->info->push.num_ranges = last_pushed.index + 1;
+
+                ctx->info->push.ranges[last_pushed.index].size =
+                        (last_pushed.offset -
+                         ctx->info->push.ranges[last_pushed.offset].offset) / 4 + 1;
+        }
+
+        ctx->info->push.count = MIN2(ctx->info->push.count, new_push_count);
 
         unsigned push_sysvals = ctx->info->sysvals.push_count;
         if (push_sysvals > new_cutoff) {

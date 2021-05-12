@@ -1122,9 +1122,9 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
                 return ubos.gpu;
 
         /* Copy push constants required by the shader */
-        struct panfrost_ptr push_transfer =
-                pan_pool_alloc_aligned(&batch->pool.base,
-                                       ss->info.push.count * 4, 16);
+        struct panfrost_ptr push_transfer = {0};
+        if (ss->info.push.count)
+                push_transfer = pan_pool_alloc_aligned(&batch->pool.base, ss->info.push.count * 4, 16);
 
         uint32_t *push_cpu = (uint32_t *) push_transfer.cpu;
         *push_constants = push_transfer.gpu;

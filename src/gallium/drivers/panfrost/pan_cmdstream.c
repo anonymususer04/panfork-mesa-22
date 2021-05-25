@@ -1134,9 +1134,10 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
 
         /* Upload sysval as a final UBO */
         if (sys_size) {
+                unsigned sysval_push = ss->info.sysvals.push_count;
                 pan_pack(ubo_ptr + ubo_count, UNIFORM_BUFFER, cfg) {
-                        cfg.entries = DIV_ROUND_UP(sys_size, 16);
-                        cfg.pointer = sysval_ptr.gpu;
+                        cfg.entries = DIV_ROUND_UP(sys_size, 16) + sysval_push;
+                        cfg.pointer = sysval_ptr.gpu - sysval_push * 16;
                 }
         }
 

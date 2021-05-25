@@ -1118,9 +1118,6 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
                 }
         }
 
-        if (ss->info.push.count == 0)
-                return ubos.gpu;
-
         /* Copy push constants required by the shader */
         struct panfrost_ptr push_transfer = {0};
         if (ss->info.push.count)

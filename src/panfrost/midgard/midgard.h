@@ -456,6 +456,8 @@ midgard_writeout;
 enum midgard_ld_special_selector {
         midgard_ld_special_coverage_mask = 0x60,
         midgard_ld_special_sample_index = 0x61,
+        midgard_ld_special_cycle_counter = 0x70,
+        midgard_ld_special_timetamp = 0x71,
 };
 
 /*

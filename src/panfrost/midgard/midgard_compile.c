@@ -2054,11 +2054,11 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                 break;
 
         case nir_intrinsic_load_sample_mask_in:
-                emit_special(ctx, instr, 96);
+                emit_special(ctx, instr, midgard_ld_special_coverage_mask);
                 break;
 
         case nir_intrinsic_load_sample_id:
-                emit_special(ctx, instr, 97);
+                emit_special(ctx, instr, midgard_ld_special_sample_index);
                 break;
 
         /* Midgard doesn't seem to want special handling */

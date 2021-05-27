@@ -453,6 +453,11 @@ __attribute__((__packed__))
 }
 midgard_writeout;
 
+enum midgard_ld_special_selector {
+        midgard_ld_special_coverage_mask = 0x60,
+        midgard_ld_special_sample_index = 0x61,
+};
+
 /*
  * Load/store words
  */

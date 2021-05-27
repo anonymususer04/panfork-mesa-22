@@ -70,6 +70,10 @@ struct panfrost_batch {
         /* Amount of shared memory needed per workgroup (for compute) */
         unsigned shared_size;
 
+        /* Whether cycle counts or timestamps are needed for any job in the
+         * batch, for example from ARB_shader_clock or a timestamp query */
+        bool uses_cycle_counter;
+
         /* The bounding box covered by this job, taking scissors into account.
          * Basically, the bounding box we have to run fragment shaders for */
 

@@ -271,6 +271,7 @@ struct pan_shader_info {
         bool separable;
         bool contains_barrier;
         bool writes_global;
+        bool uses_cycle_counter;
         uint64_t outputs_written;
 
         unsigned sampler_count;

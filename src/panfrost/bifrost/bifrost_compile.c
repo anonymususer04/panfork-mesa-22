@@ -1438,6 +1438,7 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
                 break;
 
         case nir_intrinsic_shader_clock:
+                b->shader->info.uses_cycle_counter = true;
                 bi_ld_gclk_u64_to(b, dst, BI_SOURCE_CYCLE_COUNTER);
                 break;
 
@@ -3955,6 +3956,7 @@ bi_compile_variant_part_two(bi_context *ctx,
 
         info->ubo_mask |= ctx->ubo_mask;
         info->tls_size = MAX2(info->tls_size, ctx->info.tls_size);
+        info->uses_cycle_counter |= ctx->info.uses_cycle_counter;
 
         if (ctx->idvs == BI_IDVS_VARYING) {
                 info->vs.secondary_enable = (binary->size > ctx->offset);

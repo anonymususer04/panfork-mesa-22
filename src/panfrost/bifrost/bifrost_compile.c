@@ -1400,6 +1400,7 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
                 break;
 
         case nir_intrinsic_shader_clock:
+                b->shader->info->uses_cycle_counter = true;
                 bi_ld_gclk_u64_to(b, dst, BI_SOURCE_CYCLE_COUNTER);
                 break;
 

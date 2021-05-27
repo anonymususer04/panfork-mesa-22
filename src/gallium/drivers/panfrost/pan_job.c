@@ -678,8 +678,11 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
                 pthread_mutex_lock(&dev->submit_lock);
 
         if (has_draws) {
+                unsigned req =
+                        (batch->uses_cycle_counter ? PANFROST_JD_REQ_PERMON : 0);
+
                 ret = panfrost_batch_submit_ioctl(batch, batch->scoreboard.first_job,
-                                                  0, in_sync, has_frag ? 0 : out_sync);
+                                                  req, in_sync, has_frag ? 0 : out_sync);
 
                 if (ret)
                         goto done;
@@ -693,9 +696,13 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
                  * *only* clears, since otherwise the tiler structures will be
                  * uninitialized leading to faults (or state leaks) */
 
+                unsigned req =
+                        PANFROST_JD_REQ_FS |
+                        (batch->uses_cycle_counter ? PANFROST_JD_REQ_PERMON : 0);
+
                 mali_ptr fragjob = screen->vtbl.emit_fragment_job(batch, fb);
                 ret = panfrost_batch_submit_ioctl(batch, fragjob,
-                                                  PANFROST_JD_REQ_FS, 0,
+                                                  req, 0,
                                                   out_sync);
                 if (ret)
                         goto done;

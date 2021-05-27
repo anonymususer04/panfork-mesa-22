@@ -766,8 +766,11 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
                 pthread_mutex_lock(&dev->submit_lock);
 
         if (has_draws) {
+                unsigned req =
+                        (batch->uses_cycle_counter ? PANFROST_JD_REQ_PERMON : 0);
+
                 ret = panfrost_batch_submit_ioctl(batch, batch->scoreboard.first_job,
-                                                  0, in_sync, has_frag ? 0 : out_sync,
+                                                  req, in_sync, has_frag ? 0 : out_sync,
                                                   bo_handles, num_bos);
 
                 if (ret)
@@ -775,9 +778,12 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
         }
 
         if (has_frag) {
+                unsigned req =
+                        PANFROST_JD_REQ_FS |
+                        (batch->uses_cycle_counter ? PANFROST_JD_REQ_PERMON : 0);
+
                 ret = panfrost_batch_submit_ioctl(batch, fragjob,
-                                                  PANFROST_JD_REQ_FS, 0,
-                                                  out_sync,
+                                                  req, 0, out_sync,
                                                   bo_handles, num_bos);
                 if (ret)
                         goto done;

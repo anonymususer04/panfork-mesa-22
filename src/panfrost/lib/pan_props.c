@@ -282,10 +282,14 @@ panfrost_close_device(struct panfrost_device *dev)
         close(dev->fd);
 }
 
+extern bool pandecode_no_mprotect;
+
 struct panfrost_device *
 panblob_create_device(void)
 {
         struct panfrost_device *dev = rzalloc(NULL, struct panfrost_device);
+
+        pandecode_no_mprotect = true;
 
         // TODO: Parse an env var rather than hard-coding
         dev->debug = PAN_DBG_SYNC | PAN_DBG_PERF | PAN_DBG_TRACE;

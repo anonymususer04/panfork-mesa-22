@@ -1267,12 +1267,22 @@ print_alu_word(disassemble_context *ctx, FILE *fp, uint32_t *words,
         return branch_forward;
 }
 
+static midgard_varying_params midgard_unpack_varying_params_dis(midgard_load_store_word word)
+{
+        unsigned params = word.signed_offset & 0x1FF;
+
+        midgard_varying_params p;
+        memcpy(&p, &params, sizeof(p));
+
+        return p;
+}
+
 /* TODO: how can we use this now that we know that these params can't be known
  * before run time in every single case? Maybe just use it in the cases we can? */
 UNUSED static void
 print_varying_parameters(FILE *fp, midgard_load_store_word *word)
 {
-        midgard_varying_params p = midgard_unpack_varying_params(*word);
+        midgard_varying_params p = midgard_unpack_varying_params_dis(*word);
 
         /* If a varying, there are qualifiers */
         if (p.flat_shading)

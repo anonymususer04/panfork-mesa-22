@@ -1078,13 +1078,12 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
         struct panfrost_constant_buffer *buf = &ctx->constant_buffer[stage];
         struct panfrost_shader_state *ss = &all->variants[all->active_variant];
 
-        /* Allocate room for the sysval and the uniforms */
+        /* Allocate room for the sysvals and the uniforms */
         size_t sys_size = sizeof(float) * 4 * ss->info.sysvals.ubo_count;
-        struct panfrost_ptr transfer =
-                pan_pool_alloc_aligned(&batch->pool.base, sys_size, 16);
-
-        /* Upload sysvals requested by the shader */
-        panfrost_upload_sysvals(batch, NULL, &transfer, ss, stage);
+        struct panfrost_ptr sysval_ptr = {0};
+        if (sys_size)
+                sysval_ptr = pan_pool_alloc_aligned(&batch->pool.base,
+                                                         sys_size, 16);
 
         /* Next up, attach UBOs. UBO count includes gaps but no sysval UBO */
         struct panfrost_shader_state *shader = panfrost_get_shader_state(ctx, stage);
@@ -1098,16 +1097,7 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
 
         uint64_t *ubo_ptr = (uint64_t *) ubos.cpu;
 
-        /* Upload sysval as a final UBO */
-
-        if (sys_size) {
-                pan_pack(ubo_ptr + ubo_count, UNIFORM_BUFFER, cfg) {
-                        cfg.entries = DIV_ROUND_UP(sys_size, 16);
-                        cfg.pointer = transfer.gpu;
-                }
-        }
-
-        /* The rest are honest-to-goodness UBOs */
+        /* Upload all used UBOs other than sysvals */
 
         u_foreach_bit(ubo, ss->info.ubo_mask & buf->enabled_mask) {
                 size_t usz = buf->cb[ubo].buffer_size;
@@ -1138,6 +1128,17 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
 
         uint32_t *push_cpu = (uint32_t *) push_transfer.cpu;
         *push_constants = push_transfer.gpu;
+
+        /* Upload sysvals requested by the shader */
+        panfrost_upload_sysvals(batch, &push_transfer, &sysval_ptr, ss, stage);
+
+        /* Upload sysval as a final UBO */
+        if (sys_size) {
+                pan_pack(ubo_ptr + ubo_count, UNIFORM_BUFFER, cfg) {
+                        cfg.entries = DIV_ROUND_UP(sys_size, 16);
+                        cfg.pointer = sysval_ptr.gpu;
+                }
+        }
 
         for (unsigned i = 0; i < ss->info.push.count; ++i) {
                 struct panfrost_ubo_range src = ss->info.push.ranges[i];
@@ -1181,7 +1182,7 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
                  * off to upload sysvals to a staging buffer on the CPU on the
                  * assumption sysvals will get pushed (TODO) */
 
-                const void *mapped_ubo = (src.ubo == sysval_ubo) ? transfer.cpu :
+                const void *mapped_ubo = (src.ubo == sysval_ubo) ? sysval_ptr.cpu :
                         panfrost_map_constant_buffer_cpu(ctx, buf, src.ubo);
 
                 /* TODO: Is there any benefit to combining ranges */

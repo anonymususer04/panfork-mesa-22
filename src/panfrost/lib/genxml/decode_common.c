@@ -37,6 +37,8 @@
 
 FILE *pandecode_dump_stream;
 
+bool pandecode_no_mprotect;
+
 /* Memory handling */
 
 static struct rb_tree mmap_tree;
@@ -82,7 +84,7 @@ pandecode_find_mapped_gpu_mem_containing(uint64_t addr)
 {
         struct pandecode_mapped_memory *mem = pandecode_find_mapped_gpu_mem_containing_rw(addr);
 
-        if (mem && mem->addr && !mem->ro) {
+        if (!pandecode_no_mprotect && mem && mem->addr && !mem->ro) {
                 mprotect(mem->addr, mem->length, PROT_READ);
                 mem->ro = true;
                 util_dynarray_append(&ro_mappings, struct pandecode_mapped_memory *, mem);

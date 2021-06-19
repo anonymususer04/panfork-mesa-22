@@ -1140,7 +1140,10 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
                 }
         }
 
-        for (unsigned i = 0; i < ss->info.push.count; ++i) {
+        unsigned sys_push = ss->info.sysvals.push_count * 4;
+        push_cpu += sys_push;
+
+        for (unsigned i = sys_push ? 1 : 0; i < ss->info.push.count; ++i) {
                 struct panfrost_ubo_range src = ss->info.push.ranges[i];
 
                 if (src.ubo == sysval_ubo) {

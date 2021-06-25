@@ -426,6 +426,19 @@ panfrost_bo_create(struct panfrost_device *dev, size_t size,
         return bo;
 }
 
+mali_ptr
+panblob_create_bo(struct panfrost_device *dev, uint32_t size,
+                  uint32_t flags)
+{
+        struct panfrost_bo *bo = panfrost_bo_create(dev, size, flags, "Blob");
+
+        if (dev->debug & PAN_DBG_PERF)
+                fprintf(stderr, "create bo %p: CPU %p GPU %"PRIx64"\n",
+                        bo, bo->ptr.cpu, bo->ptr.gpu);
+
+        return bo->ptr.gpu;
+}
+
 void
 panfrost_bo_reference(struct panfrost_bo *bo)
 {
@@ -542,3 +555,153 @@ panfrost_bo_export(struct panfrost_bo *bo)
         return args.fd;
 }
 
+/* Stolen from the valhall-shenanigans branch of panloader, which was stolen
+ * from... */
+static void
+hexdump(FILE *fp, const uint8_t *hex, size_t cnt, bool with_strings)
+{
+        uint8_t *shadow = malloc(cnt);
+        memcpy(shadow, hex, cnt);
+        hex = shadow;
+
+        for (unsigned i = 0; i < cnt; ++i) {
+                if ((i & 0xF) == 0)
+                        fprintf(fp, "%06X  ", i);
+
+                uint8_t v = hex[i];
+
+                if (v == 0 && (i & 0xF) == 0) {
+                        /* Check if we're starting an aligned run of zeroes */
+                        unsigned zero_count = 0;
+
+                        for (unsigned j = i; j < cnt; ++j) {
+                                if (hex[j] == 0)
+                                        zero_count++;
+                                else
+                                        break;
+                        }
+
+                        if (zero_count >= 32) {
+                                fprintf(fp, "*\n");
+                                i += (zero_count & ~0xF) - 1;
+                                continue;
+                        }
+                }
+
+                fprintf(fp, "%02X ", hex[i]);
+                if ((i & 0xF) == 0xF && with_strings) {
+                        fprintf(fp, " | ");
+                        for (unsigned j = i & ~0xF; j <= i; ++j) {
+                                uint8_t c = hex[j];
+                                fputc((c < 32 || c > 128) ? '.' : c, fp);
+                        }
+                }
+
+                if ((i & 0xF) == 0xF)
+                        fprintf(fp, "\n");
+        }
+
+        fprintf(fp, "\n");
+
+        free(shadow);
+}
+
+extern FILE *pandecode_dump_stream;
+
+static void
+panfrost_do_bo_dump(struct panfrost_device *dev, FILE *dump)
+{
+        // TODO: Create a utility function for doing this in sparse_array.c
+
+        struct util_sparse_array *arr = &dev->bo_map;
+
+        const unsigned node_size_log2 = arr->node_size_log2;
+        uintptr_t root = p_atomic_read(&arr->root);
+
+        unsigned root_level = (root & 63);
+        unsigned shift = (root_level + 1) * node_size_log2;
+
+        for (unsigned idx = 0; idx < 1 << shift; ++idx) {
+                struct panfrost_bo *bo = util_sparse_array_get(arr, idx);
+
+                if (bo->size) {
+                        fprintf(dump, "%p %p: 0x%"PRIx64" - 0x%"PRIx64" (0x%"PRIx64"): %s\n",
+                                bo, bo->ptr.cpu, bo->ptr.gpu, bo->ptr.gpu + bo->size, (uint64_t)bo->size, bo->label);
+                        if (bo->ptr.cpu)
+                                hexdump(dump, bo->ptr.cpu, bo->size, false);
+                }
+        }
+}
+
+static void
+panfrost_bo_dump(struct panfrost_device *dev, int dump_count, mali_ptr jc, const char *lab)
+{
+        char *name;
+        asprintf(&name, "/tmp/bo_dump.%i.%"PRIx64".%s", dump_count, jc, lab);
+        if (dev->debug & PAN_DBG_PERF)
+                fprintf(stderr, "Dumping BOs to %s\n", name);
+        FILE *dump = fopen(name, "w");
+        free(name);
+
+        panfrost_do_bo_dump(dev, dump);
+        fclose(dump);
+
+        if (!(dev->debug & PAN_DBG_TRACE))
+                return;
+
+        asprintf(&name, "/tmp/pandecode.%i.%"PRIx64".%s", dump_count, jc, lab);
+        if (pandecode_dump_stream && pandecode_dump_stream != stderr)
+                fclose(pandecode_dump_stream);
+        pandecode_dump_stream = fopen(name, "w");
+        free(name);
+
+        pandecode_jc(jc, dev->gpu_id);
+}
+
+static bool
+panblob_submit_job(struct panfrost_device *dev, mali_ptr jc, uint32_t reqs)
+{
+        struct drm_panfrost_submit submit = {0};
+
+        submit.out_sync = dev->syncobj;
+        submit.jc = jc;
+        submit.requirements = reqs;
+
+        static int dump_count = 0;
+
+        panfrost_bo_dump(dev, ++dump_count, jc, "before");
+
+        int ret = drmIoctl(dev->fd, DRM_IOCTL_PANFROST_SUBMIT, &submit);
+        if (ret) {
+                perror("ioctl");
+                return false;
+        }
+
+        drmSyncobjWait(dev->fd, &submit.out_sync, 1, INT64_MAX, 0, NULL);
+
+        panfrost_bo_dump(dev, dump_count, jc, "result");
+
+        pandecode_abort_on_fault(submit.jc, dev->gpu_id);
+
+        return true;
+}
+
+#include "genxml/decode.h"
+
+bool
+panblob_submit(struct panfrost_device *dev, mali_ptr jc, uint32_t reqs)
+{
+        while (jc) {
+                /* Split chains into individual jobs */
+                uint64_t *job = PANDECODE_PTR(NULL, jc, uint64_t);
+                uint64_t next_jc = job[3];
+                job[3] = 0;
+
+                if (!panblob_submit_job(dev, jc, reqs))
+                        return false;
+
+                jc = next_jc;
+        }
+
+        return true;
+}

@@ -159,6 +159,21 @@ pointer_as_memory_reference(uint64_t ptr)
 
 }
 
+void *
+panblob_cpu_addr(struct panfrost_device *dev, mali_ptr gpu)
+{
+        struct pandecode_mapped_memory *mem =
+                pandecode_find_mapped_gpu_mem_containing_rw(gpu);
+
+        if (mem && mem->addr) {
+                // TODO: Include pan_device.h for gating the print on a PAN_DBG_
+                fprintf(stderr, "found address: %"PRIx64" -> %p\n", gpu, mem->addr);
+                return mem->addr;
+        }
+
+        return NULL;
+}
+
 static int pandecode_dump_frame_count = 0;
 
 static bool force_stderr = false;

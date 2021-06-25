@@ -24,6 +24,8 @@
  *   Alyssa Rosenzweig <alyssa.rosenzweig@collabora.com>
  */
 
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <xf86drm.h>
 
 #include "util/u_math.h"
@@ -278,4 +280,22 @@ panfrost_close_device(struct panfrost_device *dev)
         drmFreeVersion(dev->kernel_version);
         util_sparse_array_finish(&dev->bo_map);
         close(dev->fd);
+}
+
+struct panfrost_device *
+panblob_create_device(void)
+{
+        struct panfrost_device *dev = rzalloc(NULL, struct panfrost_device);
+
+        // TODO: Parse an env var rather than hard-coding
+        dev->debug = PAN_DBG_SYNC | PAN_DBG_PERF | PAN_DBG_TRACE;
+
+        panfrost_open_device(NULL, drmOpenWithType("panfrost", NULL, DRM_NODE_RENDER), dev);
+
+        drmSyncobjCreate(dev->fd, DRM_SYNCOBJ_CREATE_SIGNALED, &dev->syncobj);
+
+        if (dev->debug & PAN_DBG_PERF)
+                fprintf(stderr, "created device %p\n", dev);
+
+        return dev;
 }

@@ -27,6 +27,7 @@
 #define __PAN_DECODE_H__
 
 #include "genxml/gen_macros.h"
+#include "panfrost-job.h"
 
 #include "wrap.h"
 

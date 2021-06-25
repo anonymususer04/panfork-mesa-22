@@ -222,6 +222,8 @@ struct panfrost_device {
          * unconditionally on Bifrost, and useful for sharing with Midgard */
 
         struct panfrost_bo *sample_positions;
+
+        uint32_t syncobj;
 };
 
 void

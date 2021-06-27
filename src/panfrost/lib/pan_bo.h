@@ -50,6 +50,8 @@
  * cached locally */
 #define PAN_BO_SHARED             (1 << 4)
 
+#define PAN_BO_SAME_VA            (1 << 5)
+
 /* GPU access flags */
 
 /* BO is either shared (can be accessed by more than one GPU batch) or private

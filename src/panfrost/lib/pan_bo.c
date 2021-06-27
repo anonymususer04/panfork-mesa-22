@@ -267,7 +267,7 @@ panfrost_bo_cache_put(struct panfrost_bo *bo)
 {
         struct panfrost_device *dev = bo->dev;
 
-        if (bo->flags & PAN_BO_SHARED || dev->debug & PAN_DBG_NO_CACHE)
+        if (bo->flags & (PAN_BO_SHARED | PAN_BO_SAME_VA) || dev->debug & PAN_DBG_NO_CACHE)
                 return false;
 
         /* Must be first */
@@ -343,7 +343,12 @@ panfrost_bo_mmap(struct panfrost_bo *bo)
                 assert(0);
         }
 
-        bo->ptr.cpu = os_mmap(NULL, bo->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+        bool same = bo->flags & PAN_BO_SAME_VA;
+
+        void *ptr = same ? (void *)(uintptr_t)bo->ptr.gpu : NULL;
+        int flags = MAP_SHARED | (same ? MAP_FIXED_NOREPLACE : 0);
+
+        bo->ptr.cpu = os_mmap(ptr, bo->size, PROT_READ | PROT_WRITE, flags,
                               bo->dev->fd, mmap_bo.offset);
         if (bo->ptr.cpu == MAP_FAILED) {
                 bo->ptr.cpu = NULL;

@@ -891,6 +891,11 @@ panfrost_create_screen(int fd, struct renderonly *ro)
         dev->debug = debug_get_flags_option("PAN_MESA_DEBUG", panfrost_debug_options, 0);
         panfrost_open_device(screen, fd, dev);
 
+        if (dev->arch <= 6)
+                dev->formats = panfrost_pipe_format_v6;
+        else
+                dev->formats = panfrost_pipe_format_v7;
+
         char *crc_dump = getenv("PAN_CRC_DUMP");
         if (crc_dump)
                 screen->crc_dump_file = fopen(crc_dump, "w");

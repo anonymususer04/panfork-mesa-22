@@ -124,7 +124,7 @@ static void
 pandecode_validate_buffer(mali_ptr addr, size_t sz)
 {
         if (!addr) {
-                pandecode_msg("XXX: null pointer deref");
+                pandecode_msg("XXX: null pointer deref\n");
                 return;
         }
 

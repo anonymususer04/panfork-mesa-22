@@ -46,8 +46,14 @@ mir_is_ubo(midgard_instruction *ins)
 static bool
 mir_is_direct_aligned_ubo(midgard_instruction *ins)
 {
-        return mir_is_ubo(ins) &&
-                !(ins->constants.u32[0] & 0xF) &&
+        if (!mir_is_ubo(ins))
+                return false;
+
+        unsigned offset = ins->constants.u32[0];
+        unsigned size = util_logbase2_ceil(mir_bytemask(ins));
+
+        return !(offset & 0x3) &&
+                ((offset & 0xf) + size <= 16) &&
                 (ins->src[1] == ~0) &&
                 (ins->src[2] == ~0);
 }
@@ -290,6 +296,7 @@ midgard_promote_uniforms(compiler_context *ctx)
 
                 unsigned ubo = midgard_unpack_ubo_index_imm(ins->load_store);
                 unsigned qword = ins->constants.u32[0] / 16;
+                unsigned offset = ins->constants.u32[0] % 16;
 
                 if (!mir_is_direct_aligned_ubo(ins)) {
                         if (ins->src[1] == ~0)
@@ -318,6 +325,13 @@ midgard_promote_uniforms(compiler_context *ctx)
                 assert(address < promoted_count);
                 unsigned promoted = SSA_FIXED_REGISTER(uniform_reg);
 
+                unsigned comps = mir_components_for_type(ins->dest_type);
+                unsigned swz_offset = offset * comps / 16;
+
+                unsigned swizzle[MIR_VEC_COMPONENTS];
+                for (unsigned i = 0; i < comps - swz_offset; ++i)
+                        swizzle[i] = i + swz_offset;
+
                 /* We do need the move for safety for a non-SSA dest, or if
                  * we're being fed into a special class */
 
@@ -331,12 +345,13 @@ midgard_promote_uniforms(compiler_context *ctx)
                         midgard_instruction mov = v_mov(promoted, ins->dest);
                         mov.dest_type = nir_type_uint | type_size;
                         mov.src_types[1] = mov.dest_type;
+                        memcpy(mov.swizzle[1], swizzle, sizeof(swizzle));
 
                         uint16_t rounded = mir_round_bytemask_up(mir_bytemask(ins), type_size);
                         mir_set_bytemask(&mov, rounded);
                         mir_insert_instruction_before(ctx, ins, mov);
                 } else {
-                        mir_rewrite_index_src(ctx, ins->dest, promoted);
+                        mir_rewrite_index_src_swizzle(ctx, ins->dest, promoted, swizzle);
                 }
 
                 mir_remove_instruction(ins);

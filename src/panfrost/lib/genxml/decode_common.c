@@ -148,7 +148,7 @@ pointer_as_memory_reference(uint64_t ptr)
         mapped = pandecode_find_mapped_gpu_mem_containing_rw(ptr);
 
         if (mapped) {
-                snprintf(out, 128, "%s + %d", mapped->name, (int) (ptr - mapped->gpu_va));
+                snprintf(out, 128, "%s + 0x%x", mapped->name, (int) (ptr - mapped->gpu_va));
                 return out;
         }
 

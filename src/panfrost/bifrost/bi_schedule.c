@@ -2016,6 +2016,7 @@ bi_schedule(bi_context *ctx, struct util_dynarray *override)
                 bi_schedule_block(ctx, block, override);
         }
 
-        bi_opt_dce_post_ra(ctx);
+        if (!override)
+                bi_opt_dce_post_ra(ctx);
         bi_add_nop_for_atest(ctx);
 }

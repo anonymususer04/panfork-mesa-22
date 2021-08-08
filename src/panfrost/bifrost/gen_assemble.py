@@ -49,16 +49,10 @@ for mod in modifier_lists:
     if mod in SWIZZLES:
         continue
 
-    if mod in SRC_MODS:
-        mod_field = "dest[0]." + SRC_MODS[mod]
-    elif mod[:-1] in SRC_MODS:
-        mod_field = "src[" + mod[-1] + "]." + SRC_MODS[mod[:-1]]
-    elif mod == "lane_dest":
-        mod_field = "dest[0].swizzle"
-    else:
-        mod_field = mod
-
     def set_mod(value):
+        if mod in SRC_MODS:
+            return "$$ = {};".format(value)
+
         if mod == "lane_dest":
             DEST_MAP = {
                 "BI_LANE_DEST_B0": "BI_SWIZZLE_B0000",
@@ -73,8 +67,9 @@ for mod in modifier_lists:
             }
 
             value = DEST_MAP[value]
+            return "instr->dest[0].swizzle = {};".format(value)
 
-        return "instr->{} = {};".format(mod_field, value)
+        return "instr->{} = {};".format(mod, value)
 
     # TODO: This is completely broken...
     # eg: ".lod_mode" instead of ".computed_lod"
@@ -198,8 +193,11 @@ for group_num, group in enumerate(ops_grouped):
         code.append(f"instr->src[{src + src_offset}] = {reg};")
 
         # TODO: Fix source modifiers
-        for i in srcs[src]:
-            n_add(i)
+        for m in srcs[src]:
+            mod = n_add(m)
+            field = m.split("_")[1]
+            if field in SRC_MODS: field = SRC_MODS[field]
+            code.append(f"instr->src[{src+src_offset}].{field} = {mod};")
 
     for i in ins["immediates"]:
         imm = n_add("imm_" + i, True)
@@ -319,9 +317,15 @@ src_reg:
 | T_NUM          { $$ = bi_imm_u32($1); }
 ;
 
-// Ugggggghhh
 mod_swizzle:
-  %empty
+  %empty         { $$ = BI_SWIZZLE_H01; }
+| T_MOD_H0       { $$ = BI_SWIZZLE_H00; }
+| T_MOD_H1       { $$ = BI_SWIZZLE_H11; }
+| T_MOD_W0       { $$ = BI_SWIZZLE_H01; }
+| T_MOD_B0       { $$ = BI_SWIZZLE_B0000; }
+| T_MOD_B1       { $$ = BI_SWIZZLE_B1111; }
+| T_MOD_B2       { $$ = BI_SWIZZLE_B2222; }
+| T_MOD_B3       { $$ = BI_SWIZZLE_B3333; }
 ;
 
 // UGGGGGGGGGGGGGGGGhhhhhhhhhhhhhhhh
@@ -453,7 +457,9 @@ types["num"] += ["clause_staging", "clause_flow", "clause_inf_suppress",
                  "clause_message", "clause_next_message", "clause_td",
                  "clause_prefetch", "clause_dep_wait"]
 
-types["num"] += ["imm_attribute_index", "imm_index"]
+types["num"] += ["imm_attribute_index", "imm_index", "mod_swizzle"]
+
+types["num"] += ["mod_" + m for m in SRC_MODS]
 
 types["index"] += ["src_reg", "dst_reg", "staging_reg"]
 

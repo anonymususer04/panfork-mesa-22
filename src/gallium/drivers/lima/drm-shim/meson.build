@@ -27,3 +27,12 @@ liblima_noop_drm_shim = shared_library(
   gnu_symbol_visibility : 'hidden',
   install : true,
 )
+
+liblima_mali_drm_shim = shared_library(
+  ['lima_mali_drm_shim'],
+  'lima_mali.c',
+  include_directories: [inc_include, inc_src],
+  dependencies: dep_drm_shim,
+  gnu_symbol_visibility : 'hidden',
+  install : true,
+)

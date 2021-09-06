@@ -36,6 +36,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include "drm-uapi/drm.h"
 #include "drm_shim.h"
@@ -76,7 +77,10 @@ drm_shim_device_init(void)
    mtx_init(&shim_device.mem_lock, mtx_plain);
 
    shim_device.mem_fd = os_create_anonymous_file(SHIM_MEM_SIZE, "shim mem");
-   assert(shim_device.mem_fd != -1);
+   if (shim_device.mem_fd == -1) {
+      // The Lima shim will replace the FD, so it doesn't matter what we open as
+      shim_device.mem_fd = open("/dev/zero", O_RDONLY | O_CLOEXEC);
+   }
 
    /* The man page for mmap() says
     *
@@ -91,8 +95,7 @@ drm_shim_device_init(void)
 
    shim_page_size = sysconf(_SC_PAGE_SIZE);
 
-   util_vma_heap_init(&shim_device.mem_heap, shim_page_size,
-                      SHIM_MEM_SIZE - shim_page_size);
+   util_vma_heap_init(&shim_device.mem_heap, 0x10000000, 0x10000000);
 
    drm_shim_driver_init();
 }

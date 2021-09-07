@@ -44,11 +44,14 @@ struct lcra_state {
         uint8_t *linear;
 
         /* Before solving, forced registers; after solving, solutions. */
-        unsigned *solutions;
+        int8_t *solutions;
 
         /** Node which caused register allocation to fail */
         unsigned spill_node;
 };
+
+/* Cannot be -1 as that would be too close to valid solutions. */
+#define LCRA_NOT_SOLVED -15
 
 /* This module is an implementation of "Linearly Constrained
  * Register Allocation". The paper is available in PDF form
@@ -67,7 +70,7 @@ lcra_alloc_equations(unsigned node_count)
         l->solutions = calloc(sizeof(l->solutions[0]), node_count);
         l->affinity = calloc(sizeof(l->affinity[0]), node_count);
 
-        memset(l->solutions, ~0, sizeof(l->solutions[0]) * node_count);
+        memset(l->solutions, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * node_count);
 
         return l;
 }
@@ -107,7 +110,7 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
 }
 
 static bool
-lcra_test_linear(struct lcra_state *l, unsigned *solutions, unsigned i)
+lcra_test_linear(struct lcra_state *l, int8_t *solutions, unsigned i)
 {
         uint8_t *row = &l->linear[i * l->node_count];
         signed constant = solutions[i];
@@ -131,7 +134,7 @@ static bool
 lcra_solve(struct lcra_state *l)
 {
         for (unsigned step = 0; step < l->node_count; ++step) {
-                if (l->solutions[step] != ~0) continue;
+                if (l->solutions[step] != LCRA_NOT_SOLVED) continue;
                 if (l->affinity[step] == 0) continue;
 
                 bool succ = false;

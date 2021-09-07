@@ -39,9 +39,12 @@ struct lcra_state {
          * is present or not, including negative biases.
          *
          * Note for Bifrost, there are 4 components so the bias is in range
-         * [-3, 3] so encoded by 8-bit field. */
+         * [-3, 3] so encoded by 8-bit field.
+         *
+         * Elements between node_count and linear_stride must be zero! */
 
         uint8_t *linear;
+        unsigned linear_stride;
 
         /* Before solving, forced registers; after solving, solutions. */
         int8_t *solutions;
@@ -63,7 +66,9 @@ lcra_alloc_equations(unsigned node_count)
 
         l->node_count = node_count;
 
-        l->linear = calloc(sizeof(l->linear[0]), node_count * node_count);
+        l->linear_stride = ALIGN_POT(node_count, 16);
+
+        l->linear = calloc(sizeof(l->linear[0]), l->linear_stride * node_count);
         l->solutions = calloc(sizeof(l->solutions[0]), node_count);
         l->affinity = calloc(sizeof(l->affinity[0]), node_count);
 
@@ -102,18 +107,18 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
                 }
         }
 
-        l->linear[j * l->node_count + i] |= constraint_fw;
-        l->linear[i * l->node_count + j] |= constraint_bw;
+        l->linear[j * l->linear_stride + i] |= constraint_fw;
+        l->linear[i * l->linear_stride + j] |= constraint_bw;
 }
 
 static bool
 lcra_test_linear(struct lcra_state *l, int8_t *solutions, unsigned i)
 {
-        uint8_t *row = &l->linear[i * l->node_count];
+        uint8_t *row = &l->linear[i * l->linear_stride];
         signed constant = solutions[i];
 
         for (unsigned j = 0; j < l->node_count; ++j) {
-                if (solutions[j] == ~0) continue;
+                if (solutions[j] == -1) continue;
 
                 signed lhs = solutions[j] - constant;
 
@@ -162,7 +167,7 @@ static unsigned
 lcra_count_constraints(struct lcra_state *l, unsigned i)
 {
         unsigned count = 0;
-        uint8_t *constraints = &l->linear[i * l->node_count];
+        uint8_t *constraints = &l->linear[i * l->linear_stride];
 
         for (unsigned j = 0; j < l->node_count; ++j)
                 count += util_bitcount(constraints[j]);
@@ -435,7 +440,7 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
 
                 /* Only spill nodes that interfere with the node failing
                  * register allocation. It's pointless to spill anything else */
-                if (!l->linear[(l->spill_node * l->node_count) + i]) continue;
+                if (!l->linear[(l->spill_node * l->linear_stride) + i]) continue;
 
                 unsigned benefit = lcra_count_constraints(l, i);
 

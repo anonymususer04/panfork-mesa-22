@@ -111,6 +111,46 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
         l->linear[i * l->linear_stride + j] |= constraint_bw;
 }
 
+#ifdef __ARM_NEON
+
+#include "arm_neon.h"
+
+static bool
+lcra_test_linear(struct lcra_state *l, int8_t *solutions, unsigned i)
+{
+        int8_t *row = (int8_t*)&l->linear[i * l->linear_stride];
+
+        int8x16_t res = vdupq_n_s8(0);
+
+        int8x16_t constant = vdupq_n_s8(3 - solutions[i]);
+
+        for (unsigned j = 0; j < l->linear_stride; j += 16) {
+                int8x16_t lhs = vaddq_s8(vld1q_s8(solutions), constant);
+                int8x16_t rhs = vld1q_s8(row);
+
+                solutions += 16;
+                row += 16;
+
+                /* This will return zero for small or large lhs, no need to
+                 * clamp */
+                int8x16_t shifted = vshlq_s8(vdupq_n_s8(1), lhs);
+
+                int8x16_t collide = vandq_s8(shifted, rhs);
+                res = vorrq_s8(res, collide);
+        }
+
+#ifdef __aarch64__
+        return vmaxvq_s8(res) == 0;
+#else
+        int32x2_t r = vmax_s32(vget_high_s32((int32x4_t) res),
+                               vget_low_s32((int32x4_t) res));
+        r = vpmax_s32(r, r);
+        return vget_lane_s32(r, 0) == 0;
+#endif
+}
+
+#else
+
 static bool
 lcra_test_linear(struct lcra_state *l, int8_t *solutions, unsigned i)
 {
@@ -131,6 +171,7 @@ lcra_test_linear(struct lcra_state *l, int8_t *solutions, unsigned i)
 
         return true;
 }
+#endif
 
 static bool
 lcra_solve(struct lcra_state *l)

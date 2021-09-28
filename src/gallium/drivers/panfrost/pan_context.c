@@ -991,6 +991,23 @@ panfrost_get_query_result(struct pipe_context *pipe,
         return true;
 }
 
+static uint64_t
+panfrost_get_timestamp(struct pipe_context *pipe)
+{
+        struct pipe_query *q =
+                panfrost_create_query(pipe, PIPE_QUERY_TIMESTAMP, 0);
+
+        panfrost_begin_query(pipe, q);
+        panfrost_end_query(pipe, q);
+
+        union pipe_query_result result;
+        panfrost_get_query_result(pipe, q, true, &result);
+
+        panfrost_destroy_query(pipe, q);
+
+        return result.u64;
+}
+
 bool
 panfrost_render_condition_check(struct panfrost_context *ctx)
 {
@@ -1129,6 +1146,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         gallium->begin_query = panfrost_begin_query;
         gallium->end_query = panfrost_end_query;
         gallium->get_query_result = panfrost_get_query_result;
+        gallium->get_timestamp = panfrost_get_timestamp;
 
         gallium->create_stream_output_target = panfrost_create_stream_output_target;
         gallium->stream_output_target_destroy = panfrost_stream_output_target_destroy;

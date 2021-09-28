@@ -211,7 +211,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
                 return 64;
 
         case PIPE_CAP_QUERY_TIMESTAMP:
-                return is_gl3;
+                return is_gl3 || has_clock;
 
         /* TODO: Where does this req come from in practice? */
         case PIPE_CAP_VERTEX_BUFFER_STRIDE_4BYTE_ALIGNED_ONLY:

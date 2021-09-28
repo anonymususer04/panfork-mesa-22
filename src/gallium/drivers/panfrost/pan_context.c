@@ -922,6 +922,7 @@ panfrost_get_query_result(struct pipe_context *pipe,
         case PIPE_QUERY_OCCLUSION_PREDICATE:
         case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
                 panfrost_flush_writer(ctx, rsrc, "Occlusion query");
+                panfrost_bo_mmap(rsrc->image.data.bo);
                 panfrost_bo_wait(rsrc->image.data.bo, INT64_MAX, false);
 
                 /* Read back the query results */

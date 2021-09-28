@@ -1175,7 +1175,7 @@ trace_screen_create(struct pipe_screen *screen)
    SCR_INIT(memobj_create_from_handle);
    SCR_INIT(memobj_destroy);
    tr_scr->base.flush_frontbuffer = trace_screen_flush_frontbuffer;
-   tr_scr->base.get_timestamp = trace_screen_get_timestamp;
+   SCR_INIT(get_timestamp);
    SCR_INIT(get_driver_uuid);
    SCR_INIT(get_device_uuid);
    SCR_INIT(finalize_nir);

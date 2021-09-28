@@ -371,6 +371,25 @@ trace_context_set_active_query_state(struct pipe_context *_pipe,
 }
 
 
+static uint64_t
+trace_context_get_timestamp(struct pipe_context *_pipe)
+{
+   struct trace_context *tr_ctx = trace_context(_pipe);
+   struct pipe_context *pipe = tr_ctx->pipe;
+   uint64_t result;
+
+   trace_dump_call_begin("pipe_context", "get_timestamp");
+   trace_dump_arg(ptr, pipe);
+
+   result = pipe->get_timestamp(pipe);
+
+   trace_dump_ret(uint, result);
+   trace_dump_call_end();
+
+   return result;
+}
+
+
 static void *
 trace_context_create_blend_state(struct pipe_context *_pipe,
                                  const struct pipe_blend_state *state)
@@ -2275,6 +2294,7 @@ trace_context_create(struct trace_screen *tr_scr,
    TR_CTX_INIT(get_query_result);
    TR_CTX_INIT(get_query_result_resource);
    TR_CTX_INIT(set_active_query_state);
+   TR_CTX_INIT(get_timestamp);
    TR_CTX_INIT(create_blend_state);
    TR_CTX_INIT(bind_blend_state);
    TR_CTX_INIT(delete_blend_state);

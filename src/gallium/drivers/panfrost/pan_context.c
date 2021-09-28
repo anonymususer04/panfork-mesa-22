@@ -889,6 +889,9 @@ panfrost_begin_query(struct pipe_context *pipe, struct pipe_query *q)
                 query->start = ctx->tf_prims_generated;
                 break;
 
+        case PIPE_QUERY_TIMESTAMP:
+                break;
+
         default:
                 /* TODO: timestamp queries, etc? */
                 break;
@@ -916,6 +919,24 @@ panfrost_end_query(struct pipe_context *pipe, struct pipe_query *q)
         case PIPE_QUERY_PRIMITIVES_EMITTED:
                 query->end = ctx->tf_prims_generated;
                 break;
+        case PIPE_QUERY_TIMESTAMP: {
+                if (!query->rsrc) {
+                        query->rsrc = pipe_buffer_create(ctx->base.screen,
+                                                         PIPE_BIND_QUERY_BUFFER,
+                                                         0, 8);
+                }
+
+                struct panfrost_batch *batch = panfrost_get_batch_for_fbo(ctx);
+                struct panfrost_resource *rsrc = pan_resource(query->rsrc);
+
+                batch->uses_cycle_counter = true;
+
+                pan_screen(ctx->base.screen)->vtbl.add_write_value_job(batch,
+                                                                       rsrc->image.data.bo->ptr.gpu,
+                                                                       PAN_WRITE_VALUE_TYPE_CYCLE_COUNTER);
+
+                break;
+        }
         }
 
         return true;
@@ -962,6 +983,19 @@ panfrost_get_query_result(struct pipe_context *pipe,
         case PIPE_QUERY_PRIMITIVES_EMITTED:
                 panfrost_flush_all_batches(ctx, "Primitive count query");
                 vresult->u64 = query->end - query->start;
+                break;
+
+        case PIPE_QUERY_TIMESTAMP:
+                panfrost_flush_all_batches(ctx, "Time elapsed query");
+                panfrost_bo_mmap(rsrc->image.data.bo);
+                panfrost_bo_wait(rsrc->image.data.bo, INT64_MAX, false);
+
+                result = (uint64_t *) rsrc->image.data.bo->ptr.cpu;
+                //printf("timestamp = %"PRId64"\n", *result);
+
+                /* We probably need to do some adjustment based on GPU clocks
+                 * here? */
+                vresult->u64 = *result;
                 break;
 
         default:

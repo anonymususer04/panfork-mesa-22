@@ -3553,6 +3553,24 @@ panfrost_get_sample_position(struct pipe_context *context,
                         out_value);
 }
 
+/* This shouldn't need to be per-gen... */
+static void
+panfrost_add_write_value_job(struct panfrost_batch *batch,
+                             mali_ptr addr, enum pan_write_value_type type)
+{
+        struct panfrost_ptr t =
+                pan_pool_alloc_desc(&batch->pool.base, WRITE_VALUE_JOB);
+
+        pan_section_pack(t.cpu, WRITE_VALUE_JOB, PAYLOAD, cfg) {
+                cfg.address = addr;
+                cfg.type = type;
+        }
+
+        panfrost_add_job(&batch->pool.base, &batch->scoreboard,
+                         MALI_JOB_TYPE_WRITE_VALUE, true, false, 0, 0, &t, false);
+
+}
+
 static void
 screen_destroy(struct pipe_screen *pscreen)
 {
@@ -3699,6 +3717,7 @@ GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
         screen->vtbl.init_polygon_list = init_polygon_list;
         screen->vtbl.get_compiler_options = GENX(pan_shader_get_compiler_options);
         screen->vtbl.compile_shader = GENX(pan_shader_compile);
+        screen->vtbl.add_write_value_job = panfrost_add_write_value_job;
 
         GENX(pan_blitter_init)(dev, &screen->blitter.bin_pool.base,
                                &screen->blitter.desc_pool.base);

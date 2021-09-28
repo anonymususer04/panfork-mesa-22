@@ -284,6 +284,15 @@ class Context(Dispatcher):
     def delete_sampler_state(self, state):
         pass
 
+    def get_query_result(self, query, wait, result):
+        pass
+
+    def get_query_result(self, query, wait, result):
+        pass
+
+    def get_timestamp(self):
+        pass
+
     def bind_sampler_states(self, shader, start, num_states, states):
         # FIXME: Handle non-zero start
         assert start == 0
@@ -385,7 +394,7 @@ class Context(Dispatcher):
             return self._state.fs
         assert False
 
-    def set_constant_buffer(self, shader, index, constant_buffer):
+    def set_constant_buffer(self, shader, index, constant_buffer, take_ownership):
         self._update(self._get_stage_state(shader).constant_buffer, index, 1, [constant_buffer])
 
     def set_framebuffer_state(self, state):
@@ -417,7 +426,7 @@ class Context(Dispatcher):
     def sampler_view_destroy(self, view):
         pass
 
-    def set_sampler_views(self, shader, start, num, views):
+    def set_sampler_views(self, shader, start, num, views, unbind_num_trailing_slots, take_ownership):
         # FIXME: Handle non-zero start
         assert start == 0
         self._get_stage_state(shader).sampler_views = views
@@ -713,14 +722,19 @@ class Interpreter(parser.SimpleTraceDumper):
     
     ignoredCalls = set((
             ('pipe_screen', 'is_format_supported'),
+            ('pipe_screen', 'query_dmabuf_modifiers'),
             ('pipe_screen', 'get_name'),
             ('pipe_screen', 'get_vendor'),
             ('pipe_screen', 'get_param'),
             ('pipe_screen', 'get_paramf'),
             ('pipe_screen', 'get_shader_param'),
+            ('pipe_screen', 'get_compute_param'),
             ('pipe_screen', 'get_disk_shader_cache'),
+            ('pipe_screen', 'resource_create_with_modifiers'),
             ('pipe_context', 'clear_render_target'), # XXX workaround trace bugs
             ('pipe_context', 'flush_resource'),
+            ('pipe_context', 'set_shader_buffers'),
+            ('pipe_context', 'set_shader_images'),
     ))
 
     def __init__(self, stream, options, formatter):

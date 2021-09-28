@@ -48,6 +48,16 @@ struct panfrost_shader_state;
 struct pan_fb_info;
 struct pan_blend_state;
 
+enum pan_write_value_type {
+        PAN_WRITE_VALUE_TYPE_CYCLE_COUNTER = 1,
+        PAN_WRITE_VALUE_TYPE_SYSTEM_TIMESTAMP= 2,
+        PAN_WRITE_VALUE_TYPE_ZERO = 3,
+        PAN_WRITE_VALUE_TYPE_IMMEDIATE_8 = 4,
+        PAN_WRITE_VALUE_TYPE_IMMEDIATE_16 = 5,
+        PAN_WRITE_VALUE_TYPE_IMMEDIATE_32 = 6,
+        PAN_WRITE_VALUE_TYPE_IMMEDIATE_64 = 7,
+};
+
 /* Virtual table of per-generation (GenXML) functions */
 
 struct panfrost_vtable {
@@ -93,6 +103,10 @@ struct panfrost_vtable {
                                struct panfrost_compile_inputs *inputs,
                                struct util_dynarray *binary,
                                struct pan_shader_info *info);
+
+        /* todo write a description */
+        void (*add_write_value_job)(struct panfrost_batch *batch,
+                                    mali_ptr addr, enum pan_write_value_type type);
 };
 
 struct panfrost_screen {

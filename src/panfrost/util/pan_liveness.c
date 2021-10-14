@@ -148,7 +148,7 @@ pan_compute_liveness(
 
                 if (progress || !_mesa_set_search(visited, blk)) {
                         pan_foreach_predecessor(blk, pred)
-                                _mesa_set_add(work_list, pred);
+                                _mesa_set_add(work_list, *pred);
                 }
 
                 _mesa_set_add(visited, blk);

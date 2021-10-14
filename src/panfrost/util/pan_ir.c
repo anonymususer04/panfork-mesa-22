@@ -94,7 +94,7 @@ pan_block_add_successor(pan_block *block, pan_block *successor)
                 }
 
                 block->successors[i] = successor;
-                _mesa_set_add(successor->predecessors, block);
+                util_dynarray_append(&successor->predecessors, pan_block *, block);
                 return;
         }
 

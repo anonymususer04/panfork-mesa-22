@@ -363,6 +363,7 @@ panfrost_bind_sampler_states(
         ctx->dirty_shader[shader] |= PAN_DIRTY_STAGE_SAMPLER;
 
         ctx->sampler_count[shader] = sampler ? num_sampler : 0;
+        //ctx->sampler_count[shader] = MAX2(sampler ? num_sampler : 0, ctx->sampler_count[shader]);
         if (sampler)
                 memcpy(ctx->samplers[shader], sampler, num_sampler * sizeof (void *));
 }

@@ -218,38 +218,42 @@ rerzalloc_size(const void *ctx, void *ptr, size_t old_size, size_t new_size)
 void *
 ralloc_array_size(const void *ctx, size_t size, unsigned count)
 {
-   if (count > SIZE_MAX/size)
+   size_t size_bytes;
+   if (__builtin_mul_overflow(size, count, &size_bytes))
       return NULL;
 
-   return ralloc_size(ctx, size * count);
+   return ralloc_size(ctx, size_bytes);
 }
 
 void *
 rzalloc_array_size(const void *ctx, size_t size, unsigned count)
 {
-   if (count > SIZE_MAX/size)
+   size_t size_bytes;
+   if (__builtin_mul_overflow(size, count, &size_bytes))
       return NULL;
 
-   return rzalloc_size(ctx, size * count);
+   return rzalloc_size(ctx, size_bytes);
 }
 
 void *
 reralloc_array_size(const void *ctx, void *ptr, size_t size, unsigned count)
 {
-   if (count > SIZE_MAX/size)
+   size_t size_bytes;
+   if (__builtin_mul_overflow(size, count, &size_bytes))
       return NULL;
 
-   return reralloc_size(ctx, ptr, size * count);
+   return reralloc_size(ctx, ptr, size_bytes);
 }
 
 void *
 rerzalloc_array_size(const void *ctx, void *ptr, size_t size,
                      unsigned old_count, unsigned new_count)
 {
-   if (new_count > SIZE_MAX/size)
+   size_t size_bytes;
+   if (__builtin_mul_overflow(size, new_count, &size_bytes))
       return NULL;
 
-   return rerzalloc_size(ctx, ptr, size * old_count, size * new_count);
+   return rerzalloc_size(ctx, ptr, size * old_count, size_bytes);
 }
 
 void

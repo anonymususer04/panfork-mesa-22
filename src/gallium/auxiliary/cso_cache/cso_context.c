@@ -1246,6 +1246,12 @@ cso_single_sampler(struct cso_context *ctx, enum pipe_shader_type shader_stage,
       ctx->max_sampler_seen = MAX2(ctx->max_sampler_seen, (int)idx);
 }
 
+void
+cso_set_max_sampler(struct cso_context *ctx, int max_sampler_seen)
+{
+   ctx->max_sampler_seen = max_sampler_seen;
+}
+
 /**
  * Send staged sampler state to the driver.
  */

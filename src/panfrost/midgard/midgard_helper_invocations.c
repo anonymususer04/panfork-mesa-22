@@ -129,9 +129,9 @@ mir_analyze_helper_terminate(compiler_context *ctx)
 
                 /* Its predecessors also require helpers */
                 pan_foreach_predecessor(blk, pred) {
-                        if (!_mesa_set_search(visited, pred)) {
-                                ((midgard_block *) pred)->helpers_in = true;
-                                _mesa_set_add(worklist, pred);
+                        if (!_mesa_set_search(visited, *pred)) {
+                                ((midgard_block *) *pred)->helpers_in = true;
+                                _mesa_set_add(worklist, *pred);
                         }
                 }
  
@@ -225,7 +225,7 @@ mir_analyze_helper_requirements(compiler_context *ctx)
 
                 if (progress || !_mesa_set_search(visited, blk)) {
                         pan_foreach_predecessor(blk, pred)
-                                _mesa_set_add(work_list, pred);
+                                _mesa_set_add(work_list, *pred);
                 }
 
                 _mesa_set_add(visited, blk);

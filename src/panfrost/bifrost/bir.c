@@ -216,8 +216,10 @@ bi_reconverge_branches(bi_block *block)
 
         /* Must have at least one successor */
         struct bi_block *succ = block->successors[0];
-        assert(succ->predecessors);
+
+        unsigned num_pred = util_dynarray_num_elements(&succ->predecessors, bi_block *);
+        assert(num_pred);
 
         /* Reconverge if the successor has multiple predecessors */
-        return (succ->predecessors->entries > 1);
+        return num_pred > 1;
 }

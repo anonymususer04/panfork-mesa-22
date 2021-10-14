@@ -1040,8 +1040,10 @@ update_textures_and_samplers(struct NineDevice9 *device)
                             false, view);
     context->enabled_sampler_count_ps = num_textures;
 
-    if (commit_samplers)
+    if (commit_samplers) {
+        cso_set_max_sampler(context->cso, num_textures - 1);
         cso_single_sampler_done(context->cso, PIPE_SHADER_FRAGMENT);
+    }
 
     commit_samplers = FALSE;
     sampler_mask = context->programmable_vs ? context->vs->sampler_mask : 0;
@@ -1085,8 +1087,10 @@ update_textures_and_samplers(struct NineDevice9 *device)
                             false, view);
     context->enabled_sampler_count_vs = num_textures;
 
-    if (commit_samplers)
+    if (commit_samplers) {
+        cso_set_max_sampler(context->cso, num_textures - 1);
         cso_single_sampler_done(context->cso, PIPE_SHADER_VERTEX);
+    }
 }
 
 /* State commit only */

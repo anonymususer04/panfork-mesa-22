@@ -317,6 +317,8 @@ struct lima_bo *lima_bo_create(struct lima_screen *screen,
       fprintf(stderr, "%s: %p (size=%d)\n", __func__,
               bo, bo->size);
 
+   lima_bo_map(bo);
+
    return bo;
 
 err_out1:

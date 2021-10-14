@@ -311,7 +311,7 @@ mir_print_block(midgard_block *block)
 
         printf(" from { ");
         mir_foreach_predecessor(block, pred)
-                printf("block%u ", pred->base.name);
+                printf("block%u ", (*pred)->base.name);
         printf("}");
 
         printf("\n\n");

@@ -77,9 +77,7 @@ create_empty_block(compiler_context *ctx)
 {
         midgard_block *blk = rzalloc(ctx, midgard_block);
 
-        blk->base.predecessors = _mesa_set_create(blk,
-                        _mesa_hash_pointer,
-                        _mesa_key_pointer_equal);
+        util_dynarray_init(&blk->base.predecessors, blk);
 
         blk->base.name = ctx->block_source_count++;
 

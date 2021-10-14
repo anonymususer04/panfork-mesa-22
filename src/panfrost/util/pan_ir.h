@@ -275,7 +275,7 @@ typedef struct pan_block {
 
         /* Control flow graph */
         struct pan_block *successors[2];
-        struct set *predecessors;
+        struct util_dynarray predecessors;
         bool unconditional_jumps;
 
         /* In liveness analysis, these are live masks (per-component) for
@@ -301,13 +301,7 @@ struct pan_instruction {
                 _v++, v = *_v) \
 
 #define pan_foreach_predecessor(blk, v) \
-        struct set_entry *_entry_##v; \
-        struct pan_block *v; \
-        for (_entry_##v = _mesa_set_next_entry(blk->predecessors, NULL), \
-                v = (struct pan_block *) (_entry_##v ? _entry_##v->key : NULL);  \
-                _entry_##v != NULL; \
-                _entry_##v = _mesa_set_next_entry(blk->predecessors, _entry_##v), \
-                v = (struct pan_block *) (_entry_##v ? _entry_##v->key : NULL))
+        util_dynarray_foreach(&blk->predecessors, pan_block *, v)
 
 static inline pan_block *
 pan_exit_block(struct list_head *blocks)

@@ -124,7 +124,7 @@ bi_compute_liveness(bi_context *ctx)
 
                 if (progress || !_mesa_set_search(visited, blk)) {
                         bi_foreach_predecessor(blk, pred)
-                                _mesa_set_add(work_list, pred);
+                                _mesa_set_add(work_list, *pred);
                 }
 
                 _mesa_set_add(visited, blk);

@@ -171,9 +171,9 @@ bi_analyze_helper_terminate(bi_context *ctx)
 
                 /* Its predecessors also require helpers */
                 bi_foreach_predecessor(blk, pred) {
-                        if (!_mesa_set_search(visited, pred)) {
-                                pred->pass_flags |= 1;
-                                _mesa_set_add(worklist, pred);
+                        if (!_mesa_set_search(visited, *pred)) {
+                                (*pred)->pass_flags |= 1;
+                                _mesa_set_add(worklist, *pred);
                         }
                 }
  
@@ -263,7 +263,7 @@ bi_analyze_helper_requirements(bi_context *ctx)
 
                 if (progress || !_mesa_set_search(visited, blk)) {
                         bi_foreach_predecessor(blk, pred)
-                                _mesa_set_add(work_list, pred);
+                                _mesa_set_add(work_list, *pred);
                 }
 
                 _mesa_set_add(visited, blk);

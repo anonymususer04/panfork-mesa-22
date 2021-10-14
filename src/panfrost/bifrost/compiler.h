@@ -617,7 +617,7 @@ typedef struct bi_block {
 
         /* Control flow graph */
         struct bi_block *successors[2];
-        struct set *predecessors;
+        struct util_dynarray predecessors;
         bool unconditional_jumps;
 
         /* Per 32-bit word live masks for the block indexed by node */
@@ -886,16 +886,8 @@ bi_node_to_index(unsigned node, unsigned node_count)
                 v != NULL && _v < &blk->successors[2]; \
                 _v++, v = *_v) \
 
-/* Based on set_foreach, expanded with automatic type casts */
-
 #define bi_foreach_predecessor(blk, v) \
-        struct set_entry *_entry_##v; \
-        bi_block *v; \
-        for (_entry_##v = _mesa_set_next_entry(blk->predecessors, NULL), \
-                v = (bi_block *) (_entry_##v ? _entry_##v->key : NULL);  \
-                _entry_##v != NULL; \
-                _entry_##v = _mesa_set_next_entry(blk->predecessors, _entry_##v), \
-                v = (bi_block *) (_entry_##v ? _entry_##v->key : NULL))
+        util_dynarray_foreach(&blk->predecessors, bi_block *, v)
 
 #define bi_foreach_src(ins, v) \
         for (unsigned v = 0; v < ARRAY_SIZE(ins->src); ++v)

@@ -109,7 +109,7 @@ static bool
 lima_fence_finish(struct pipe_screen *pscreen, struct pipe_context *pctx,
                   struct pipe_fence_handle *fence, uint64_t timeout)
 {
-   return !sync_wait(fence->fd, timeout / 1000000);
+   return true;
 }
 
 void

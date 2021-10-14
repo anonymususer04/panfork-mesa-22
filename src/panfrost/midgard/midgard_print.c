@@ -304,9 +304,9 @@ mir_print_block(midgard_block *block)
         printf("}");
 
         if (block->base.successors[0]) {
-                printf(" -> ");
+                printf(" ->");
                 pan_foreach_successor((&block->base), succ)
-                        printf(" block%u ", succ->name);
+                        printf(" block%u", succ->name);
         }
 
         printf(" from { ");

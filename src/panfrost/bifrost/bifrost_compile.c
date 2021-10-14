@@ -83,7 +83,7 @@ bi_block_add_successor(bi_block *block, bi_block *successor)
                 }
 
                 block->successors[i] = successor;
-                _mesa_set_add(successor->predecessors, block);
+                util_dynarray_append(&successor->predecessors, bi_block *, block);
                 return;
         }
 
@@ -2958,9 +2958,7 @@ create_empty_block(bi_context *ctx)
 {
         bi_block *blk = rzalloc(ctx, bi_block);
 
-        blk->predecessors = _mesa_set_create(blk,
-                        _mesa_hash_pointer,
-                        _mesa_key_pointer_equal);
+        util_dynarray_init(&blk->predecessors, blk);
 
         util_dynarray_init(&blk->live_in, blk);
         util_dynarray_init(&blk->live_out, blk);

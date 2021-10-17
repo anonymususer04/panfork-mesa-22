@@ -25,6 +25,10 @@
 #include "asahi/agx_public.h"
 #endif
 
+#ifdef GALLIUM_PANFROST
+#include "panfrost/pan_public.h"
+#endif
+
 #ifdef GALLIUM_SOFTPIPE
 #include "softpipe/sp_public.h"
 #endif
@@ -76,6 +80,11 @@ sw_screen_create_named(struct sw_winsys *winsys, const char *driver)
       screen = agx_screen_create(winsys);
 #endif
 
+#if defined(GALLIUM_PANFROST)
+   if (screen == NULL && strcmp(driver, "panfrost") == 0)
+      screen = panfrost_create_screen_sw(winsys);
+#endif
+
    return screen;
 }
 
@@ -90,6 +99,9 @@ sw_screen_create_vk(struct sw_winsys *winsys, bool sw_vk)
 #endif
 #if defined(GALLIUM_ASAHI)
       (sw_vk || only_sw) ? "" : "asahi",
+#endif
+#if defined(GALLIUM_PANFROST)
+      (sw_vk || only_sw) ? "" : "panfrost",
 #endif
 #if defined(GALLIUM_LLVMPIPE)
       "llvmpipe",

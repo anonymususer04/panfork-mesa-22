@@ -41,18 +41,9 @@
 #include "drm_shim.h"
 #include "util/hash_table.h"
 #include "util/u_atomic.h"
+#include "anon_file.h"
 
 #define SHIM_MEM_SIZE (4ull * 1024 * 1024 * 1024)
-
-#ifndef HAVE_MEMFD_CREATE
-#include <sys/syscall.h>
-
-static inline int
-memfd_create(const char *name, unsigned int flags)
-{
-   return syscall(SYS_memfd_create, name, flags);
-}
-#endif
 
 /* Global state for the shim shared between libc, core, and driver. */
 struct shim_device shim_device;
@@ -84,11 +75,8 @@ drm_shim_device_init(void)
 
    mtx_init(&shim_device.mem_lock, mtx_plain);
 
-   shim_device.mem_fd = memfd_create("shim mem", MFD_CLOEXEC);
+   shim_device.mem_fd = os_create_anonymous_file(SHIM_MEM_SIZE, "shim mem");
    assert(shim_device.mem_fd != -1);
-
-   ASSERTED int ret = ftruncate(shim_device.mem_fd, SHIM_MEM_SIZE);
-   assert(ret == 0);
 
    /* The man page for mmap() says
     *

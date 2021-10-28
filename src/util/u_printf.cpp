@@ -40,6 +40,10 @@ _CRTIMP int _vscprintf(const char *format, va_list argptr);
 #endif
 #endif
 
+// TODO: Rewrite to not use std::string, so util doesn't have to link against
+// libstdc++
+
+#if 0
 size_t util_printf_next_spec_pos(const std::string &s, size_t pos)
 {
    size_t next_tok, spec_pos;
@@ -68,6 +72,7 @@ size_t util_printf_next_spec_pos(const char *str, size_t pos)
 {
    return util_printf_next_spec_pos(std::string(str), pos);
 }
+#endif
 
 size_t
 u_printf_length(const char *fmt, va_list untouched_args)

@@ -820,7 +820,8 @@ handle_printf(struct vtn_builder *b, uint32_t opcode,
          nir_build_deref_struct(&b->nb, deref_var, i - 1);
       nir_ssa_def *field_src = vtn_ssa_value(b, w_src[i])->def;
       /* extract strings */
-      fmt_pos = util_printf_next_spec_pos(info->strings, fmt_pos);
+      assert(!"util_printf_next_spec_pos disabled");
+      fmt_pos = -1;
       if (fmt_pos != -1 && info->strings[fmt_pos] == 's') {
          unsigned idx = vtn_add_printf_string(b, w_src[i], info);
          nir_store_deref(&b->nb, field_deref,

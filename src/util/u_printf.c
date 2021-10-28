@@ -22,8 +22,8 @@
 // Extract from Serge's printf clover code by airlied.
 
 #include "u_printf.h"
+#include <string.h>
 #include <assert.h>
-#include <stdarg.h>
 #include "util/macros.h"
 
 /* Some versions of MinGW are missing _vscprintf's declaration, although they
@@ -40,33 +40,31 @@ _CRTIMP int _vscprintf(const char *format, va_list argptr);
 #endif
 #endif
 
-size_t util_printf_next_spec_pos(const std::string &s, size_t pos)
+size_t util_printf_next_spec_pos(const char *str, size_t pos)
 {
-   size_t next_tok, spec_pos;
+   const char *s = str + pos;
    do {
-      pos = s.find_first_of('%', pos);
-
-      if (pos == std::string::npos)
+      s = strchr(s, '%');
+      if (!s)
          return -1;
 
-      if (s[pos + 1] == '%') {
-         pos += 2;
+      ++s;
+      if (!*s)
+          return -1;
+
+      if (*s == '%') {
+         ++s;
          continue;
       }
 
-      next_tok = s.find_first_of('%', pos + 1);
-      spec_pos = s.find_first_of("cdieEfFgGaAosuxXp", pos + 1);
-      if (spec_pos != std::string::npos)
-         if (spec_pos < next_tok)
-            return spec_pos;
+      const char *next_tok = strchr(s, '%');
+      size_t spec_pos = strcspn(s, "cdieEfFgGaAosuxXp");
+      if (spec_pos != strlen(s))
+         if (s + spec_pos < next_tok || !next_tok)
+            return (s - str) + spec_pos;
 
-      pos++;
+      ++s;
    } while (1);
-}
-
-size_t util_printf_next_spec_pos(const char *str, size_t pos)
-{
-   return util_printf_next_spec_pos(std::string(str), pos);
 }
 
 size_t

@@ -262,6 +262,8 @@ panfrost_access_tiled_image_generic(void *dst, void *src,
    unsigned bpp = desc->block.bits;
 
    if (desc->block.width > 1) {
+      sx /= desc->block.width;
+      sy /= desc->block.height;
       w = DIV_ROUND_UP(w, desc->block.width);
       h = DIV_ROUND_UP(h, desc->block.height);
 

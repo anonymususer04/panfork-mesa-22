@@ -1116,8 +1116,10 @@ panfrost_ptr_map(struct pipe_context *pctx,
                 return bo->ptr.cpu
                        + rsrc->image.layout.slices[level].offset
                        + transfer->base.box.z * transfer->base.layer_stride
-                       + transfer->base.box.y * rsrc->image.layout.slices[level].line_stride
-                       + transfer->base.box.x * bytes_per_pixel;
+                       + (transfer->base.box.y * rsrc->image.layout.slices[level].line_stride
+                          / util_format_get_blockheight(rsrc->image.layout.format))
+                       + (transfer->base.box.x * bytes_per_pixel
+                          / util_format_get_blockwidth(rsrc->image.layout.format));
         }
 }
 

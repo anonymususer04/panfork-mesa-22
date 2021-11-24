@@ -31,6 +31,7 @@
 #include "drm-uapi/panfrost_drm.h"
 
 #include "pan_bo.h"
+#include "pan_core.h"
 #include "pan_device.h"
 #include "pan_util.h"
 #include "wrap.h"
@@ -591,9 +592,13 @@ hexdump(FILE *fp, const uint8_t *hex, size_t cnt, bool with_strings)
 void
 panfrost_do_bo_dump(struct panfrost_device *dev, int dump_fd)
 {
+#ifdef PAN_CORE
+        struct pan_core *core = panfrost_core_create(dump_fd);
+#else
         FILE *dump = fdopen(dump_fd, "w");
+#endif
 
-        // TODO: Create a utility function for this in sparse_array.c
+        // TODO: Create a utility function for doing this in sparse_array.c
 
         struct util_sparse_array *arr = &dev->bo_map;
 
@@ -607,12 +612,21 @@ panfrost_do_bo_dump(struct panfrost_device *dev, int dump_fd)
                 struct panfrost_bo *bo = util_sparse_array_get(arr, idx);
 
                 if (bo->size) {
+#ifdef PAN_CORE
+                        panfrost_core_add(core, bo->ptr.gpu, bo->size, bo->ptr.cpu, bo->label, bo->flags);
+#else
+
                         fprintf(dump, "%p %p: 0x%"PRIx64" - 0x%"PRIx64" (0x%"PRIx64"): %s\n",
                                 bo, bo->ptr.cpu, bo->ptr.gpu, bo->ptr.gpu + bo->size, (uint64_t)bo->size, bo->label);
                         if (bo->ptr.cpu)
                                 hexdump(dump, bo->ptr.cpu, bo->size, false);
+#endif
                 }
         }
 
+#ifdef PAN_CORE
+        panfrost_core_finish(core);
+#else
         fflush(dump);
+#endif
 }

@@ -31,6 +31,7 @@
 #include "drm-uapi/panfrost_drm.h"
 
 #include "pan_bo.h"
+#include "pan_core.h"
 #include "pan_device.h"
 #include "pan_util.h"
 #include "wrap.h"
@@ -557,7 +558,7 @@ panfrost_bo_export(struct panfrost_bo *bo)
 
 /* Stolen from the valhall-shenanigans branch of panloader, which was stolen
  * from... */
-static void
+UNUSED static void
 hexdump(FILE *fp, const uint8_t *hex, size_t cnt, bool with_strings)
 {
         uint8_t *shadow = malloc(cnt);
@@ -608,9 +609,18 @@ hexdump(FILE *fp, const uint8_t *hex, size_t cnt, bool with_strings)
 
 extern FILE *pandecode_dump_stream;
 
-static void
-panfrost_do_bo_dump(struct panfrost_device *dev, FILE *dump)
+void
+panfrost_do_bo_dump(struct panfrost_device *dev, int dump_fd);
+
+void
+panfrost_do_bo_dump(struct panfrost_device *dev, int dump_fd)
 {
+#ifdef PAN_CORE
+        struct pan_core *core = panfrost_core_create(dump_fd);
+#else
+        FILE *dump = fdopen(dump_fd, "w");
+#endif
+
         // TODO: Create a utility function for doing this in sparse_array.c
 
         struct util_sparse_array *arr = &dev->bo_map;
@@ -625,26 +635,35 @@ panfrost_do_bo_dump(struct panfrost_device *dev, FILE *dump)
                 struct panfrost_bo *bo = util_sparse_array_get(arr, idx);
 
                 if (bo->size) {
+#ifdef PAN_CORE
+                        panfrost_core_add(core, bo->ptr.gpu, bo->size, bo->ptr.cpu, bo->label, bo->flags);
+#else
+
                         fprintf(dump, "%p %p: 0x%"PRIx64" - 0x%"PRIx64" (0x%"PRIx64"): %s\n",
                                 bo, bo->ptr.cpu, bo->ptr.gpu, bo->ptr.gpu + bo->size, (uint64_t)bo->size, bo->label);
                         if (bo->ptr.cpu)
                                 hexdump(dump, bo->ptr.cpu, bo->size, false);
+#endif
                 }
         }
+
+#ifdef PAN_CORE
+        panfrost_core_finish(core);
+#endif
 }
 
 static void
 panfrost_bo_dump(struct panfrost_device *dev, int dump_count, mali_ptr jc, const char *lab)
 {
         char *name;
-        asprintf(&name, "/tmp/bo_dump.%i.%"PRIx64".%s", dump_count, jc, lab);
+        asprintf(&name, "/tmp/bo_dump.%i.%"PRIx64".%s.core", dump_count, jc, lab);
         if (dev->debug & PAN_DBG_PERF)
                 fprintf(stderr, "Dumping BOs to %s\n", name);
-        FILE *dump = fopen(name, "w");
+        int dump = creat(name, 0666);
         free(name);
 
         panfrost_do_bo_dump(dev, dump);
-        fclose(dump);
+        close(dump);
 
         if (!(dev->debug & PAN_DBG_TRACE))
                 return;

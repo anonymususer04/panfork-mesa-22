@@ -25,6 +25,7 @@
  */
 
 #include <assert.h>
+#include <fcntl.h>
 
 #include "drm-uapi/panfrost_drm.h"
 
@@ -42,6 +43,9 @@
 
 #define foreach_batch(ctx, idx) \
         BITSET_FOREACH_SET(idx, ctx->batches.active, PAN_MAX_BATCHES)
+
+void
+panfrost_do_bo_dump(struct panfrost_device *dev, int dump_fd);
 
 static unsigned
 panfrost_batch_idx(struct panfrost_batch *batch)
@@ -626,6 +630,19 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
         /* Always used on Bifrost, occassionally used on Midgard */
         bo_handles[submit.bo_handle_count++] = dev->sample_positions->gem_handle;
 
+        static int dump_num = 0;
+        ++dump_num;
+
+        if (dev->debug & (PAN_DBG_SYNC | PAN_DBG_TRACE) &&
+            getenv("BO_DUMP")) {
+                char *name;
+                asprintf(&name, "/tmp/bo_dump.%i.b.core", dump_num);
+                int dump = creat(name, 0666);
+                panfrost_do_bo_dump(dev, dump);
+                free(name);
+                close(dump);
+        }
+
         submit.bo_handles = (u64) (uintptr_t) bo_handles;
         if (ctx->is_noop)
                 ret = 0;
@@ -641,6 +658,15 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                 /* Wait so we can get errors reported back */
                 drmSyncobjWait(dev->fd, &out_sync, 1,
                                INT64_MAX, 0, NULL);
+
+                if (getenv("BO_DUMP")) {
+                        char *name;
+                        asprintf(&name, "/tmp/bo_dump.%i.r.core", dump_num);
+                        int dump = creat(name, 0666);
+                        panfrost_do_bo_dump(dev, dump);
+                        free(name);
+                        close(dump);
+                }
 
                 if (dev->debug & PAN_DBG_TRACE)
                         pandecode_jc(submit.jc, dev->gpu_id);

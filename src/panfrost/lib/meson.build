@@ -78,6 +78,7 @@ libpanfrost_lib_files = files(
   'pan_bo.c',
   'pan_blend.c',
   'pan_clear.c',
+  'pan_core.c',
   'pan_samples.c',
   'pan_tiler.c',
   'pan_texture.c',
@@ -86,13 +87,20 @@ libpanfrost_lib_files = files(
   'pan_util.c',
 )
 
+libdw = dependency('libdw', required : false)
+if libdw.found()
+  core_args = '-DPAN_CORE'
+else
+  core_args = []
+endif
+
 libpanfrost_lib = static_library(
   'panfrost_lib',
   [libpanfrost_lib_files, pan_packers],
   include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_panfrost_hw],
-  c_args : [no_override_init_args],
+  c_args : [no_override_init_args, core_args],
   gnu_symbol_visibility : 'hidden',
-  dependencies: [dep_libdrm, idep_nir],
+  dependencies: [dep_libdrm, idep_nir, libdw],
   build_by_default : false,
   link_with: [libpanfrost_pixel_format, libpanfrost_per_arch],
 )

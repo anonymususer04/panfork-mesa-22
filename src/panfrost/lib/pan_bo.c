@@ -31,6 +31,7 @@
 #include "drm-uapi/panfrost_drm.h"
 
 #include "pan_bo.h"
+#include "pan_core.h"
 #include "pan_device.h"
 #include "pan_util.h"
 #include "wrap.h"
@@ -537,3 +538,98 @@ panfrost_bo_export(struct panfrost_bo *bo)
         return args.fd;
 }
 
+/* Stolen from the valhall-shenanigans branch of panloader, which was stolen
+ * from... */
+UNUSED static void
+hexdump(FILE *fp, const uint8_t *hex, size_t cnt, bool with_strings)
+{
+        uint8_t *shadow = malloc(cnt);
+        memcpy(shadow, hex, cnt);
+        hex = shadow;
+
+        for (unsigned i = 0; i < cnt; ++i) {
+                if ((i & 0xF) == 0)
+                        fprintf(fp, "%06X  ", i);
+
+                uint8_t v = hex[i];
+
+                if (v == 0 && (i & 0xF) == 0) {
+                        /* Check if we're starting an aligned run of zeroes */
+                        unsigned zero_count = 0;
+
+                        for (unsigned j = i; j < cnt; ++j) {
+                                if (hex[j] == 0)
+                                        zero_count++;
+                                else
+                                        break;
+                        }
+
+                        if (zero_count >= 32) {
+                                fprintf(fp, "*\n");
+                                i += (zero_count & ~0xF) - 1;
+                                continue;
+                        }
+                }
+
+                fprintf(fp, "%02X ", hex[i]);
+                if ((i & 0xF) == 0xF && with_strings) {
+                        fprintf(fp, " | ");
+                        for (unsigned j = i & ~0xF; j <= i; ++j) {
+                                uint8_t c = hex[j];
+                                fputc((c < 32 || c > 128) ? '.' : c, fp);
+                        }
+                }
+
+                if ((i & 0xF) == 0xF)
+                        fprintf(fp, "\n");
+        }
+
+        fprintf(fp, "\n");
+
+        free(shadow);
+}
+
+extern FILE *pandecode_dump_stream;
+
+void
+panfrost_do_bo_dump(struct panfrost_device *dev, int dump_fd);
+
+void
+panfrost_do_bo_dump(struct panfrost_device *dev, int dump_fd)
+{
+#ifdef PAN_CORE
+        struct pan_core *core = panfrost_core_create(dump_fd);
+#else
+        FILE *dump = fdopen(dump_fd, "w");
+#endif
+
+        // TODO: Create a utility function for doing this in sparse_array.c
+
+        struct util_sparse_array *arr = &dev->bo_map;
+
+        const unsigned node_size_log2 = arr->node_size_log2;
+        uintptr_t root = p_atomic_read(&arr->root);
+
+        unsigned root_level = (root & 63);
+        unsigned shift = (root_level + 1) * node_size_log2;
+
+        for (unsigned idx = 0; idx < 1 << shift; ++idx) {
+                struct panfrost_bo *bo = util_sparse_array_get(arr, idx);
+
+                if (bo->size) {
+#ifdef PAN_CORE
+                        panfrost_core_add(core, bo->ptr.gpu, bo->size, bo->ptr.cpu, bo->label, bo->flags);
+#else
+
+                        fprintf(dump, "%p %p: 0x%"PRIx64" - 0x%"PRIx64" (0x%"PRIx64"): %s\n",
+                                bo, bo->ptr.cpu, bo->ptr.gpu, bo->ptr.gpu + bo->size, (uint64_t)bo->size, bo->label);
+                        if (bo->ptr.cpu)
+                                hexdump(dump, bo->ptr.cpu, bo->size, false);
+#endif
+                }
+        }
+
+#ifdef PAN_CORE
+        panfrost_core_finish(core);
+#endif
+}

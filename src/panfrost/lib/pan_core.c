@@ -73,7 +73,7 @@ panfrost_core_create(int fd)
                 .e_ident[EI_DATA] = ELFDATA2LSB,
                 .e_ident[EI_OSABI] = ELFOSABI_STANDALONE,
                 .e_type = ET_CORE,
-                .e_machine = EM_NONE,
+                .e_machine = 24884, /* Randomly chosen unofficial value */
                 .e_version = EV_CURRENT,
         };
         elf_flagehdr(elf, ELF_C_SET, ELF_F_DIRTY);

@@ -162,9 +162,14 @@ static struct panfrost_batch *
 panfrost_get_batch(struct panfrost_context *ctx,
                    const struct pipe_framebuffer_state *key)
 {
+        struct panfrost_device *dev = pan_device(ctx->base.screen);
         struct panfrost_batch *batch = NULL;
 
-        for (unsigned i = 0; i < PAN_MAX_BATCHES; i++) {
+        /* When PAN_MESA_DEBUG=flush is set, don't have more than one active
+         * batch at a time */
+        unsigned num_batches = (dev->debug & PAN_DBG_FLUSH) ? 1 : PAN_MAX_BATCHES;
+
+        for (unsigned i = 0; i < num_batches; i++) {
                 if (ctx->batches.slots[i].seqnum &&
                     util_framebuffer_state_equal(&ctx->batches.slots[i].key, key)) {
                         /* We found a match, increase the seqnum for the LRU

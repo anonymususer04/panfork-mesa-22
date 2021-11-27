@@ -72,6 +72,7 @@ static const struct debug_named_value panfrost_debug_options[] = {
         {"indirect",  PAN_DBG_INDIRECT, "Use experimental compute kernel for indirect draws"},
         {"linear",    PAN_DBG_LINEAR,   "Force linear textures"},
         {"nocache",   PAN_DBG_NO_CACHE, "Disable BO cache"},
+        {"flush",     PAN_DBG_FLUSH, "Flush rendering more often"},
         DEBUG_NAMED_VALUE_END
 };
 

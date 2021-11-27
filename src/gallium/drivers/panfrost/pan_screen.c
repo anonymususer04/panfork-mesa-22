@@ -72,6 +72,7 @@ static const struct debug_named_value panfrost_debug_options[] = {
         {"linear",    PAN_DBG_LINEAR,   "Force linear textures"},
         {"nocache",   PAN_DBG_NO_CACHE, "Disable BO cache"},
         {"dump",      PAN_DBG_DUMP,     "Dump all graphics memory"},
+        {"flush",     PAN_DBG_FLUSH, "Flush rendering more often"},
         DEBUG_NAMED_VALUE_END
 };
 

@@ -79,7 +79,7 @@ sed -i "s/flto'/flto=$(nproc)'/" /usr/lib/python3/dist-packages/mesonbuild/linke
 
 # TODO: Perfetto support
 
-meson -Dplatforms=x11,wayland -Ddri-drivers= -Dgallium-drivers=panfrost -Ddri-search-path=$DRI_DRIVERS_PATH -Dvulkan-drivers=panfrost -Dglvnd=false -Dllvm=false -Dlibunwind=disabled -Dzstd=enabled --buildtype=release -Db_lto=true $EXTRA_MESON_ARGS
+meson -Dplatforms=x11,wayland -Ddri-drivers= -Dgallium-drivers=panfrost -Ddri-search-path=$DRI_DRIVERS_PATH -Dvulkan-drivers=panfrost -Dglvnd=false -Dllvm=disabled -Dlibunwind=disabled -Dzstd=enabled --buildtype=release -Db_lto=true $EXTRA_MESON_ARGS
 
 DESTDIR=_inst ninja install
 
@@ -91,3 +91,4 @@ rmdir panfork/lib/*
 touch panfork/"$(git describe)"
 
 tar cvJf ../panfork.tar.xz panfork
+sha256sum ../panfork.tar.xz

@@ -68,7 +68,7 @@ CFLAGS=$CFLAGS CXXFLAGS=$CFLAGS LDFLAGS=$CFLAGS . .gitlab-ci/container/create-cr
 EXTRA_MESON_ARGS="--cross-file=/cross_file-${arch}.txt -D libdir=lib/$(dpkg-architecture -A $arch -qDEB_TARGET_MULTIARCH)"
 . .gitlab-ci/container/build-libdrm.sh
 
-rm -r _build
+rm -rf _build
 mkdir _build
 cd _build
 

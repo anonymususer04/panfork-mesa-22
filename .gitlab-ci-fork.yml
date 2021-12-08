@@ -1,0 +1,23 @@
+default:
+  image: ubuntu:focal
+
+build:
+  stage: build
+  cache:
+    paths:
+      - apt-cache/
+      - ccache/
+    key: $arch
+  script:
+    - .gitlab-ci/fork-build.sh
+  artifacts:
+    paths:
+      - panfork.tar.xz
+    expire_in: never
+  parallel:
+    matrix:
+      - arch: [armhf, arm64]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == "main"
+      when: manual
+    - when: on_success

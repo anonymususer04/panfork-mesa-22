@@ -23,6 +23,8 @@ apt-get install -y --no-remove --no-install-recommends \
         bison \
         flex \
         git \
+        ca-certificates \
+        build-essential \
         pkg-config \
         python3-setuptools \
         python3-mako \

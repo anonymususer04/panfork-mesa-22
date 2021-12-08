@@ -16,7 +16,7 @@ dpkg --add-architecture $arch
 
 apt-get update
 
-apt-get install -y --no-remove \
+apt-get install -y --no-remove --no-install-recommends \
         wget \
         meson \
         ccache \

@@ -142,10 +142,10 @@ lcra_test_linear(struct lcra_state *l, int8_t *solutions, unsigned i)
 #ifdef __aarch64__
         return vmaxvq_s8(res) == 0;
 #else
-        int32x4_t r = (int32x4_t) res;
-        r = vpmaxq_s32(r, r);
-        r = vpmaxq_s32(r, r);
-        return vgetq_lane_s32(r, 0) == 0;
+        int32x2_t r = vmax_s32(vget_high_s32((int32x4_t) res),
+                               vget_low_s32((int32x4_t) res));
+        r = vpmax_s32(r, r);
+        return vget_lane_s32(r, 0) == 0;
 #endif
 }
 

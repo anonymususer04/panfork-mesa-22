@@ -45,7 +45,7 @@
 #define MODEL(gpu_id_, shortname, counters_, min_rev_anisotropic_, quirks_) \
         { \
                 .gpu_id = gpu_id_, \
-                .name = "Mali-" shortname " (Panfrost)", \
+                .name = "Mali-" shortname " (Panfork)", \
                 .performance_counters = counters_, \
                 .min_rev_anisotropic = min_rev_anisotropic_, \
                 .quirks = quirks_, \

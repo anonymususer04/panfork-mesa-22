@@ -7,6 +7,9 @@ export DEBIAN_FRONTEND=noninteractive
 if ! grep -q universe /etc/apt/sources.list; then
     sed -i 's/main/main universe/' /etc/apt/sources.list
 fi
+if ! grep -q ports /etc/apt/sources.list; then
+    echo "deb http://ports.ubuntu.com/ubuntu-ports focal main universe" >>/etc/apt/sources.list
+fi
 
 dpkg --add-architecture $arch
 

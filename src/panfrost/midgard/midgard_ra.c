@@ -907,10 +907,13 @@ mir_spill_register(
                         } else {
                                 unsigned dest = spill_index++;
 
-                                if (write_count > 1 && mir_bytemask(ins) != 0xF) {
+                                unsigned write_mask = ins->mask;
+
+                                if (write_count > 1 && mir_bytemask(ins) != 0xFFFF) {
                                         midgard_instruction read =
                                                 v_load_store_scratch(dest, spill_slot, false, 0xF);
                                         mir_insert_instruction_before_scheduled(ctx, block, ins, read);
+                                        write_mask = 0xF;
                                 }
 
                                 ins->dest = dest;
@@ -938,7 +941,7 @@ mir_spill_register(
                                         dest = spill_index++;
 
                                 midgard_instruction st =
-                                        v_load_store_scratch(dest, spill_slot, true, ins->mask);
+                                        v_load_store_scratch(dest, spill_slot, true, write_mask);
                                 mir_insert_instruction_after_scheduled(ctx, block, ins, st);
 
                                 if (move) {

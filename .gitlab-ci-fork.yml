@@ -3,6 +3,11 @@ default:
 
 build:
   stage: build
+  cache:
+    paths:
+      - apt-cache/
+      - ccache/
+    key: $arch
   script:
     - .gitlab-ci/fork-build.sh
   artifacts:

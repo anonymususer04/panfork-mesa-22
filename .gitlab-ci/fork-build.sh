@@ -16,12 +16,15 @@ dpkg --add-architecture $arch
 
 apt-get update
 
-apt-get install -y --no-remove --no-install-recommends \
+mkdir -pv apt-cache
+
+apt-get -o dir::cache::archives="$(pwd)"/apt-cache install -y --no-remove --no-install-recommends \
         wget \
         meson \
         bison \
         flex \
         git \
+        ccache \
         ca-certificates \
         build-essential \
         pkg-config \
@@ -54,6 +57,10 @@ apt-get install -y --no-remove --no-install-recommends \
         libwayland-dev:$arch \
         libwayland-egl-backend-dev:$arch \
         wayland-protocols
+
+export CCACHE_BASEDIR="$(pwd)"
+export CCACHE_DIR="$(pwd)/ccache" && mkdir -pv "$CCACHE_DIR"
+ccache -z -M 500M
 
 if [ "$arch" = armhf ]; then
     CFLAGS='-marm -march=armv7ve -mfpu=neon-vfpv4 -mtune=cortex-a72'
@@ -93,3 +100,4 @@ touch panfork/"$(git describe)"
 
 tar cvJf ../panfork.tar.xz panfork
 sha256sum ../panfork.tar.xz
+ccache -s

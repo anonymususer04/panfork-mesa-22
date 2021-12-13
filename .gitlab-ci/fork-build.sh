@@ -31,6 +31,7 @@ apt-get -o dir::cache::archives="$(pwd)"/apt-cache install -y --no-remove --no-i
         python3-setuptools \
         python3-mako \
         libwayland-dev \
+        software-properties-common \
         crossbuild-essential-$arch \
         libelf-dev:$arch \
         libexpat1-dev:$arch \
@@ -55,8 +56,12 @@ apt-get -o dir::cache::archives="$(pwd)"/apt-cache install -y --no-remove --no-i
         libzstd-dev:$arch \
         libdw-dev:$arch \
         libwayland-dev:$arch \
-        libwayland-egl-backend-dev:$arch \
-        wayland-protocols
+        libwayland-egl-backend-dev:$arch
+
+add-apt-repository -y ppa:oibaf/graphics-drivers
+
+apt-get update
+apt-get -o dir::cache::archives="$(pwd)"/apt-cache install -y --no-remove --no-install-recommends wayland-protocols libdrm-dev:$arch
 
 export CCACHE_BASEDIR="$(pwd)"
 export CCACHE_DIR="$(pwd)/ccache" && mkdir -pv "$CCACHE_DIR"
@@ -70,11 +75,7 @@ fi
 
 CFLAGS=$CFLAGS CXXFLAGS=$CFLAGS LDFLAGS=$CFLAGS . .gitlab-ci/container/create-cross-file.sh $arch
 
-# TODO: Set up ccache
-
-# TODO: Also create packages for libdrm?
 EXTRA_MESON_ARGS="--cross-file=/cross_file-${arch}.txt -D libdir=lib/$(dpkg-architecture -A $arch -qDEB_TARGET_MULTIARCH)"
-. .gitlab-ci/container/build-libdrm.sh
 
 rm -rf _build
 mkdir _build

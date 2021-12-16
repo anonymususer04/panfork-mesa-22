@@ -2754,6 +2754,7 @@ panfrost_draw_emit_tiler(struct panfrost_batch *batch,
         }
 
         bool points = info->mode == PIPE_PRIM_POINTS;
+        bool filled = !(points || info->mode == PIPE_PRIM_LINES);
         void *prim_size = pan_section_ptr(job, TILER_JOB, PRIMITIVE_SIZE);
 
 #if PAN_ARCH >= 6
@@ -2769,8 +2770,8 @@ panfrost_draw_emit_tiler(struct panfrost_batch *batch,
                 cfg.four_components_per_vertex = true;
                 cfg.draw_descriptor_is_64b = true;
                 cfg.front_face_ccw = rast->front_ccw;
-                cfg.cull_front_face = rast->cull_face & PIPE_FACE_FRONT;
-                cfg.cull_back_face = rast->cull_face & PIPE_FACE_BACK;
+                cfg.cull_front_face = filled ? rast->cull_face & PIPE_FACE_FRONT : false;
+                cfg.cull_back_face = filled ? rast->cull_face & PIPE_FACE_BACK : false;
                 cfg.position = pos;
                 cfg.state = batch->rsd[PIPE_SHADER_FRAGMENT];
                 cfg.attributes = batch->attribs[PIPE_SHADER_FRAGMENT];

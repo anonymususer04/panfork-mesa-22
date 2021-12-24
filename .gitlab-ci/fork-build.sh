@@ -63,6 +63,8 @@ add-apt-repository -y ppa:oibaf/graphics-drivers
 apt-get update
 apt-get -o dir::cache::archives="$(pwd)"/apt-cache install -y --no-remove --no-install-recommends wayland-protocols libdrm-dev:$arch
 
+sed -i 's/-ldrm/-l:libdrm.a -lm/' /usr/lib/*/pkgconfig/libdrm.pc
+
 export CCACHE_BASEDIR="$(pwd)"
 export CCACHE_DIR="$(pwd)/ccache" && mkdir -pv "$CCACHE_DIR"
 ccache -z -M 500M

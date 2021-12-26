@@ -47,11 +47,11 @@ bi_is_direct_aligned_ubo(bi_instr *ins)
 
 /* Represents use data for a single UBO */
 
-#define MAX_UBO_WORDS (65536 / 16)
+#define MAX_UBO_QWORDS (65536 / 16)
 
 struct bi_ubo_block {
-        BITSET_DECLARE(pushed, MAX_UBO_WORDS);
-        uint8_t range[MAX_UBO_WORDS];
+        BITSET_DECLARE(pushed, MAX_UBO_QWORDS);
+        uint8_t used[MAX_UBO_QWORDS];
 };
 
 struct bi_ubo_analysis {
@@ -73,18 +73,20 @@ bi_analyze_ranges(bi_context *ctx)
                 if (!bi_is_direct_aligned_ubo(ins)) continue;
 
                 unsigned ubo = ins->src[1].value;
-                unsigned word = ins->src[0].value / 4;
+                unsigned qword = ins->src[0].value / 16;
+                unsigned offset = (ins->src[0].value / 4) & 3;
                 unsigned channels = bi_opcode_props[ins->op].sr_count;
 
                 assert(ubo < res.nr_blocks);
                 assert(channels > 0 && channels <= 4);
 
-                if (word >= MAX_UBO_WORDS) continue;
+                unsigned used = BITSET_MASK(channels) << offset;
 
-                /* Must use max if the same base is read with different channel
-                 * counts, which is possible with nir_opt_shrink_vectors */
-                uint8_t *range = res.blocks[ubo].range;
-                range[word] = MAX2(range[word], channels);
+                if (qword < MAX_UBO_QWORDS)
+                        res.blocks[ubo].used[qword] |= used & 0xf;
+                if (used > 0xf && qword + 1 < MAX_UBO_QWORDS)
+                        res.blocks[ubo].used[qword + 1] |= used >> 4;
+
         }
 
         return res;
@@ -100,20 +102,20 @@ bi_pick_ubo(struct panfrost_ubo_push *push, struct bi_ubo_analysis *analysis)
         for (signed ubo = analysis->nr_blocks - 1; ubo >= 0; --ubo) {
                 struct bi_ubo_block *block = &analysis->blocks[ubo];
 
-                for (unsigned r = 0; r < MAX_UBO_WORDS; ++r) {
-                        unsigned range = block->range[r];
+                for (unsigned r = 0; r < MAX_UBO_QWORDS; ++r) {
+                        unsigned used = block->used[r];
 
                         /* Don't push something we don't access */
-                        if (range == 0) continue;
+                        if (used == 0) continue;
 
                         /* Don't push more than possible */
-                        if (push->count > PAN_MAX_PUSH - range)
+                        if (push->count > PAN_MAX_PUSH - util_bitcount(used))
                                 return;
 
-                        for (unsigned offs = 0; offs < range; ++offs) {
+                        u_foreach_bit(offs, used) {
                                 struct panfrost_ubo_word word = {
                                         .ubo = ubo,
-                                        .offset = (r + offs) * 4
+                                        .offset = r * 16 + offs * 4
                                 };
 
                                 push->words[push->count++] = word;
@@ -150,17 +152,19 @@ bi_opt_push_ubo(bi_context *ctx)
                         continue;
                 }
 
+                unsigned channels = bi_opcode_props[ins->op].sr_count;
+
                 /* Check if we decided to push this */
                 assert(ubo < analysis.nr_blocks);
-                if (!BITSET_TEST(analysis.blocks[ubo].pushed, offset / 4)) {
+                if ((!BITSET_TEST(analysis.blocks[ubo].pushed, offset / 16) ||
+                     !BITSET_TEST(analysis.blocks[ubo].pushed,
+                                  (offset + (channels - 1) * 4) / 16))) {
                         ctx->ubo_mask |= BITSET_BIT(ubo);
                         continue;
                 }
 
                 /* Replace the UBO load with moves from FAU */
                 bi_builder b = bi_init_builder(ctx, bi_after_instr(ins));
-
-                unsigned channels = bi_opcode_props[ins->op].sr_count;
 
                 for (unsigned w = 0; w < channels; ++w) {
                         /* FAU is grouped in pairs (2 x 4-byte) */

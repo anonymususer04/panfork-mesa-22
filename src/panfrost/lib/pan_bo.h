@@ -132,5 +132,7 @@ int
 panfrost_bo_export(struct panfrost_bo *bo);
 void
 panfrost_bo_cache_evict_all(struct panfrost_device *dev);
+void
+panfrost_do_bo_dump(struct panfrost_device *dev, int dump_fd);
 
 #endif /* __PAN_BO_H__ */

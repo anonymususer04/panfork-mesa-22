@@ -123,37 +123,41 @@ const static struct draw_state_data states[][10] = {
 struct trigen_context {
         unsigned type;
         int pos;
-        int size;
+        unsigned index_count;
 
         unsigned loop_pt;
         unsigned state;
 
         enum mali_index_type index_type;
-        unsigned index_count;
         void *indices;
+        int invoc;
+
+        int base_vertex_offset;
 };
+
+static bool
+check_pos(struct trigen_context *t, int *a, int *b, int *c)
+{
+        return *a < t->index_count &&
+                *b < t->index_count &&
+                *c < t->index_count;
+}
 
 static bool
 generate_triangle(struct trigen_context *t, int *a, int *b, int *c)
 {
-        // this only works for provoke_last..
-        // and might even break for tristrip anyway
-        if (t->pos >= t->size)
-                return false;
-
         if ((t->type & 0xf) == MALI_DRAW_MODE_POLYGON) {
                 ++t->state;
                 *a = 0;
                 *b = t->state;
                 *c = t->state + 1;
+                return check_pos(t, a, b, c);
         }
 
         struct draw_state_data d = states[t->type][t->state];
         ++t->state;
 
         t->pos += d.offset;
-        if (t->pos >= t->size)
-                return false;
 
         *a = t->pos;
 
@@ -185,10 +189,7 @@ generate_triangle(struct trigen_context *t, int *a, int *b, int *c)
                 assert(0);
         }
 
-        if (*b >= t->size || *c >= t->size)
-                return false;
-
-        return true;
+        return check_pos(t, a, b, c);
 }
 
 static int
@@ -202,6 +203,10 @@ index_transform_u16(struct trigen_context *t, int *val)
         uint16_t v = indices[*val];
         if (v == 0xffff)
                 return *val + 1;
+
+        v += t->base_vertex_offset;
+
+        assert(v < t->invoc);
 
         *val = v;
         return 0;
@@ -218,7 +223,9 @@ index_transform_u32(struct trigen_context *t, int *val)
         if (v == 0xffffffff)
                 return *val + 1;
 
-        printf("u32: %i -> %i\n", *val, v);
+        v += t->base_vertex_offset;
+
+        assert(v < t->invoc);
 
         *val = v;
         return 0;
@@ -227,8 +234,7 @@ index_transform_u32(struct trigen_context *t, int *val)
 static bool
 generate_triangle_indexed(struct trigen_context *t, int *a, int *b, int *c)
 {
-        bool ret = generate_triangle(t, a, b, c);
-        if (!ret)
+        if (!generate_triangle(t, a, b, c))
                 return false;
 
         switch (t->index_type) {
@@ -273,6 +279,8 @@ struct tiler_context {
         /* TODO: Multiple "bins", then hierarchy.. */
         uint32_t *heap;
         unsigned pos;
+
+        unsigned start;
 };
 
 static struct tiler_context
@@ -321,7 +329,7 @@ heap_jump(struct tiler_context *c)
 static void
 heap_add(struct tiler_context *c, void *ptr)
 {
-        if ((c->pos & 0x7f) == 0x3f)
+        if (((c->pos - c->start) & 0x7f) == 0x1f)
                 heap_jump(c);
         memcpy(c->heap + (c->pos++), ptr, 4);
 }
@@ -333,44 +341,55 @@ heap_pad(struct tiler_context *c, unsigned size)
 }
 
 static void
+set_draw(struct tiler_context *c, mali_ptr job_addr, enum mali_draw_mode mode)
+{
+        // TODO: genxml packing for instructions?
+        struct tiler_instr_draw_struct ins = {
+                .addr = (job_addr + 128) >> 6,
+                .draw_type = tiler_draw_type(mode),
+                .reset = true,
+                .op = 4,
+        };
+        heap_add(c, &ins);
+}
+
+static void
 do_tiler_job(struct tiler_context *c, mali_ptr job)
 {
-        mali_ptr draw_ptr = job + 128;
-
         struct mali_tiler_job_packed *PANDECODE_PTR_VAR(p, NULL, job);
         pan_section_unpack(p, TILER_JOB, DRAW, draw);
         pan_section_unpack(p, TILER_JOB, PRIMITIVE, primitive);
         pan_section_unpack(p, TILER_JOB, INVOCATION, invocation);
 
-        printf("draw: %"PRIx64", pos: %"PRIx64"\n", draw_ptr, draw.position);
+        bool done_set_draw = false;
 
-        // TODO: genxml packing for instructions?
-        struct tiler_instr_draw_struct set_draw = {
-                .addr = draw_ptr >> 6,
-                .draw_type = tiler_draw_type(primitive.draw_mode),
-                .reset = true,
-                .op = 4,
-        }; heap_add(c, &set_draw);
+//        printf("draw: %"PRIx64", pos: %"PRIx64"\n", job + 128, draw.position);
 
         struct trigen_context tris = {
                 .type = primitive.draw_mode + PROVOKE_LAST,
                 // TODO: decode properly
-                .size = invocation.invocations + 1,
+                .invoc = invocation.invocations + 1,
 
                 .index_type = primitive.index_type,
                 .index_count = primitive.index_count,
                 .indices = primitive.indices ? pandecode_fetch_gpu_mem(NULL, primitive.indices, 1) : NULL,
+                .base_vertex_offset = primitive.base_vertex_offset,
         };
-        // Keep 'invocations' somewhere for validating indices against..
-        if (tris.index_count)
-                tris.size = tris.index_count;
 
         int pos = 0;
         int aa, bb, cc;
         while (generate_triangle_indexed(&tris, &aa, &bb, &cc)) {
 
+                if (aa == bb || aa == cc || bb == cc)
+                        continue;
+
+                if (!done_set_draw) {
+                        set_draw(c, job, primitive.draw_mode);
+                        done_set_draw = true;
+                }
+
                 struct tiler_instr_do_draw do_draw = {
-                        .op = 15, // what does this mean?
+                        .op = 1, // what does this mean?
                         .layer = 0,
                         .offset = aa - pos,
                         .b = bb - aa,
@@ -382,18 +401,14 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
         heap_pad(c, 4);
 }
 
-#include <rval.h>
-
 void
 GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
 {
         bool old_do_mprotect = pandecode_no_mprotect;
         pandecode_no_mprotect = true;
 
-        if (!tiler_jobs->size) {
-                printf("no tiler jobs\n");
+        if (!tiler_jobs->size)
                 return;
-        }
 
         mali_ptr last_job = util_dynarray_top(tiler_jobs, mali_ptr);
 
@@ -426,13 +441,14 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
                 level_offsets[b] = header_size;
                 header_size += level_count;
 
-                printf("Setting offset for level %i to %x\n", b, level_offsets[b] * 4);
+//                printf("Setting offset for level %i to %x\n", b, level_offsets[b] * 4);
         }
         header_size = ALIGN_POT(header_size, 0x40 / 4);
 
         unsigned level = util_logbase2_ceil(MAX3(c.width, c.height, 16)) - 4;
         unsigned tile_offset = 0;
 
+        c.start = header_size;
         c.pos = header_size;
 
         tiler_context[0] = (0xffULL << 48) | (tiler_heap[1] + 0x8000);
@@ -442,21 +458,15 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
 
         heap[level_offsets[level] + 1 + tile_offset] = c.pos * 4 - 0x8000;
 
-        unsigned count = 0;
         util_dynarray_foreach(tiler_jobs, mali_ptr, job) {
-                if (count > rval("s", 10000000)) {
-                        printf("skip\n");
-                        continue;
-                }
                 do_tiler_job(&c, *job);
-                ++count;
         }
 
         // todo; subtract?
         heap[level_offsets[level] + tile_offset] = c.pos * 4 - 0x8000 - 4;
 
-        printf("width %i\nheight %i\n", c.width, c.height);
-        hexdump(stdout, (uint8_t *)heap, heap_size);
+//        printf("width %i\nheight %i\n", c.width, c.height);
+//        hexdump(stdout, (uint8_t *)heap, heap_size);
 
         pandecode_no_mprotect = old_do_mprotect;
 }

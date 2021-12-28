@@ -270,21 +270,34 @@ generate_triangle_indexed(struct trigen_context *t, int *a, int *b, int *c)
         }
 }
 
+struct tiler_header {
+        uint32_t last;
+        uint32_t start;
+};
+
 struct tiler_context {
         unsigned width;
         unsigned height;
         float widthf;
         float heightf;
 
-        /* TODO: Multiple "bins", then hierarchy.. */
-        uint32_t *heap;
-        unsigned pos;
+        unsigned tx;
+        unsigned ty;
 
-        unsigned start;
+        uint8_t *blocks;
+        unsigned block_pos;
 
-        uint32_t *headers;
-        unsigned tile_strides[13]; //really??
+        unsigned op;
+
+        struct tiler_header *heap_levels[13];
+        unsigned heap_strides[13]; /* 4-byte units */
 };
+
+typedef struct {
+        uint16_t l;
+        uint16_t x;
+        uint16_t y;
+} coord_t;
 
 static struct tiler_context
 decode_tiler_job(mali_ptr job)
@@ -301,6 +314,8 @@ decode_tiler_job(mali_ptr job)
         c.height = t.fb_height;
         c.widthf = c.width;
         c.heightf = c.height;
+        c.tx = DIV_ROUND_UP(c.width, 16);
+        c.ty = DIV_ROUND_UP(c.height, 16);
 
 //        pan_section_unpack(p, TILER_JOB, DRAW, draw);
 //        pandecode_dcd(&draw, job_no, h->type, "", gpu_id);
@@ -321,30 +336,65 @@ decode_tiler_job(mali_ptr job)
 }
 
 static void
-heap_jump(struct tiler_context *c)
+heap_jump(struct tiler_context *c, uint32_t *ins, unsigned target)
 {
-        unsigned target = (c->pos + 1) * 4;
+        *ins = target + 3;
+}
 
-        uint32_t jump = target + 3;
-        memcpy(c->heap + (c->pos++), &jump, 4);
+static struct tiler_header *
+heap_get_header(struct tiler_context *c, coord_t loc)
+{
+        struct tiler_header *level = c->heap_levels[loc.l];
+        unsigned stride = c->heap_strides[loc.l];
+        return level + loc.y * stride + loc.x;
+}
+
+static unsigned
+heap_alloc_block(struct tiler_context *c)
+{
+        unsigned ret = c->block_pos;
+        c->block_pos += 512;
+//        printf("alloc block %x\n", ret + 0x8000);
+        return ret;
+}
+
+static uint8_t *
+heap_get_space(struct tiler_context *c, coord_t loc)
+{
+        struct tiler_header *header = heap_get_header(c, loc);
+
+        if (!header->start) {
+                header->last = header->start = heap_alloc_block(c);
+        } else if ((header->last - header->start) == 0x78) {
+                unsigned block = heap_alloc_block(c);
+                heap_jump(c, (uint32_t *)(c->blocks + header->last + 4), block);
+                header->last = block;
+        } else if ((header->last & 0x1fc) == 0x1f8) {
+                unsigned block = heap_alloc_block(c);
+                heap_jump(c, (uint32_t *)(c->blocks + header->last + 4), block);
+                header->last = block;
+        } else {
+                header->last += 4;
+        }
+
+        return c->blocks + header->last;
 }
 
 static void
-heap_add(struct tiler_context *c, void *ptr)
+heap_add(struct tiler_context *c, coord_t loc, void *ptr)
 {
-        if (((c->pos - c->start) & 0x7f) == 0x1f)
-                heap_jump(c);
-        memcpy(c->heap + (c->pos++), ptr, 4);
+//        printf("heap_add: %i %i %i\n", loc.l, loc.x, loc.y);
+        memcpy(heap_get_space(c, loc), ptr, 4);
 }
 
 static void
-heap_pad(struct tiler_context *c, unsigned size)
+heap_pad(struct tiler_context *c, coord_t loc)
 {
-        memset(c->heap + c->pos, 0, size);
+        memset(heap_get_space(c, loc), 0, 4);
 }
 
 static void
-set_draw(struct tiler_context *c, mali_ptr job_addr, enum mali_draw_mode mode)
+set_draw(struct tiler_context *c, coord_t loc, mali_ptr job_addr, enum mali_draw_mode mode)
 {
         // TODO: genxml packing for instructions?
         struct tiler_instr_draw_struct ins = {
@@ -353,7 +403,7 @@ set_draw(struct tiler_context *c, mali_ptr job_addr, enum mali_draw_mode mode)
                 .reset = true,
                 .op = 4,
         };
-        heap_add(c, &ins);
+        heap_add(c, loc, &ins);
 }
 
 static void
@@ -387,21 +437,28 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                         continue;
 
                 if (!done_set_draw) {
-                        set_draw(c, job, primitive.draw_mode);
+                        coord_t l = {0};
+                        for (l.x = 0; l.x < c->tx; ++l.x)
+                                for (l.y = 0; l.y < c->ty; ++l.y)
+                                        set_draw(c, l, job, primitive.draw_mode);
                         done_set_draw = true;
                 }
 
                 struct tiler_instr_do_draw do_draw = {
-                        .op = 1, // what does this mean?
+                        .op = c->op, // what does this mean?
                         .layer = 0,
                         .offset = aa - pos,
                         .b = bb - aa,
                         .c = cc - aa,
-                }; heap_add(c, &do_draw);
+                };
+                {
+                        coord_t l = {0};
+                        for (l.x = 0; l.x < c->tx; ++l.x)
+                                for (l.y = 0; l.y < c->ty; ++l.y)
+                                        heap_add(c, l, &do_draw);
+                }
                 pos = aa;
         }
-
-        heap_pad(c, 4);
 }
 
 void
@@ -425,52 +482,50 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
 
         uint64_t *tiler_heap = pandecode_fetch_gpu_mem(NULL, tiler_context[3], 32);
 
-//        unsigned heap_size = (*tiler_heap) >> 32;
-
         uint32_t *heap = pandecode_fetch_gpu_mem(NULL, tiler_heap[1] + 0x8000, 1);
         tiler_context[0] = (0xffULL << 48) | (tiler_heap[1] + 0x8000);
 
-        c.heap = heap;
-
         unsigned hierarchy_mask = tiler_context_16[4] & ((1 << 13) - 1);
 
-        /* Size is in words */
-        /* See pan_tiler.c */
-        unsigned level_offsets[13] = {0};
         /* Don't ask me what this space is used for */
         unsigned header_size = 0;
         u_foreach_bit(b, hierarchy_mask) {
                 unsigned tile_size = (1 << b) * 16;
                 unsigned tile_count = pan_tile_count(c.width, c.height, tile_size, tile_size);
-                unsigned level_count = tile_count * 2;
-                level_offsets[b] = header_size;
-                header_size += level_count;
 
-//                c.headers[b] = ;
+                c.heap_levels[b] = (struct tiler_header *)(heap + header_size);
+                c.heap_strides[b] = DIV_ROUND_UP(c.width, tile_size);
 
-//                printf("Setting offset for level %i to %x\n", b, level_offsets[b] * 4);
+                header_size += tile_count * 2;
+
+//                if (tile_count == 1)
+//                        break;
         }
-        header_size = ALIGN_POT(header_size, 0x40 / 4);
+        header_size = ALIGN_POT(header_size, 128);// / 4);
 
-        memset(heap, 0, header_size);
+        memset(heap, 0, 1024*1024);//header_size);
 
-        c.start = header_size;
-        c.pos = header_size;
+        c.blocks = (uint8_t *)heap;
+        c.block_pos = header_size * 4;
 
-        unsigned level = util_logbase2_ceil(MAX3(c.width, c.height, 16)) - 4;
-        unsigned tile_offset = 0;
+        c.op = 15;
 
-        heap[level_offsets[level] + 1 + tile_offset] = c.pos * 4;
+//        unsigned level = util_logbase2_ceil(MAX3(c.width, c.height, 16)) - 4;
+//        unsigned tile_offset = 0;
+
+//        heap[level_offsets[level] + 1 + tile_offset] = c.pos * 4;
 
         util_dynarray_foreach(tiler_jobs, mali_ptr, job) {
                 do_tiler_job(&c, *job);
         }
 
         // todo; subtract?
-        heap[level_offsets[level] + tile_offset] = (c.pos - 1) * 4;
+//        heap[level_offsets[level] + tile_offset] = (c.pos - 1) * 4;
+
+        UNUSED unsigned heap_size = (*tiler_heap) >> 32;
 
 //        printf("width %i\nheight %i\n", c.width, c.height);
-//        hexdump(stdout, (uint8_t *)heap, heap_size);
+//        hexdump(stdout, (uint8_t *)heap - 0x8000, heap_size);
 
         pandecode_no_mprotect = old_do_mprotect;
 }

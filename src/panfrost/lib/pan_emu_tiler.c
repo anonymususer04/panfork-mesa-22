@@ -281,6 +281,9 @@ struct tiler_context {
         unsigned pos;
 
         unsigned start;
+
+        uint32_t *headers;
+        unsigned tile_strides[13]; //really??
 };
 
 static struct tiler_context
@@ -322,7 +325,7 @@ heap_jump(struct tiler_context *c)
 {
         unsigned target = (c->pos + 1) * 4;
 
-        uint32_t jump = target - 0x8000 + 3;
+        uint32_t jump = target + 3;
         memcpy(c->heap + (c->pos++), &jump, 4);
 }
 
@@ -422,9 +425,11 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
 
         uint64_t *tiler_heap = pandecode_fetch_gpu_mem(NULL, tiler_context[3], 32);
 
-        unsigned heap_size = (*tiler_heap) >> 32;
+//        unsigned heap_size = (*tiler_heap) >> 32;
 
-        uint32_t *heap = pandecode_fetch_gpu_mem(NULL, tiler_heap[1], 1);
+        uint32_t *heap = pandecode_fetch_gpu_mem(NULL, tiler_heap[1] + 0x8000, 1);
+        tiler_context[0] = (0xffULL << 48) | (tiler_heap[1] + 0x8000);
+
         c.heap = heap;
 
         unsigned hierarchy_mask = tiler_context_16[4] & ((1 << 13) - 1);
@@ -433,7 +438,7 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
         /* See pan_tiler.c */
         unsigned level_offsets[13] = {0};
         /* Don't ask me what this space is used for */
-        unsigned header_size = 0x8000 / 4;
+        unsigned header_size = 0;
         u_foreach_bit(b, hierarchy_mask) {
                 unsigned tile_size = (1 << b) * 16;
                 unsigned tile_count = pan_tile_count(c.width, c.height, tile_size, tile_size);
@@ -441,29 +446,28 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
                 level_offsets[b] = header_size;
                 header_size += level_count;
 
+//                c.headers[b] = ;
+
 //                printf("Setting offset for level %i to %x\n", b, level_offsets[b] * 4);
         }
         header_size = ALIGN_POT(header_size, 0x40 / 4);
 
-        unsigned level = util_logbase2_ceil(MAX3(c.width, c.height, 16)) - 4;
-        unsigned tile_offset = 0;
+        memset(heap, 0, header_size);
 
         c.start = header_size;
         c.pos = header_size;
 
-        tiler_context[0] = (0xffULL << 48) | (tiler_heap[1] + 0x8000);
+        unsigned level = util_logbase2_ceil(MAX3(c.width, c.height, 16)) - 4;
+        unsigned tile_offset = 0;
 
-        // TODO: Remove the need for all these offsetings..
-        memset(heap + 0x8000/4, 0, c.pos * 4 - 0x8000);
-
-        heap[level_offsets[level] + 1 + tile_offset] = c.pos * 4 - 0x8000;
+        heap[level_offsets[level] + 1 + tile_offset] = c.pos * 4;
 
         util_dynarray_foreach(tiler_jobs, mali_ptr, job) {
                 do_tiler_job(&c, *job);
         }
 
         // todo; subtract?
-        heap[level_offsets[level] + tile_offset] = c.pos * 4 - 0x8000 - 4;
+        heap[level_offsets[level] + tile_offset] = (c.pos - 1) * 4;
 
 //        printf("width %i\nheight %i\n", c.width, c.height);
 //        hexdump(stdout, (uint8_t *)heap, heap_size);

@@ -28,6 +28,16 @@ struct tiler_instr_draw_struct {
         unsigned op        : 3;
 };
 
+__attribute__((packed))
+struct tiler_instr_do_draw {
+        signed c           : 7;
+        signed b           : 7;
+        signed offset      : 7;
+        unsigned layer     : 5;
+        unsigned op        : 4;
+        unsigned zero      : 2;
+};
+
 enum tiler_draw_mode {
         TILER_DRAW_MODE_POINTS = 1,
         TILER_DRAW_MODE_LINES = 2,
@@ -108,22 +118,25 @@ const static struct draw_state_data states[][10] = {
 
 struct trigen_context {
         unsigned type;
-        unsigned pos;
-        unsigned max;
+        int pos;
+        int size;
 
         unsigned loop_pt;
         unsigned state;
 };
 
 static bool
-generate_triangle(struct trigen_context *t, unsigned *a, unsigned *b, unsigned *c)
+generate_triangle(struct trigen_context *t, int *a, int *b, int *c)
 {
-        if (t->pos >= t->max)
+        if (t->pos >= t->size)
                 return false;
         struct draw_state_data d = states[t->type][t->state];
         ++t->state;
 
         t->pos += d.offset;
+        if (t->pos >= t->size)
+                return false;
+
         *a = t->pos;
 
         switch (d.typb) {
@@ -151,6 +164,9 @@ generate_triangle(struct trigen_context *t, unsigned *a, unsigned *b, unsigned *
         default:
                 assert(0);
         }
+
+        if (*b >= t->size || *c >= t->size)
+                return false;
 
         return true;
 }
@@ -219,8 +235,26 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                 .op = 4,
         }; memcpy(c->heap + (c->pos++), &set_draw, 4);
 
-        uint8_t bytes[] = { 0x7F, 0xBF, 0x00, 0x3C, 0xFF, 0x7E, 0x00, 0x3C };
-        memcpy(c->heap + (c->pos += 2) - 2, &bytes, 8);
+        struct trigen_context tris = {
+                .type = primitive.draw_mode + PROVOKE_LAST,
+                .size = 4, // todo: read..
+        };
+
+        int pos = 0;
+        int aa, bb, cc;
+        while (generate_triangle(&tris, &aa, &bb, &cc)) {
+
+                struct tiler_instr_do_draw do_draw = {
+                        .op = 15, // what does this mean?
+                        .layer = 0,
+                        .offset = aa - pos,
+                        .b = bb - aa,
+                        .c = cc - aa,
+                }; memcpy(c->heap + (c->pos++), &do_draw, 4);
+                pos = aa;
+        }
+
+        memset(c->heap + c->pos, 0, 4);
 }
 
 void

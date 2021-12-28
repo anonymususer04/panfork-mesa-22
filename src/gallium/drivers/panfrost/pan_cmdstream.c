@@ -2303,11 +2303,19 @@ panfrost_emit_varying_descriptor(struct panfrost_batch *batch,
 }
 
 static void
+panfrost_add_tiler_job(struct panfrost_batch *batch,
+                       const struct panfrost_ptr *tiler_job)
+{
+        util_dynarray_append(&batch->tiler_jobs, mali_ptr, tiler_job->gpu);
+}
+
+static void
 panfrost_emit_vertex_tiler_jobs(struct panfrost_batch *batch,
                                 const struct panfrost_ptr *vertex_job,
                                 const struct panfrost_ptr *tiler_job)
 {
         struct panfrost_context *ctx = batch->ctx;
+        struct panfrost_device *dev = pan_device(ctx->base.screen);
 
         /* If rasterizer discard is enable, only submit the vertex. XXX - set
          * job_barrier in case buffers get ping-ponged and we need to enforce
@@ -2320,12 +2328,12 @@ panfrost_emit_vertex_tiler_jobs(struct panfrost_batch *batch,
                                            batch->indirect_draw_job_id : 0,
                                            0, vertex_job, false);
 
-        if (panfrost_batch_skip_rasterization(batch))
-                return;
+        if (!(dev->debug & PAN_DBG_EMU_TILER))
+                panfrost_add_job(&batch->pool.base, &batch->scoreboard,
+                                 MALI_JOB_TYPE_TILER, false, false,
+                                 vertex, 0, tiler_job, false);
 
-        panfrost_add_job(&batch->pool.base, &batch->scoreboard,
-                         MALI_JOB_TYPE_TILER, false, false,
-                         vertex, 0, tiler_job, false);
+        panfrost_add_tiler_job(batch, tiler_job);
 }
 
 static void

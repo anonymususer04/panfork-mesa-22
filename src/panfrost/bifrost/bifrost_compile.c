@@ -3979,6 +3979,8 @@ bi_compile_variant_part_two(bi_context *ctx,
 static bool
 bi_should_idvs(nir_shader *nir, const struct panfrost_compile_inputs *inputs)
 {
+        return false;
+
         /* Opt-out */
         if (inputs->no_idvs || bifrost_debug & BIFROST_DBG_NOIDVS)
                 return false;

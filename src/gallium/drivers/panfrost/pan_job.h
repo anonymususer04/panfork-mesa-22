@@ -95,6 +95,9 @@ struct panfrost_batch {
         /* Job scoreboarding state */
         struct pan_scoreboard scoreboard;
 
+        /* Tiler jobs for software execution */
+        struct util_dynarray tiler_jobs;
+
         /* Polygon list bound to the batch, or NULL if none bound yet */
         struct panfrost_bo *polygon_list;
 

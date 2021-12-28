@@ -375,6 +375,8 @@ panfrost_bo_create(struct panfrost_device *dev, size_t size,
 {
         struct panfrost_bo *bo;
 
+        bool pandecode = dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC | PAN_DBG_EMU_TILER);
+
         /* Kernel will fail (confusingly) with EPERM otherwise */
         assert(size > 0);
 
@@ -384,6 +386,9 @@ panfrost_bo_create(struct panfrost_device *dev, size_t size,
         /* GROWABLE BOs cannot be mmapped */
         if (flags & PAN_BO_GROWABLE)
                 assert(flags & PAN_BO_INVISIBLE);
+
+        if (pandecode)
+                flags &= ~PAN_BO_GROWABLE;
 
         /* Before creating a BO, we first want to check the cache but without
          * waiting for BO readiness (BOs in the cache can still be referenced
@@ -407,17 +412,13 @@ panfrost_bo_create(struct panfrost_device *dev, size_t size,
          * never map since we don't care about their contents; they're purely
          * for GPU-internal use. But we do trace them anyway. */
 
-        if (!(flags & (PAN_BO_INVISIBLE | PAN_BO_DELAY_MMAP)))
+        if (!(flags & (PAN_BO_INVISIBLE | PAN_BO_DELAY_MMAP)) || pandecode)
                 panfrost_bo_mmap(bo);
 
         p_atomic_set(&bo->refcnt, 1);
 
-        if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC)) {
-                if (flags & PAN_BO_INVISIBLE)
-                        pandecode_inject_mmap(bo->ptr.gpu, NULL, bo->size, NULL);
-                else if (!(flags & PAN_BO_DELAY_MMAP))
-                        pandecode_inject_mmap(bo->ptr.gpu, bo->ptr.cpu, bo->size, NULL);
-        }
+        if (pandecode)
+                pandecode_inject_mmap(bo->ptr.gpu, bo->ptr.cpu, bo->size, NULL);
 
         return bo;
 }
@@ -452,7 +453,7 @@ panfrost_bo_unreference(struct panfrost_bo *bo)
                 /* When the reference count goes to zero, we need to cleanup */
                 panfrost_bo_munmap(bo);
 
-                if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC))
+                if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC | PAN_DBG_EMU_TILER))
                         pandecode_inject_free(bo->ptr.gpu, bo->size);
 
                 /* Rather than freeing the BO now, we'll cache the BO for later

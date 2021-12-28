@@ -73,6 +73,7 @@ static const struct debug_named_value panfrost_debug_options[] = {
         {"linear",    PAN_DBG_LINEAR,   "Force linear textures"},
         {"nocache",   PAN_DBG_NO_CACHE, "Disable BO cache"},
         {"flush",     PAN_DBG_FLUSH, "Flush rendering more often"},
+        {"emu_tiler", PAN_DBG_EMU_TILER, "Run tiler jobs on the CPU"},
         DEBUG_NAMED_VALUE_END
 };
 

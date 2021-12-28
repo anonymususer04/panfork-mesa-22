@@ -70,6 +70,19 @@ foreach ver : ['7']
   )
 endforeach
 
+foreach ver : ['6']
+  libpanfrost_per_arch += static_library(
+    'pan-tiler-emu-v' + ver,
+    [
+      'pan_emu_tiler.c',
+    ],
+    include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_panfrost_hw],
+    c_args : ['-DPAN_ARCH=' + ver],
+    gnu_symbol_visibility : 'hidden',
+    dependencies : [dep_libdrm, idep_pan_packers, idep_nir],
+  )
+endforeach
+
 libpanfrost_lib_files = files(
   'pan_encoder.h',
 

@@ -47,6 +47,7 @@
 #define PAN_DBG_LINEAR          0x1000
 #define PAN_DBG_NO_CACHE        0x2000
 #define PAN_DBG_FLUSH           0x4000
+#define PAN_DBG_EMU_TILER       0x8000
 
 struct panfrost_device;
 

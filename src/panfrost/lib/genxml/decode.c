@@ -279,6 +279,11 @@ pandecode_sample_locations(const void *fb, int job_no)
 }
 #endif
 
+#if PAN_ARCH >= 6
+static void
+pandecode_bifrost_tiler(mali_ptr gpu_va, int job_no);
+#endif
+
 static void
 pandecode_dcd(const struct MALI_DRAW *p,
               int job_no, enum mali_job_type job_type,
@@ -340,6 +345,8 @@ pandecode_mfbd_bfr(uint64_t gpu_va, int job_no, bool is_fragment, unsigned gpu_i
         const void *t = pan_section_ptr(fb, FRAMEBUFFER, TILER);
         const void *w = pan_section_ptr(fb, FRAMEBUFFER, TILER_WEIGHTS);
         pandecode_midgard_tiler_descriptor(t, w);
+#else
+        pandecode_bifrost_tiler(params.tiler, job_no);
 #endif
 
         pandecode_indent--;

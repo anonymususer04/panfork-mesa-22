@@ -40,6 +40,7 @@
 #include "pan_util.h"
 #include "decode.h"
 #include "panfrost-quirks.h"
+#include "pan_emu.h"
 
 #define foreach_batch(ctx, idx) \
         BITSET_FOREACH_SET(idx, ctx->batches.active, PAN_MAX_BATCHES)
@@ -582,7 +583,9 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
          * after we're done but preventing double-frees if we were given a
          * syncobj */
 
-        if (!out_sync && dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC))
+        bool pandecode = dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC | PAN_DBG_EMU_TILER);
+
+        if (!out_sync && pandecode)
                 out_sync = ctx->syncobj;
 
         submit.out_sync = out_sync;
@@ -638,8 +641,7 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
         static int dump_num = 0;
         ++dump_num;
 
-        if (dev->debug & (PAN_DBG_SYNC | PAN_DBG_TRACE) &&
-            getenv("BO_DUMP")) {
+        if (pandecode && getenv("BO_DUMP")) {
                 char *name;
                 asprintf(&name, "/tmp/bo_dump.%i.b.core", dump_num);
                 int dump = creat(name, 0666);
@@ -659,7 +661,7 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                 return errno;
 
         /* Trace the job if we're doing that */
-        if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC)) {
+        if (pandecode) {
                 /* Wait so we can get errors reported back */
                 drmSyncobjWait(dev->fd, &out_sync, 1,
                                INT64_MAX, 0, NULL);
@@ -675,6 +677,15 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
 
                 if (dev->debug & PAN_DBG_TRACE)
                         pandecode_jc(submit.jc, dev->gpu_id);
+
+                if (!(reqs & PANFROST_JD_REQ_FS)) {
+                        if (dev->debug & PAN_DBG_EMU_TILER)
+                                panfrost_emulate_tiler(&batch->tiler_jobs, dev->gpu_id);
+                        else
+                                hexdump(stdout, dev->tiler_heap->ptr.cpu, 1024*1024);
+
+                        dev->debug &= ~PAN_DBG_EMU_TILER;
+                }
 
                 /* Jobs won't be complete if blackhole rendering, that's ok */
                 if (!ctx->is_noop && dev->debug & PAN_DBG_SYNC)

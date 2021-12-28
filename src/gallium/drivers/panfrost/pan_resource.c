@@ -1011,9 +1011,6 @@ panfrost_ptr_map(struct pipe_context *pctx,
         /* If we haven't already mmaped, now's the time */
         panfrost_bo_mmap(bo);
 
-        if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC))
-                pandecode_inject_mmap(bo->ptr.gpu, bo->ptr.cpu, bo->size, NULL);
-
         bool create_new_bo = usage & PIPE_MAP_DISCARD_WHOLE_RESOURCE;
         bool copy_resource = false;
 

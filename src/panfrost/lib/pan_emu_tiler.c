@@ -28,11 +28,89 @@ struct tiler_instr_draw_struct {
         unsigned op        : 3;
 };
 
+enum tiler_draw_mode {
+        TILER_DRAW_MODE_POINTS = 1,
+        TILER_DRAW_MODE_LINES = 2,
+        TILER_DRAW_MODE_TRIS = 3,
+};
+
+static unsigned
+tiler_draw_type(enum mali_draw_mode mode)
+{
+        switch (mode) {
+        case MALI_DRAW_MODE_POINTS:
+                return TILER_DRAW_MODE_POINTS;
+        case MALI_DRAW_MODE_LINES:
+        case MALI_DRAW_MODE_LINE_STRIP:
+        case MALI_DRAW_MODE_LINE_LOOP:
+                return TILER_DRAW_MODE_LINES;
+        default:
+                return TILER_DRAW_MODE_TRIS;
+        }
+}
+
+enum foo { END, REL, ABS, LOOP };
+
+#define PROVOKE_LAST 16
+
+struct draw_mode_data {
+        int offset;
+        enum foo typa;
+        int a;
+        enum foo typb;
+        int b;
+} state[][10] = {
+        [MALI_DRAW_MODE_TRIANGLES] = {
+                {0, REL, 1, REL, 2},
+                {3, END},
+        },
+        [MALI_DRAW_MODE_TRIANGLES + PROVOKE_LAST] = {
+                {2, REL, -2, REL, -1},
+                {1, END},
+        },
+        [MALI_DRAW_MODE_TRIANGLE_STRIP] = {
+                {0, REL, 1, REL, 2},
+                {0, LOOP},
+                {1, REL, 2, REL, 1},
+                {1, REL, 1, REL, 2},
+                {0, END},
+        },
+        [MALI_DRAW_MODE_TRIANGLE_STRIP + PROVOKE_LAST] = {
+                {2, REL, -2, REL, -1},
+                {0, LOOP},
+                {1, REL, -1, REL, -2},
+                {1, REL, -2, REL, -1},
+                {0, END},
+        },
+        [MALI_DRAW_MODE_TRIANGLE_FAN] = {
+                {1, REL, 1, ABS, 0},
+                {0, END},
+        },
+        [MALI_DRAW_MODE_TRIANGLE_FAN + PROVOKE_LAST] = {
+                {2, ABS, 0, REL, -1},
+                {0, LOOP},
+                {1, ABS, 0, REL, -1},
+                {0, END},
+        },
+        [MALI_DRAW_MODE_QUADS] = {
+                {0, REL, 1, REL, 2},
+                {0, REL, 2, REL, 3},
+                {4, END},
+        },
+        [MALI_DRAW_MODE_QUADS + PROVOKE_LAST] = {
+                {3, REL, -3, REL, -2},
+                {0, REL, -2, REL, -1},
+                {1, END},
+        },
+};
+
 struct tiler_context {
         unsigned width;
         unsigned height;
         float widthf;
         float heightf;
+
+        struct MALI_PRIMITIVE primitive;
 };
 
 static struct tiler_context
@@ -42,6 +120,9 @@ decode_tiler_job(mali_ptr job)
 
         struct mali_tiler_job_packed *PANDECODE_PTR_VAR(p, NULL, job);
         pan_section_unpack(p, TILER_JOB, TILER, tiler);
+
+        pan_section_unpack(p, TILER_JOB, PRIMITIVE, prim);
+        c.primitive = prim;
 
         struct mali_tiler_context_packed *PANDECODE_PTR_VAR(tp, NULL, tiler.address);
         pan_unpack(tp, TILER_CONTEXT, t);
@@ -140,7 +221,7 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
 
                 struct tiler_instr_draw_struct draw = {
                         .addr = draw_ptr >> 6,
-                        .draw_type = 3, // triangles
+                        .draw_type = tiler_draw_type(c.primitive.draw_mode),
                         .reset = true,
                         .op = 4,
                 }; memcpy(heap + (pos++), &draw, 4);

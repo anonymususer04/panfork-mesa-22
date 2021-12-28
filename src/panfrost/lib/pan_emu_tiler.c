@@ -161,7 +161,9 @@ struct tiler_context {
         float widthf;
         float heightf;
 
-        struct MALI_PRIMITIVE primitive;
+        /* TODO: Multiple "bins", then hierarchy.. */
+        uint32_t *heap;
+        unsigned pos;
 };
 
 static struct tiler_context
@@ -172,9 +174,6 @@ decode_tiler_job(mali_ptr job)
         struct mali_tiler_job_packed *PANDECODE_PTR_VAR(p, NULL, job);
         pan_section_unpack(p, TILER_JOB, TILER, tiler);
 
-        pan_section_unpack(p, TILER_JOB, PRIMITIVE, prim);
-        c.primitive = prim;
-
         struct mali_tiler_context_packed *PANDECODE_PTR_VAR(tp, NULL, tiler.address);
         pan_unpack(tp, TILER_CONTEXT, t);
 
@@ -182,8 +181,6 @@ decode_tiler_job(mali_ptr job)
         c.height = t.fb_height;
         c.widthf = c.width;
         c.heightf = c.height;
-
-
 
 //        pan_section_unpack(p, TILER_JOB, DRAW, draw);
 //        pandecode_dcd(&draw, job_no, h->type, "", gpu_id);
@@ -201,6 +198,29 @@ decode_tiler_job(mali_ptr job)
 //        pandecode_log("\n");
 
         return c;
+}
+
+static void
+do_tiler_job(struct tiler_context *c, mali_ptr job)
+{
+        mali_ptr draw_ptr = job + 128;
+
+        struct mali_tiler_job_packed *PANDECODE_PTR_VAR(p, NULL, job);
+        pan_section_unpack(p, TILER_JOB, DRAW, draw);
+        pan_section_unpack(p, TILER_JOB, PRIMITIVE, primitive);
+
+        printf("draw: %"PRIx64", pos: %"PRIx64"\n", draw_ptr, draw.position);
+
+        // TODO: genxml packing for instructions?
+        struct tiler_instr_draw_struct set_draw = {
+                .addr = draw_ptr >> 6,
+                .draw_type = tiler_draw_type(primitive.draw_mode),
+                .reset = true,
+                .op = 4,
+        }; memcpy(c->heap + (c->pos++), &set_draw, 4);
+
+        uint8_t bytes[] = { 0x7F, 0xBF, 0x00, 0x3C, 0xFF, 0x7E, 0x00, 0x3C };
+        memcpy(c->heap + (c->pos += 2) - 2, &bytes, 8);
 }
 
 void
@@ -229,6 +249,7 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
         unsigned heap_size = (*tiler_heap) >> 32;
 
         uint32_t *heap = pandecode_fetch_gpu_mem(NULL, tiler_heap[1], 1);
+        c.heap = heap;
 
         unsigned hierarchy_mask = tiler_context_16[4] & ((1 << 13) - 1);
 
@@ -253,36 +274,17 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
         unsigned level = util_logbase2_ceil(MAX2(c.width, c.height)) - 4;
         unsigned tile_offset = 0;
 
-        unsigned pos = header_size;
+        c.pos = header_size;
 
         tiler_context[0] = (0xffULL << 48) | (tiler_heap[1] + 0x8000);
 
-        heap[level_offsets[level] + 1 + tile_offset] = pos * 4 - 0x8000;
+        heap[level_offsets[level] + 1 + tile_offset] = c.pos * 4 - 0x8000;
 
-        // TODO: genxml packing for instructions?
-
-        util_dynarray_foreach(tiler_jobs, mali_ptr, job) {
-                uint64_t *job_mem = pandecode_fetch_gpu_mem(NULL, *job, 256);
-
-                mali_ptr draw_ptr = *job + 128;
-
-                mali_ptr position_ptr = job_mem[16 + 2];
-
-                printf("draw: %"PRIx64", pos: %"PRIx64"\n", draw_ptr, position_ptr);
-
-                struct tiler_instr_draw_struct draw = {
-                        .addr = draw_ptr >> 6,
-                        .draw_type = tiler_draw_type(c.primitive.draw_mode),
-                        .reset = true,
-                        .op = 4,
-                }; memcpy(heap + (pos++), &draw, 4);
-
-                uint8_t bytes[] = { 0x7F, 0xBF, 0x00, 0x3C, 0xFF, 0x7E, 0x00, 0x3C };
-                memcpy(heap + (pos += 2) - 2, &bytes, 8);
-        }
+        util_dynarray_foreach(tiler_jobs, mali_ptr, job)
+                do_tiler_job(&c, *job);
 
         // todo; subtract?
-        heap[level_offsets[level] + tile_offset] = pos * 4 - 0x8000 - 4;
+        heap[level_offsets[level] + tile_offset] = c.pos * 4 - 0x8000 - 4;
 
         hexdump(stdout, (uint8_t *)heap, heap_size);
 

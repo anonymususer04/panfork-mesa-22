@@ -53,13 +53,15 @@ enum foo { END, REL, ABS, LOOP };
 
 #define PROVOKE_LAST 16
 
-struct draw_mode_data {
+struct draw_state_data {
         int offset;
-        enum foo typa;
-        int a;
         enum foo typb;
         int b;
-} state[][10] = {
+        enum foo typc;
+        int c;
+};
+
+const static struct draw_state_data states[][10] = {
         [MALI_DRAW_MODE_TRIANGLES] = {
                 {0, REL, 1, REL, 2},
                 {3, END},
@@ -103,6 +105,55 @@ struct draw_mode_data {
                 {1, END},
         },
 };
+
+struct trigen_context {
+        unsigned type;
+        unsigned pos;
+        unsigned max;
+
+        unsigned loop_pt;
+        unsigned state;
+};
+
+static bool
+generate_triangle(struct trigen_context *t, unsigned *a, unsigned *b, unsigned *c)
+{
+        if (t->pos >= t->max)
+                return false;
+        struct draw_state_data d = states[t->type][t->state];
+        ++t->state;
+
+        t->pos += d.offset;
+        *a = t->pos;
+
+        switch (d.typb) {
+        case END:
+                t->state = t->loop_pt;
+                return generate_triangle(t, a, b, c);
+        case LOOP:
+                t->loop_pt = t->state - 1;
+                return generate_triangle(t, a, b, c);
+        case REL:
+                *b = *a + d.b;
+                break;
+        case ABS:
+                *b = d.b;
+                break;
+        }
+
+        switch (d.typc) {
+        case REL:
+                *c = *a + d.c;
+                break;
+        case ABS:
+                *c = d.c;
+                break;
+        default:
+                assert(0);
+        }
+
+        return true;
+}
 
 struct tiler_context {
         unsigned width;

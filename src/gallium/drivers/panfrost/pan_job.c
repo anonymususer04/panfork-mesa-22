@@ -632,7 +632,7 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
          * least one tiler job. Tiler heap is written by tiler jobs and read
          * by fragment jobs (the polygon list is coming from this heap).
          */
-        if (batch->scoreboard.first_tiler)
+        if (batch->scoreboard.first_tiler || batch->tiler_jobs.size)
                 bo_handles[submit.bo_handle_count++] = dev->tiler_heap->gem_handle;
 
         /* Always used on Bifrost, occassionally used on Midgard */
@@ -683,8 +683,6 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                                 panfrost_emulate_tiler(&batch->tiler_jobs, dev->gpu_id);
                         else
                                 hexdump(stdout, dev->tiler_heap->ptr.cpu, 1024*1024);
-
-                        dev->debug &= ~PAN_DBG_EMU_TILER;
                 }
 
                 /* Jobs won't be complete if blackhole rendering, that's ok */
@@ -708,7 +706,7 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
         struct panfrost_screen *screen = pan_screen(pscreen);
         struct panfrost_device *dev = pan_device(pscreen);
         bool has_draws = batch->scoreboard.first_job;
-        bool has_tiler = batch->scoreboard.first_tiler;
+        bool has_tiler = batch->scoreboard.first_tiler || batch->tiler_jobs.size;
         bool has_frag = has_tiler || batch->clear;
         int ret = 0;
 
@@ -796,7 +794,7 @@ panfrost_batch_submit(struct panfrost_context *ctx,
         screen->vtbl.emit_tls(batch);
         panfrost_emit_tile_map(batch, &fb);
 
-        if (batch->scoreboard.first_tiler || batch->clear)
+        if (batch->scoreboard.first_tiler || batch->tiler_jobs.size || batch->clear)
                 screen->vtbl.emit_fbd(batch, &fb);
 
         ret = panfrost_batch_submit_jobs(batch, &fb, in_sync, out_sync);

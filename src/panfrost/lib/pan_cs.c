@@ -869,6 +869,8 @@ GENX(pan_emit_tiler_heap)(const struct panfrost_device *dev,
         }
 }
 
+#include <rval.h>
+
 void
 GENX(pan_emit_tiler_ctx)(const struct panfrost_device *dev,
                          unsigned fb_width, unsigned fb_height,
@@ -881,7 +883,7 @@ GENX(pan_emit_tiler_ctx)(const struct panfrost_device *dev,
 
         pan_pack(out, TILER_CONTEXT, tiler) {
                 /* TODO: Select hierarchy mask more effectively */
-                tiler.hierarchy_mask = (max_levels >= 8) ? 0xFF : 0x28;
+                tiler.hierarchy_mask = rval("hmask", 0xff);//(max_levels >= 8) ? 0xFF : 0x28;
                 tiler.fb_width = fb_width;
                 tiler.fb_height = fb_height;
                 tiler.heap = heap;

@@ -323,7 +323,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
                 /* Mali supports GLES and QUADS. Midgard supports more */
                 uint32_t modes = BITFIELD_MASK(PIPE_PRIM_QUADS + 1);
 
-                if (dev->arch <= 5) {
+                if (dev->arch <= 6) {
                         modes |= BITFIELD_BIT(PIPE_PRIM_QUAD_STRIP);
                         modes |= BITFIELD_BIT(PIPE_PRIM_POLYGON);
                 }

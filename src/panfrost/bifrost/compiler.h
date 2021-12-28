@@ -38,6 +38,15 @@
 extern "C" {
 #endif
 
+typedef struct {
+        union {
+                uint32_t *sparse;
+                uint8_t *dense;
+        };
+        unsigned size; /* either 8-bit or 32-bit elements */
+        unsigned sparse_capacity;
+} nodearray;
+
 /* Swizzles across bytes in a 32-bit word. Expresses swz in the XML directly.
  * To express widen, use the correpsonding replicated form, i.e. H01 = identity
  * for widen = none, H00 for widen = h0, B1111 for widen = b1. For lane, also

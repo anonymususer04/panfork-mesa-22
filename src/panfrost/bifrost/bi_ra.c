@@ -69,7 +69,7 @@ lcra_alloc_equations(unsigned node_count)
         l->node_count = node_count;
 
         l->linear = calloc(sizeof(l->linear[0]), node_count);
-        l->solutions = calloc(sizeof(l->solutions[0]), node_count);
+        l->solutions = calloc(sizeof(l->solutions[0]), ALIGN_POT(node_count, 16));
         l->affinity = calloc(sizeof(l->affinity[0]), node_count);
 
         memset(l->solutions, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * node_count);
@@ -100,13 +100,13 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
 
         for (unsigned D = 0; D < 4; ++D) {
                 if (cmask_i & (cmask_j << D)) {
-                        constraint_bw |= (1 << (3 + D));
-                        constraint_fw |= (1 << (3 - D));
+                        constraint_bw |= (1 << (3 - D));
+                        constraint_fw |= (1 << (3 + D));
                 }
 
                 if (cmask_i & (cmask_j >> D)) {
-                        constraint_fw |= (1 << (3 + D));
-                        constraint_bw |= (1 << (3 - D));
+                        constraint_fw |= (1 << (3 - D));
+                        constraint_bw |= (1 << (3 + D));
                 }
         }
 
@@ -122,12 +122,12 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
 static bool
 lcra_test_linear_dense(struct lcra_state *l, int8_t *solutions, uint8_t *row, signed constant)
 {
-        int8x16_t vconstant = vdupq_n_s8(3 - constant);
+        int8x16_t vconstant = vdupq_n_s8(3 + constant);
 
         uint8x16_t res = vdupq_n_u8(0);
 
         for (unsigned j = 0; j < l->node_count; j += 16) {
-                int8x16_t lhs = vaddq_s8(vld1q_s8(solutions), vconstant);
+                int8x16_t lhs = vsubq_s8(vconstant, vld1q_s8(solutions));
                 uint8x16_t rhs = vld1q_u8(row);
 
                 solutions += 16;
@@ -148,6 +148,46 @@ lcra_test_linear_dense(struct lcra_state *l, int8_t *solutions, uint8_t *row, si
         return vget_lane_u32(r, 0) == 0;
 }
 
+#if 1
+static uint64_t
+lcra_test_linear_all(struct lcra_state *l, int8_t *solutions, uint8_t *row, uint64_t affinity)
+{
+        /* TODO: Why not test 16/32/64 registers at once, not just eight? */
+
+        for (unsigned reg = 0; reg < 64; reg += 8) {
+                uint8_t aff = affinity >> reg;
+                if (!aff)
+                        continue;
+
+                uint8x16_t possible = vdupq_n_u8(0xff);
+
+                int8x16_t constant = vdupq_n_s8(reg + 3);
+
+                for (unsigned j = 0; j < l->node_count; j += 16) {
+                        int8x16_t lhs = vsubq_s8(vld1q_s8(solutions + j), constant);
+                        uint8x16_t constraint = vld1q_u8(row + j);
+
+                        /* This will return zero for small or large lhs, no need to
+                         * clamp */
+                        uint8x16_t shifted = vshlq_u8(constraint, lhs);
+
+                        possible = vbicq_u8(possible, shifted);
+                }
+
+                uint8x8_t res = vand_u8(vget_high_u8(possible), vget_low_u8(possible));
+                res = vand_u8(res, vext_u8(res, res, 4));
+                res = vand_u8(res, vext_u8(res, res, 2));
+                res = vand_u8(res, vext_u8(res, res, 1));
+                uint8_t s = vget_lane_u8(res, 0);
+
+                if (s)
+                        return (uint64_t)(s & aff) << reg;
+        }
+
+        return 0;
+}
+#endif
+
 #else
 
 static bool
@@ -161,7 +201,7 @@ lcra_test_linear_dense(struct lcra_state *l, int8_t *solutions, uint8_t *row, si
                 if (lhs < -3 || lhs > 3)
                         continue;
 
-                if (row[j] & (1 << (lhs + 3)))
+                if (row[j] & (1 << (3 - lhs)))
                         return false;
         }
 
@@ -192,7 +232,7 @@ lcra_test_linear(struct lcra_state *l, int8_t *solutions, unsigned i)
                         if (lhs < -3 || lhs > 3)
                                 continue;
 
-                        if (constraint & (1 << (lhs + 3)))
+                        if (constraint & (1 << (3 - lhs)))
                                 return false;
                 }
 
@@ -211,19 +251,39 @@ lcra_solve(struct lcra_state *l)
                 if (l->solutions[step] != LCRA_NOT_SOLVED) continue;
                 if (l->affinity[step] == 0) continue;
 
-                bool succ = false;
+                /* What about AArch32? */
+                uint64_t possible;
 
-                u_foreach_bit64(r, l->affinity[step]) {
-                        l->solutions[step] = r;
+                if (lcra_linear_sparse(l, step)) {
 
-                        if (lcra_test_linear(l, l->solutions, step)) {
-                                succ = true;
-                                break;
+                        possible = ~0ULL;
+
+                        util_dynarray_foreach(&l->linear[step], uint32_t, elem) {
+                                unsigned j = nodearray_key(elem);
+                                uint64_t constraint = nodearray_value(elem);
+
+                                if (l->solutions[j] == LCRA_NOT_SOLVED) continue;
+
+                                unsigned lhs = l->solutions[j];
+
+                                if (lhs < 3)
+                                        possible &= ~(constraint >> (3 - lhs));
+                                else
+                                        possible &= ~(constraint << (lhs - 3));
                         }
+
+                } else {
+                        uint8_t *row = (uint8_t *)util_dynarray_begin(&l->linear[step]);
+
+                        possible = lcra_test_linear_all(l, l->solutions, row, l->affinity[step]);
                 }
 
-                /* Out of registers - prepare to spill */
-                if (!succ) {
+                unsigned reg = ffsll(possible);
+
+                if (reg) {
+                        l->solutions[step] = reg - 1;
+                } else {
+                        /* Out of registers - prepare to spill */
                         l->spill_node = step;
                         return false;
                 }

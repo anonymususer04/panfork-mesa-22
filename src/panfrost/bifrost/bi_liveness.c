@@ -23,6 +23,7 @@
  */
 
 #include "compiler.h"
+#include "nodearray.h"
 #include "util/u_memory.h"
 #include "util/list.h"
 #include "util/set.h"
@@ -32,7 +33,7 @@
  * returns whether progress was made. */
 
 void
-bi_liveness_ins_update(uint8_t *live, bi_instr *ins, unsigned max)
+bi_liveness_ins_update(nodearray *live, bi_instr *ins, unsigned max)
 {
         /* live_in[s] = GEN[s] + (live_out[s] - KILL[s]) */
 
@@ -40,7 +41,7 @@ bi_liveness_ins_update(uint8_t *live, bi_instr *ins, unsigned max)
                 unsigned node = bi_get_node(ins->dest[d]);
 
                 if (node < max)
-                        live[node] &= ~bi_writemask(ins, d);
+                        nodearray_bic(live, node, bi_writemask(ins, d));
         }
 
         bi_foreach_src(ins, src) {
@@ -50,33 +51,27 @@ bi_liveness_ins_update(uint8_t *live, bi_instr *ins, unsigned max)
 
                 unsigned node = bi_get_node(ins->src[src]);
                 if (node < max)
-                        live[node] |= mask;
+                        nodearray_orr(live, node, mask, ~0, ~0);
         }
 }
 
 static bool
 liveness_block_update(bi_block *blk, unsigned temp_count)
 {
-        bool progress = false;
-
         /* live_out[s] = sum { p in succ[s] } ( live_in[p] ) */
-        bi_foreach_successor(blk, succ) {
-                for (unsigned i = 0; i < temp_count; ++i)
-                        blk->live_out[i] |= succ->live_in[i];
-        }
+        bi_foreach_successor(blk, succ)
+                nodearray_orr_array(&blk->live_out, &succ->live_in, ~0, ~0);
 
-        uint8_t *live = ralloc_array(blk, uint8_t, temp_count);
-        memcpy(live, blk->live_out, temp_count);
+        nodearray live;
+        nodearray_clone(&live, &blk->live_out);
 
         bi_foreach_instr_in_block_rev(blk, ins)
-                bi_liveness_ins_update(live, ins, temp_count);
+                bi_liveness_ins_update(&live, ins, temp_count);
 
         /* To figure out progress, diff live_in */
+        bool progress = !nodearray_equal(&live, &blk->live_in);
 
-        for (unsigned i = 0; (i < temp_count) && !progress; ++i)
-                progress |= (blk->live_in[i] != live[i]);
-
-        ralloc_free(blk->live_in);
+        nodearray_reset(&blk->live_in);
         blk->live_in = live;
 
         return progress;
@@ -106,14 +101,8 @@ bi_compute_liveness(bi_context *ctx)
                         _mesa_key_pointer_equal);
 
         bi_foreach_block(ctx, block) {
-                if (block->live_in)
-                        ralloc_free(block->live_in);
-
-                if (block->live_out)
-                        ralloc_free(block->live_out);
-
-                block->live_in = rzalloc_array(block, uint8_t, temp_count);
-                block->live_out = rzalloc_array(block, uint8_t, temp_count);
+                nodearray_reset(&block->live_in);
+                nodearray_reset(&block->live_out);
         }
 
         /* Initialize the work list with the exit block */

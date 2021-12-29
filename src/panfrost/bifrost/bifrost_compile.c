@@ -35,6 +35,7 @@
 #include "bifrost_compile.h"
 #include "compiler.h"
 #include "valhall/va_compiler.h"
+#include "nodearray.h"
 #include "bi_quirks.h"
 #include "bi_builder.h"
 #include "bifrost_nir.h"
@@ -3507,6 +3508,9 @@ create_empty_block(bi_context *ctx)
                         _mesa_hash_pointer,
                         _mesa_key_pointer_equal);
 
+        nodearray_init(&blk->live_in);
+        nodearray_init(&blk->live_out);
+
         return blk;
 }
 
@@ -4618,6 +4622,11 @@ bi_compile_variant_nir(nir_shader *nir,
         bi_validate(ctx, "Late lowering");
 
         bi_register_allocate(ctx);
+
+        bi_foreach_block(ctx, block) {
+                nodearray_reset(&block->live_in);
+                nodearray_reset(&block->live_out);
+        }
 
         if (likely(optimize))
                 bi_opt_post_ra(ctx);

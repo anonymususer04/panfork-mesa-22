@@ -32,6 +32,7 @@
 #include "compiler/nir/nir.h"
 #include "panfrost/util/pan_ir.h"
 #include "util/u_math.h"
+#include "util/u_dynarray.h"
 #include "util/half_float.h"
 
 #ifdef __cplusplus
@@ -671,8 +672,8 @@ typedef struct bi_block {
         bool unconditional_jumps;
 
         /* Per 32-bit word live masks for the block indexed by node */
-        uint8_t *live_in;
-        uint8_t *live_out;
+        nodearray live_in;
+        nodearray live_out;
 
         /* If true, uses clauses; if false, uses instructions */
         bool scheduled;
@@ -1079,7 +1080,7 @@ bool bi_opt_constant_fold(bi_context *ctx);
 /* Liveness */
 
 void bi_compute_liveness(bi_context *ctx);
-void bi_liveness_ins_update(uint8_t *live, bi_instr *ins, unsigned max);
+void bi_liveness_ins_update(nodearray *live, bi_instr *ins, unsigned max);
 void bi_invalidate_liveness(bi_context *ctx);
 
 void bi_postra_liveness(bi_context *ctx);

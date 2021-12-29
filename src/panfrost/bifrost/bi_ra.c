@@ -47,12 +47,6 @@ struct lcra_state {
 
         /* Before solving, forced registers; after solving, solutions. */
         int8_t *solutions;
-        unsigned solution_count;
-
-        /* Only these blend nodes (which must be between r0-r3) are not solved
-         * in a linear fashion */
-        unsigned blend_nodes[8];
-        unsigned blend_count;
 
         /** Node which caused register allocation to fail */
         unsigned spill_node;
@@ -132,7 +126,7 @@ lcra_test_linear_dense(struct lcra_state *l, int8_t *solutions, uint8_t *row, si
 
         uint8x16_t res = vdupq_n_u8(0);
 
-        for (unsigned j = 0; j < l->solution_count; j += 16) {
+        for (unsigned j = 0; j < l->node_count; j += 16) {
                 int8x16_t lhs = vaddq_s8(vld1q_s8(solutions), vconstant);
                 uint8x16_t rhs = vld1q_u8(row);
 
@@ -159,7 +153,7 @@ lcra_test_linear_dense(struct lcra_state *l, int8_t *solutions, uint8_t *row, si
 static bool
 lcra_test_linear_dense(struct lcra_state *l, int8_t *solutions, uint8_t *row, signed constant)
 {
-        for (unsigned j = 0; j < l->solution_count; ++j) {
+        for (unsigned j = 0; j < l->node_count; ++j) {
                 if (solutions[j] == LCRA_NOT_SOLVED) continue;
 
                 signed lhs = solutions[j] - constant;
@@ -207,14 +201,6 @@ lcra_test_linear(struct lcra_state *l, int8_t *solutions, unsigned i)
 
         uint8_t *row = (uint8_t *)util_dynarray_begin(&l->linear[i]);
 
-        /* Check interference with blend node */
-        if (constant < 4) {
-                for (unsigned x = 0; x < l->blend_count; ++x) {
-                        if (row[l->blend_nodes[x]] & (1 << (3 - constant)))
-                                return false;
-                }
-        }
-
         return lcra_test_linear_dense(l, solutions, row, constant);
 }
 
@@ -229,7 +215,6 @@ lcra_solve(struct lcra_state *l)
 
                 u_foreach_bit64(r, l->affinity[step]) {
                         l->solutions[step] = r;
-                        l->solution_count = step;
 
                         if (lcra_test_linear(l, l->solutions, step)) {
                                 succ = true;
@@ -422,11 +407,6 @@ bi_allocate_registers(bi_context *ctx, bool *success, bool full_regs)
                                 unsigned node = bi_get_node(ins->src[0]);
                                 assert(node < node_count);
                                 l->solutions[node] = 0;
-                                l->blend_nodes[l->blend_count++] = node;
-
-                                /* TODO: Update blend_nodes handling in
-                                 * lcra_test_linear when dual-source blending
-                                 * is fixed. */
                         }
 
                         if (dest < node_count)

@@ -23,6 +23,7 @@
 
 #include "compiler.h"
 #include "util/u_memory.h"
+#include "nodearray.h"
 
 /* Validatation doesn't make sense in release builds */
 #ifndef NDEBUG
@@ -45,7 +46,7 @@ bi_validate_initialization(bi_context *ctx)
 
         /* Validate that the live set is indeed empty */
         for (unsigned i = 0; i < temp_count; ++i) {
-                if (entry->live_in[i] == 0) continue;
+                if (nodearray_get(&entry->live_in, i) == 0) continue;
 
                 fprintf(stderr, "%s%u\n", (i & PAN_IS_REG) ? "r" : "", i >> 1);
                 success = false;

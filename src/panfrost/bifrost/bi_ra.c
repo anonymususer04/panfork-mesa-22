@@ -25,6 +25,7 @@
  */
 
 #include "compiler.h"
+#include "nodearray.h"
 #include "bi_builder.h"
 #include "util/u_memory.h"
 
@@ -32,8 +33,9 @@ struct lcra_state {
         unsigned node_count;
         uint64_t *affinity;
 
-        /* Linear constraints imposed. Nested array sized upfront, organized as
-         * linear[node_left][node_right]. That is, calculate indices as:
+        /* Linear constraints imposed. For each node there there is a
+         * 'nodearray' structure, which changes between a sparse and dense
+         * array depending on the number of elements.
          *
          * Each element is itself a bit field denoting whether (c_j - c_i) bias
          * is present or not, including negative biases.
@@ -41,7 +43,7 @@ struct lcra_state {
          * Note for Bifrost, there are 4 components so the bias is in range
          * [-3, 3] so encoded by 8-bit field. */
 
-        uint8_t *linear;
+        nodearray *linear;
 
         /* Before solving, forced registers; after solving, solutions. */
         int8_t *solutions;
@@ -66,7 +68,7 @@ lcra_alloc_equations(unsigned node_count)
 
         l->node_count = node_count;
 
-        l->linear = calloc(sizeof(l->linear[0]), node_count * node_count);
+        l->linear = calloc(sizeof(l->linear[0]), node_count);
         l->solutions = calloc(sizeof(l->solutions[0]), node_count);
         l->affinity = calloc(sizeof(l->affinity[0]), node_count);
 
@@ -78,6 +80,9 @@ lcra_alloc_equations(unsigned node_count)
 static void
 lcra_free(struct lcra_state *l)
 {
+        for (unsigned i = 0; i < l->node_count; ++i)
+                util_dynarray_fini(&l->linear[i]);
+
         free(l->linear);
         free(l->affinity);
         free(l->solutions);
@@ -109,18 +114,45 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
                 }
         }
 
-        l->linear[j * l->node_count + i] |= constraint_fw;
-        l->linear[i * l->node_count + j] |= constraint_bw;
+        /* Use dense arrays after adding 256 elements */
+        nodearray_orr(&l->linear[j], i, constraint_fw, 256, l->node_count);
+        nodearray_orr(&l->linear[i], j, constraint_bw, 256, l->node_count);
+}
+
+static bool
+lcra_linear_sparse(struct lcra_state *l, unsigned row)
+{
+        return nodearray_sparse(&l->linear[row], l->node_count);
 }
 
 static bool
 lcra_test_linear(struct lcra_state *l, int8_t *solutions, unsigned i)
 {
-        uint8_t *row = &l->linear[i * l->node_count];
         signed constant = solutions[i];
 
+        if (lcra_linear_sparse(l, i)) {
+                util_dynarray_foreach(&l->linear[i], uint32_t, elem) {
+                        unsigned j = nodearray_key(elem);
+                        unsigned constraint = nodearray_value(elem);
+
+                        if (solutions[j] == LCRA_NOT_SOLVED) continue;
+
+                        signed lhs = constant - solutions[j];
+
+                        if (lhs < -3 || lhs > 3)
+                                continue;
+
+                        if (constraint & (1 << (lhs + 3)))
+                                return false;
+                }
+
+                return true;
+        }
+
+        uint8_t *row = (uint8_t *)util_dynarray_begin(&l->linear[i]);
+
         for (unsigned j = 0; j < l->node_count; ++j) {
-                if (solutions[j] == ~0) continue;
+                if (solutions[j] == LCRA_NOT_SOLVED) continue;
 
                 signed lhs = constant - solutions[j];
 
@@ -169,10 +201,13 @@ static unsigned
 lcra_count_constraints(struct lcra_state *l, unsigned i)
 {
         unsigned count = 0;
-        uint8_t *constraints = &l->linear[i * l->node_count];
+        struct util_dynarray *constraints = &l->linear[i];
 
-        for (unsigned j = 0; j < l->node_count; ++j)
-                count += util_bitcount(constraints[j]);
+        /* For sparse arrays, the top bits encode the node */
+        uint32_t mask = lcra_linear_sparse(l, i) ? 0xff : ~0;
+
+        util_dynarray_foreach(constraints, uint32_t, elem)
+                count += util_bitcount(*elem & mask);
 
         return count;
 }
@@ -442,18 +477,40 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
         unsigned best_benefit = 0.0;
         signed best_node = -1;
 
-        for (unsigned i = 0; i < l->node_count; ++i) {
-                if (BITSET_TEST(no_spill, i)) continue;
+        if (lcra_linear_sparse(l, l->spill_node)) {
+                util_dynarray_foreach(&l->linear[l->spill_node], uint32_t, elem) {
+                        unsigned i = nodearray_key(elem);
+                        unsigned constraint = nodearray_value(elem);
 
-                /* Only spill nodes that interfere with the node failing
-                 * register allocation. It's pointless to spill anything else */
-                if (!l->linear[(l->spill_node * l->node_count) + i]) continue;
+                        /* Only spill nodes that interfere with the node failing
+                         * register allocation. It's pointless to spill anything else */
+                        if (!constraint) continue;
 
-                unsigned benefit = lcra_count_constraints(l, i);
+                        if (BITSET_TEST(no_spill, i)) continue;
 
-                if (benefit > best_benefit) {
-                        best_benefit = benefit;
-                        best_node = i;
+                        unsigned benefit = lcra_count_constraints(l, i);
+
+                        if (benefit > best_benefit) {
+                                best_benefit = benefit;
+                                best_node = i;
+                        }
+                }
+        } else {
+                uint8_t *row = (uint8_t *)util_dynarray_begin(&l->linear[l->spill_node]);
+
+                for (unsigned i = 0; i < l->node_count; ++i) {
+                        /* Only spill nodes that interfere with the node failing
+                         * register allocation. It's pointless to spill anything else */
+                        if (!row[i]) continue;
+
+                        if (BITSET_TEST(no_spill, i)) continue;
+
+                        unsigned benefit = lcra_count_constraints(l, i);
+
+                        if (benefit > best_benefit) {
+                                best_benefit = benefit;
+                                best_node = i;
+                        }
                 }
         }
 

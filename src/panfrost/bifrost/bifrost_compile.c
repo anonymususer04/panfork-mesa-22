@@ -2962,6 +2962,9 @@ create_empty_block(bi_context *ctx)
                         _mesa_hash_pointer,
                         _mesa_key_pointer_equal);
 
+        util_dynarray_init(&blk->live_in, blk);
+        util_dynarray_init(&blk->live_out, blk);
+
         return blk;
 }
 

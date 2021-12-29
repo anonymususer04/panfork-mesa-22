@@ -32,11 +32,14 @@
 #include "compiler/nir/nir.h"
 #include "panfrost/util/pan_ir.h"
 #include "util/u_math.h"
+#include "util/u_dynarray.h"
 #include "util/half_float.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct util_dynarray nodearray;
 
 /* Swizzles across bytes in a 32-bit word. Expresses swz in the XML directly.
  * To express widen, use the correpsonding replicated form, i.e. H01 = identity
@@ -611,8 +614,8 @@ typedef struct bi_block {
         bool unconditional_jumps;
 
         /* Per 32-bit word live masks for the block indexed by node */
-        uint8_t *live_in;
-        uint8_t *live_out;
+        nodearray live_in;
+        nodearray live_out;
 
         /* If true, uses clauses; if false, uses instructions */
         bool scheduled;
@@ -980,7 +983,7 @@ void bi_opt_constant_fold(bi_context *ctx);
 /* Liveness */
 
 void bi_compute_liveness(bi_context *ctx);
-void bi_liveness_ins_update(uint8_t *live, bi_instr *ins, unsigned max);
+void bi_liveness_ins_update(nodearray *live, bi_instr *ins, unsigned max);
 void bi_invalidate_liveness(bi_context *ctx);
 
 void bi_postra_liveness(bi_context *ctx);

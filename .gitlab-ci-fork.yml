@@ -13,6 +13,7 @@ build:
   artifacts:
     paths:
       - panfork.tar.xz
+    expire_in: never
   parallel:
     matrix:
       - arch: [armhf, arm64]

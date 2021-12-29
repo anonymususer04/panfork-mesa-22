@@ -250,7 +250,7 @@ bi_make_affinity(uint64_t clobber, unsigned count, bool split_file)
 }
 
 static void
-bi_mark_interference(bi_block *block, struct lcra_state *l, uint8_t *live, uint64_t preload_live, unsigned node_count, bool is_blend, bool split_file, bool aligned_sr)
+bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uint64_t preload_live, unsigned node_count, bool is_blend, bool split_file, bool aligned_sr)
 {
         bi_foreach_instr_in_block_rev(block, ins) {
                 /* Mark all registers live after the instruction as
@@ -278,11 +278,16 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, uint8_t *live, uint6
 
                         l->affinity[node] &= (affinity >> offset);
 
-                        for (unsigned i = 0; i < node_count; ++i) {
-                                if (live[i]) {
+                        unsigned writemask = bi_writemask(ins, d);
+
+                        assert(nodearray_sparse(live, ~0));
+                        util_dynarray_foreach(live, uint32_t, elem) {
+                                unsigned i = nodearray_key(elem);
+                                unsigned liveness = nodearray_value(elem);
+
+                                if (liveness)
                                         lcra_add_node_interference(l, node,
-                                                        bi_writemask(ins, d), i, live[i]);
-                                }
+                                                        writemask, i, liveness);
                         }
                 }
 
@@ -298,8 +303,11 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, uint8_t *live, uint6
                         /* Blend shaders might clobber r0-r15, r48. */
                         uint64_t clobber = BITFIELD64_MASK(16) | BITFIELD64_BIT(48);
 
-                        for (unsigned i = 0; i < node_count; ++i) {
-                                if (live[i])
+                        assert(nodearray_sparse(live, ~0));
+                        util_dynarray_foreach(live, uint32_t, elem) {
+                                unsigned i = nodearray_key(elem);
+
+                                if (nodearray_value(elem))
                                         l->affinity[i] &= ~clobber;
                         }
                 }
@@ -321,13 +329,14 @@ bi_compute_interference(bi_context *ctx, struct lcra_state *l, bool full_regs)
         bi_postra_liveness(ctx);
 
         bi_foreach_block_rev(ctx, blk) {
-                uint8_t *live = mem_dup(blk->live_out, node_count);
+                nodearray live;
+                util_dynarray_clone(&live, NULL, &blk->live_out);
 
-                bi_mark_interference(blk, l, live, blk->reg_live_out,
+                bi_mark_interference(blk, l, &live, blk->reg_live_out,
                                 node_count, ctx->inputs->is_blend, !full_regs,
                                 ctx->arch >= 9);
 
-                free(live);
+                util_dynarray_fini(&live);
         }
 }
 

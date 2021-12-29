@@ -115,6 +115,60 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
         nodearray_orr(&l->linear[i], j, constraint_bw, 256, l->node_count);
 }
 
+#ifdef __ARM_NEON
+
+#include "arm_neon.h"
+
+static bool
+lcra_test_linear_dense(struct lcra_state *l, int8_t *solutions, uint8_t *row, signed constant)
+{
+        int8x16_t vconstant = vdupq_n_s8(3 - constant);
+
+        uint8x16_t res = vdupq_n_u8(0);
+
+        for (unsigned j = 0; j < l->node_count; j += 16) {
+                int8x16_t lhs = vaddq_s8(vld1q_s8(solutions), vconstant);
+                uint8x16_t rhs = vld1q_u8(row);
+
+                solutions += 16;
+                row += 16;
+
+                /* This will return zero for small or large lhs, no need to
+                 * clamp */
+                uint8x16_t shifted = vshlq_u8(vdupq_n_u8(1), lhs);
+
+                uint8x16_t collide = vandq_u8(shifted, rhs);
+                res = vorrq_u8(res, collide);
+        }
+
+        uint32x4_t res32 = vreinterpretq_u32_u8(res);
+        uint32x2_t r = vmax_u32(vget_high_u32(res32),
+                                vget_low_u32(res32));
+        r = vpmax_u32(r, r);
+        return vget_lane_u32(r, 0) == 0;
+}
+
+#else
+
+static bool
+lcra_test_linear_dense(struct lcra_state *l, int8_t *solutions, uint8_t *row, signed constant)
+{
+        for (unsigned j = 0; j < l->node_count; ++j) {
+                if (solutions[j] == LCRA_NOT_SOLVED) continue;
+
+                signed lhs = solutions[j] - constant;
+
+                if (lhs < -3 || lhs > 3)
+                        continue;
+
+                if (row[j] & (1 << (lhs + 3)))
+                        return false;
+        }
+
+        return true;
+}
+#endif
+
 static bool
 lcra_linear_sparse(struct lcra_state *l, unsigned row)
 {
@@ -147,19 +201,7 @@ lcra_test_linear(struct lcra_state *l, int8_t *solutions, unsigned i)
 
         uint8_t *row = (uint8_t *)util_dynarray_begin(&l->linear[i]);
 
-        for (unsigned j = 0; j < l->node_count; ++j) {
-                if (solutions[j] == LCRA_NOT_SOLVED) continue;
-
-                signed lhs = solutions[j] - constant;
-
-                if (lhs < -3 || lhs > 3)
-                        continue;
-
-                if (row[j] & (1 << (lhs + 3)))
-                        return false;
-        }
-
-        return true;
+        return lcra_test_linear_dense(l, solutions, row, constant);
 }
 
 static bool

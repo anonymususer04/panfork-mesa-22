@@ -276,7 +276,8 @@ struct tiler_header {
 };
 
 struct tiler_ext_header {
-        int foo;
+        mali_ptr job;
+        unsigned pos;
 };
 
 struct tiler_context {
@@ -355,6 +356,14 @@ heap_get_header(struct tiler_context *c, coord_t loc)
         return level + loc.y * stride + loc.x;
 }
 
+static struct tiler_ext_header *
+heap_get_ext(struct tiler_context *c, coord_t loc)
+{
+        struct tiler_ext_header *level = c->heap_ext[loc.l];
+        unsigned stride = c->heap_strides[loc.l];
+        return level + loc.y * stride + loc.x;
+}
+
 static unsigned
 heap_alloc_block(struct tiler_context *c)
 {
@@ -424,8 +433,6 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
         pan_section_unpack(p, TILER_JOB, PRIMITIVE, primitive);
         pan_section_unpack(p, TILER_JOB, INVOCATION, invocation);
 
-        bool done_set_draw = false;
-
 //        printf("draw: %"PRIx64", pos: %"PRIx64"\n", job + 128, draw.position);
 
         struct trigen_context tris = {
@@ -446,28 +453,37 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                 if (aa == bb || aa == cc || bb == cc)
                         continue;
 
-                if (!done_set_draw) {
-                        coord_t l = {0};
-                        for (l.x = 0; l.x < c->tx; ++l.x)
-                                for (l.y = 0; l.y < c->ty; ++l.y)
-                                        set_draw(c, l, job, primitive.draw_mode);
-                        done_set_draw = true;
-                }
+//                if (!done_set_draw) {
+//                        coord_t l = {0};
+//                        for (l.x = 0; l.x < c->tx; ++l.x)
+//                                for (l.y = 0; l.y < c->ty; ++l.y)
+//                                        set_draw(c, l, job, primitive.draw_mode);
+//                        done_set_draw = true;
+//                }
 
                 struct tiler_instr_do_draw do_draw = {
                         .op = c->op, // what does this mean?
                         .layer = 0,
-                        .offset = aa - pos,
                         .b = bb - aa,
                         .c = cc - aa,
                 };
-                {
-                        coord_t l = {0};
-                        for (l.x = 0; l.x < c->tx; ++l.x)
-                                for (l.y = 0; l.y < c->ty; ++l.y)
-                                        heap_add(c, l, &do_draw);
+                coord_t l = {0};
+                for (l.x = 0; l.x < c->tx; ++l.x) {
+                        for (l.y = 0; l.y < c->ty; ++l.y) {
+                                struct tiler_ext_header *ext
+                                        = heap_get_ext(c, l);
+
+                                if (ext->job != job) {
+                                        set_draw(c, l, job, primitive.draw_mode);
+                                        ext->job = job;
+                                }
+
+                                do_draw.offset = aa - ext->pos;
+                                ext->pos = aa;
+
+                                heap_add(c, l, &do_draw);
+                        }
                 }
-                pos = aa;
         }
 }
 

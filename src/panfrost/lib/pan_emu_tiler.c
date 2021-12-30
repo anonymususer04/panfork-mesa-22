@@ -275,6 +275,10 @@ struct tiler_header {
         uint32_t start;
 };
 
+struct tiler_ext_header {
+        int foo;
+};
+
 struct tiler_context {
         unsigned width;
         unsigned height;
@@ -289,8 +293,10 @@ struct tiler_context {
 
         unsigned op;
 
+        unsigned heap_offsets[13];
+        unsigned heap_strides[13];
         struct tiler_header *heap_levels[13];
-        unsigned heap_strides[13]; /* 4-byte units */
+        struct tiler_ext_header *heap_ext[13];
 };
 
 typedef struct {
@@ -354,6 +360,8 @@ heap_alloc_block(struct tiler_context *c)
 {
         unsigned ret = c->block_pos;
         c->block_pos += 512;
+        // todo; store size..
+        assert(c->block_pos < 63 * 1024 * 1024);
 //        printf("alloc block %x\n", ret + 0x8000);
         return ret;
 }
@@ -384,13 +392,15 @@ static void
 heap_add(struct tiler_context *c, coord_t loc, void *ptr)
 {
 //        printf("heap_add: %i %i %i\n", loc.l, loc.x, loc.y);
-        memcpy(heap_get_space(c, loc), ptr, 4);
+        uint8_t *space = heap_get_space(c, loc);
+        memcpy(space, ptr, 4);
 }
 
 static void
 heap_pad(struct tiler_context *c, coord_t loc)
 {
-        memset(heap_get_space(c, loc), 0, 4);
+        uint8_t *space = heap_get_space(c, loc);
+        memset(space, 0, 4);
 }
 
 static void
@@ -493,34 +503,38 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
                 unsigned tile_size = (1 << b) * 16;
                 unsigned tile_count = pan_tile_count(c.width, c.height, tile_size, tile_size);
 
-                c.heap_levels[b] = (struct tiler_header *)(heap + header_size);
+                c.heap_offsets[b] = header_size;
                 c.heap_strides[b] = DIV_ROUND_UP(c.width, tile_size);
 
-                header_size += tile_count * 2;
+                header_size += tile_count;
 
 //                if (tile_count == 1)
 //                        break;
         }
-        header_size = ALIGN_POT(header_size, 128);// / 4);
+        header_size = ALIGN_POT(header_size, 128);// / 8);
 
-        memset(heap, 0, 1024*1024);//header_size);
+        memset(heap, 0, 1024*1024);//header_size * 8);
+
+        struct tiler_header *heap_shadow = calloc(header_size, sizeof(*heap_shadow));
+        struct tiler_ext_header *heap_ext = calloc(header_size, sizeof(*heap_ext));
+
+        u_foreach_bit(b, hierarchy_mask) {
+                c.heap_levels[b] = heap_shadow + c.heap_offsets[b];
+                c.heap_ext[b] = heap_ext + c.heap_offsets[b];
+        }
 
         c.blocks = (uint8_t *)heap;
-        c.block_pos = header_size * 4;
+        c.block_pos = header_size * 8;
 
         c.op = 15;
-
-//        unsigned level = util_logbase2_ceil(MAX3(c.width, c.height, 16)) - 4;
-//        unsigned tile_offset = 0;
-
-//        heap[level_offsets[level] + 1 + tile_offset] = c.pos * 4;
 
         util_dynarray_foreach(tiler_jobs, mali_ptr, job) {
                 do_tiler_job(&c, *job);
         }
 
-        // todo; subtract?
-//        heap[level_offsets[level] + tile_offset] = (c.pos - 1) * 4;
+        memcpy(heap, heap_shadow, header_size * 8);
+        free(heap_shadow);
+        free(heap_ext);
 
         UNUSED unsigned heap_size = (*tiler_heap) >> 32;
 

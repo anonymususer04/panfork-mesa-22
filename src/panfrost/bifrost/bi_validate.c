@@ -23,6 +23,7 @@
 
 #include "compiler.h"
 #include "util/u_memory.h"
+#include "nodearray.h"
 
 /* Validatation doesn't make sense in release builds */
 #ifndef NDEBUG

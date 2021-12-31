@@ -476,6 +476,7 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                                 if (ext->job != job) {
                                         set_draw(c, l, job, primitive.draw_mode);
                                         ext->job = job;
+                                        ext->pos = 0;
                                 }
 
                                 do_draw.offset = aa - ext->pos;

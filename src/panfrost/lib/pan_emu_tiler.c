@@ -32,10 +32,19 @@ __attribute__((packed))
 struct tiler_instr_do_draw {
         signed c           : 7;
         signed b           : 7;
-        signed offset      : 7;
-        unsigned layer     : 5;
+        signed offset      : 8;
+        unsigned layer     : 4;
         unsigned op        : 4;
         unsigned zero      : 2;
+};
+
+__attribute__((packed))
+struct tiler_instr_set_offset {
+        signed c           : 7;
+        signed b           : 7;
+        signed offset      : 8;
+        unsigned layer     : 6;
+        unsigned op        : 4;
 };
 
 enum tiler_draw_mode {
@@ -86,7 +95,7 @@ const static struct draw_state_data states[][10] = {
                 {1, END},
         },
         [MALI_DRAW_MODE_TRIANGLE_STRIP + PROVOKE_LAST] = {
-                {1, REL, -2, REL, -1},
+                {2, REL, -2, REL, -1},
                 {1, REL, -1, REL, -2},
                 {-1, END},
         },
@@ -425,6 +434,40 @@ set_draw(struct tiler_context *c, coord_t loc, mali_ptr job_addr, enum mali_draw
         heap_add(c, loc, &ins);
 }
 
+#define DIV_ROUND_DOWN(A, B) ( ((A) > 0) ? ((A) / (B)) : (-DIV_ROUND_UP(-(A), (B))) )
+
+static void
+do_draw(struct tiler_context *tc, coord_t loc, int op, int layer, int a, int b, int c)
+{
+        if (CLAMP(a, -128, 127) != a || CLAMP(b, -64, 63) != b || CLAMP(c, -64, 63) != c) {
+
+                struct tiler_instr_set_offset ins = {
+                        .op = 4,
+                        .layer = 0,
+                        .offset = DIV_ROUND_DOWN(a, 256),
+                        .b = DIV_ROUND_DOWN(b, 128),
+                        .c = DIV_ROUND_DOWN(c, 128),
+                };
+                heap_add(tc, loc, &ins);
+        }
+
+        struct tiler_instr_do_draw ins = {
+                .op = op,
+                .layer = 0,
+                .offset = a,
+                .b = b,
+                .c = c,
+        };
+        heap_add(tc, loc, &ins);
+}
+
+struct position {
+        float x;
+        float y;
+        float z;
+        float w;
+};
+
 static void
 do_tiler_job(struct tiler_context *c, mali_ptr job)
 {
@@ -432,6 +475,8 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
         pan_section_unpack(p, TILER_JOB, DRAW, draw);
         pan_section_unpack(p, TILER_JOB, PRIMITIVE, primitive);
         pan_section_unpack(p, TILER_JOB, INVOCATION, invocation);
+
+        struct position *PANDECODE_PTR_VAR(position, NULL, draw.position);
 
 //        printf("draw: %"PRIx64", pos: %"PRIx64"\n", job + 128, draw.position);
 
@@ -446,30 +491,39 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                 .base_vertex_offset = primitive.base_vertex_offset,
         };
 
-        int pos = 0;
         int aa, bb, cc;
         while (generate_triangle_indexed(&tris, &aa, &bb, &cc)) {
 
                 if (aa == bb || aa == cc || bb == cc)
                         continue;
 
-//                if (!done_set_draw) {
-//                        coord_t l = {0};
-//                        for (l.x = 0; l.x < c->tx; ++l.x)
-//                                for (l.y = 0; l.y < c->ty; ++l.y)
-//                                        set_draw(c, l, job, primitive.draw_mode);
-//                        done_set_draw = true;
-//                }
+                struct position vp = position[aa];
+                float minx = vp.x;
+                float maxx = vp.x;
 
-                struct tiler_instr_do_draw do_draw = {
-                        .op = c->op, // what does this mean?
-                        .layer = 0,
-                        .b = bb - aa,
-                        .c = cc - aa,
-                };
+                float miny = vp.y;
+                float maxy = vp.y;
+
+                vp = position[bb];
+                minx = MIN2(minx, vp.x);
+                maxx = MAX2(maxx, vp.x);
+                miny = MIN2(miny, vp.y);
+                maxy = MAX2(maxy, vp.y);
+
+                vp = position[cc];
+                minx = MIN2(minx, vp.x);
+                maxx = MAX2(maxx, vp.x);
+                miny = MIN2(miny, vp.y);
+                maxy = MAX2(maxy, vp.y);
+
+                int minx_tile = MAX2((int)minx / 16, 0);
+                int miny_tile = MAX2((int)miny / 16, 0);
+                int maxx_tile = MIN2(DIV_ROUND_UP((int)ceilf(maxx), 16), c->tx);
+                int maxy_tile = MIN2(DIV_ROUND_UP((int)ceilf(maxy), 16), c->ty);
+
                 coord_t l = {0};
-                for (l.x = 0; l.x < c->tx; ++l.x) {
-                        for (l.y = 0; l.y < c->ty; ++l.y) {
+                for (l.x = minx_tile; l.x < maxx_tile; ++l.x) {
+                        for (l.y = miny_tile; l.y < maxy_tile; ++l.y) {
                                 struct tiler_ext_header *ext
                                         = heap_get_ext(c, l);
 
@@ -479,10 +533,9 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                                         ext->pos = 0;
                                 }
 
-                                do_draw.offset = aa - ext->pos;
+                                do_draw(c, l, c->op, 0, aa - ext->pos, bb - aa, cc - aa);
                                 ext->pos = aa;
 
-                                heap_add(c, l, &do_draw);
                         }
                 }
         }
@@ -555,8 +608,13 @@ GENX(panfrost_emulate_tiler)(struct util_dynarray *tiler_jobs, unsigned gpu_id)
 
         UNUSED unsigned heap_size = (*tiler_heap) >> 32;
 
-//        printf("width %i\nheight %i\n", c.width, c.height);
-//        hexdump(stdout, (uint8_t *)heap - 0x8000, heap_size);
+        if (getenv("TILER_DUMP")) {
+                fflush(stdout);
+                FILE *stream = popen("tiler-hex-read", "w");
+                fprintf(stream, "width %i\nheight %i\n", c.width, c.height);
+                hexdump(stream, (uint8_t *)heap - 0x8000, heap_size);
+                pclose(stream);
+        }
 
         pandecode_no_mprotect = old_do_mprotect;
 }

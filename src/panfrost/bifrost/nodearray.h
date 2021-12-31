@@ -50,7 +50,7 @@ extern "C" {
 typedef struct util_dynarray nodearray;
 
 static inline bool
-nodearray_sparse(nodearray *a, unsigned max)
+nodearray_sparse(const nodearray *a, unsigned max)
 {
         return a->size < max;
 }
@@ -62,19 +62,19 @@ nodearray_encode(unsigned key, uint8_t value)
 }
 
 static inline unsigned
-nodearray_key(uint32_t *elem)
+nodearray_key(const uint32_t *elem)
 {
         return *elem >> 8;
 }
 
 static inline uint8_t
-nodearray_value(uint32_t *elem)
+nodearray_value(const uint32_t *elem)
 {
         return *elem & 0xff;
 }
 
 static inline unsigned
-nodearray_sparse_search(nodearray *a, uint32_t key, uint32_t **elem)
+nodearray_sparse_search(const nodearray *a, uint32_t key, uint32_t **elem)
 {
         uint32_t *data = (uint32_t *)util_dynarray_begin(a);
         unsigned size = util_dynarray_num_elements(a, uint32_t);
@@ -97,7 +97,7 @@ nodearray_sparse_search(nodearray *a, uint32_t key, uint32_t **elem)
 }
 
 static inline uint8_t
-nodearray_get(nodearray *a, unsigned key, unsigned max)
+nodearray_get(const nodearray *a, unsigned key, unsigned max)
 {
         if (nodearray_sparse(a, max)) {
                 if (!a->size)

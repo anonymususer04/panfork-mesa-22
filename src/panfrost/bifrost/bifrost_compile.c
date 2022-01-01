@@ -1462,6 +1462,10 @@ bi_emit_load_const(bi_builder *b, nir_load_const_instr *instr)
                 acc |= (v << (i * instr->def.bit_size));
         }
 
+        /* Convert from 0/1 bool to 0/~0 */
+        if (instr->def.bit_size == 1)
+                acc = 0 - acc;
+
         bi_mov_i32_to(b, bi_get_index(instr->def.index, false, 0), bi_imm_u32(acc));
 }
 

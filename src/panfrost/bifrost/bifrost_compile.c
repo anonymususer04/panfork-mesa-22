@@ -3743,17 +3743,15 @@ bi_finalize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
 }
 
 static bi_context *
-bi_compile_variant_nir(nir_shader *nir,
+bi_compile_variant_nir_part_one(nir_shader *nir,
                        const struct panfrost_compile_inputs *inputs,
                        struct util_dynarray *binary,
                        struct hash_table_u64 *sysval_to_id,
                        struct bi_shader_info info,
-                       enum bi_idvs_mode idvs)
+                       enum bi_idvs_mode idvs,
+                       struct bi_ubo_analysis **analysis_var)
 {
         bi_context *ctx = rzalloc(NULL, bi_context);
-
-        /* There may be another program in the dynarray, start at the end */
-        unsigned offset = binary->size;
 
         ctx->sysval_to_id = sysval_to_id;
         ctx->inputs = inputs;
@@ -3763,6 +3761,7 @@ bi_compile_variant_nir(nir_shader *nir,
         ctx->arch = inputs->gpu_id >> 12;
         ctx->info = info;
         ctx->idvs = idvs;
+        ctx->analysis = analysis_var;
 
         /* If nothing is pushed, all UBOs need to be uploaded */
         ctx->ubo_mask = ~0;
@@ -3771,8 +3770,11 @@ bi_compile_variant_nir(nir_shader *nir,
 
         bool skip_internal = nir->info.internal;
         skip_internal &= !(bifrost_debug & BIFROST_DBG_INTERNAL);
+        ctx->skip_internal = skip_internal;
 
-        if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal) {
+        /* This is the same for each shader, don't print it twice*/
+        if ((bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal) &&
+            (ctx->idvs != BI_IDVS_VARYING)) {
                 nir_print_shader(nir, stdout);
         }
 
@@ -3811,10 +3813,26 @@ bi_compile_variant_nir(nir_shader *nir,
         }
 
         bool optimize = !(bifrost_debug & BIFROST_DBG_NOOPT);
+        ctx->optimize = optimize;
 
         /* Runs before constant folding */
         bi_lower_swizzle(ctx);
         bi_validate(ctx, "Early lowering");
+
+        if (optimize && !ctx->inputs->no_ubo_to_push) {
+                bi_opt_push_ubo_analyze(ctx);
+        }
+
+        return ctx;
+}
+
+static bi_context *
+bi_compile_variant_nir_part_two(bi_context *ctx,
+                                const struct panfrost_compile_inputs *inputs,
+                                struct util_dynarray *binary)
+{
+        bool optimize = ctx->optimize;
+        bool skip_internal = ctx->skip_internal;
 
         /* Runs before copy prop */
         if (optimize && !ctx->inputs->no_ubo_to_push) {
@@ -3882,33 +3900,41 @@ bi_compile_variant_nir(nir_shader *nir,
         if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal)
                 bi_print_shader(ctx, stdout);
 
+        /* There may be another program in the dynarray, start at the end */
+        ctx->offset = binary->size;
+
+        /* Software invariant: Only a secondary shader can appear at a nonzero
+         * offset, to keep the ABI simple. */
+        assert((ctx->offset == 0) ^ (ctx->idvs == BI_IDVS_VARYING));
+
         if (ctx->arch <= 8) {
-                bi_pack_clauses(ctx, binary, offset);
+                bi_pack_clauses(ctx, binary, ctx->offset);
         } else {
                 /* TODO: pack flat */
         }
 
         if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal) {
-                disassemble_bifrost(stdout, binary->data + offset, binary->size - offset,
+                disassemble_bifrost(stdout, binary->data + ctx->offset, binary->size - ctx->offset,
                                     bifrost_debug & BIFROST_DBG_VERBOSE);
                 fflush(stdout);
         }
 
         if ((bifrost_debug & BIFROST_DBG_SHADERDB || inputs->shaderdb) &&
             !skip_internal) {
-                bi_print_stats(ctx, binary->size - offset, stderr);
+                bi_print_stats(ctx, binary->size - ctx->offset, stderr);
         }
 
         return ctx;
 }
 
-static void
-bi_compile_variant(nir_shader *nir,
-                   const struct panfrost_compile_inputs *inputs,
-                   struct util_dynarray *binary,
-                   struct hash_table_u64 *sysval_to_id,
-                   struct pan_shader_info *info,
-                   enum bi_idvs_mode idvs)
+static bi_context *
+bi_compile_variant_part_one(nir_shader *nir,
+                            const struct panfrost_compile_inputs *inputs,
+                            struct util_dynarray *binary,
+                            struct hash_table_u64 *sysval_to_id,
+                            struct pan_shader_info *info,
+                            enum bi_idvs_mode idvs,
+                            struct bi_ubo_analysis **analysis_var)
 {
         struct bi_shader_info local_info = {
                 .push = &info->push,
@@ -3917,13 +3943,17 @@ bi_compile_variant(nir_shader *nir,
                 .sysvals = &info->sysvals
         };
 
-        unsigned offset = binary->size;
+        bi_context *ctx = bi_compile_variant_nir_part_one(nir, inputs, binary, sysval_to_id, local_info, idvs, analysis_var);
+        return ctx;
+}
 
-        /* Software invariant: Only a secondary shader can appear at a nonzero
-         * offset, to keep the ABI simple. */
-        assert((offset == 0) ^ (idvs == BI_IDVS_VARYING));
-
-        bi_context *ctx = bi_compile_variant_nir(nir, inputs, binary, sysval_to_id, local_info, idvs);
+static void
+bi_compile_variant_part_two(bi_context *ctx,
+                            const struct panfrost_compile_inputs *inputs,
+                            struct util_dynarray *binary,
+                            struct pan_shader_info *info)
+{
+        bi_compile_variant_nir_part_two(ctx, inputs, binary);
 
         /* A register is preloaded <==> it is live before the first block */
         bi_block *first_block = list_first_entry(&ctx->blocks, bi_block, link);
@@ -3932,9 +3962,9 @@ bi_compile_variant(nir_shader *nir,
         info->ubo_mask |= ctx->ubo_mask;
         info->tls_size = MAX2(info->tls_size, ctx->info.tls_size);
 
-        if (idvs == BI_IDVS_VARYING) {
-                info->vs.secondary_enable = (binary->size > offset);
-                info->vs.secondary_offset = offset;
+        if (ctx->idvs == BI_IDVS_VARYING) {
+                info->vs.secondary_enable = (binary->size > ctx->offset);
+                info->vs.secondary_offset = ctx->offset;
                 info->vs.secondary_preload = preload;
                 info->vs.secondary_work_reg_count = ctx->info.work_reg_count;
         } else {
@@ -3996,11 +4026,16 @@ bifrost_compile_shader_nir(nir_shader *nir,
         info->tls_size = nir->scratch_size;
         info->vs.idvs = bi_should_idvs(nir, inputs);
 
+        struct bi_ubo_analysis *analysis_var = NULL;
+
         if (info->vs.idvs) {
-                bi_compile_variant(nir, inputs, binary, sysval_to_id, info, BI_IDVS_POSITION);
-                bi_compile_variant(nir, inputs, binary, sysval_to_id, info, BI_IDVS_VARYING);
+                bi_context *ctx_pos = bi_compile_variant_part_one(nir, inputs, binary, sysval_to_id, info, BI_IDVS_POSITION, &analysis_var);
+                bi_context *ctx_var = bi_compile_variant_part_one(nir, inputs, binary, sysval_to_id, info, BI_IDVS_VARYING, &analysis_var);
+                bi_compile_variant_part_two(ctx_pos, inputs, binary, info);
+                bi_compile_variant_part_two(ctx_var, inputs, binary, info);
         } else {
-                bi_compile_variant(nir, inputs, binary, sysval_to_id, info, BI_IDVS_NONE);
+                bi_context *ctx = bi_compile_variant_part_one(nir, inputs, binary, sysval_to_id, info, BI_IDVS_NONE, &analysis_var);
+                bi_compile_variant_part_two(ctx, inputs, binary, info);
         }
 
         info->ubo_mask &= (1 << nir->info.num_ubos) - 1;

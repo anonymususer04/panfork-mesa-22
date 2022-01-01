@@ -56,18 +56,28 @@ struct bi_ubo_block {
 
 struct bi_ubo_analysis {
         /* Per block analysis */
+        unsigned refcnt;
         unsigned nr_blocks;
+        bool done_pick;
         struct bi_ubo_block *blocks;
 };
 
-static struct bi_ubo_analysis
+static void
 bi_analyze_ranges(bi_context *ctx)
 {
-        struct bi_ubo_analysis res = {
-                .nr_blocks = ctx->nir->info.num_ubos + 1,
-        };
+        if (!*(ctx->analysis))
+                *(ctx->analysis) = calloc(1, sizeof(struct bi_ubo_analysis));
 
-        res.blocks = calloc(res.nr_blocks, sizeof(struct bi_ubo_block));
+        struct bi_ubo_analysis *res = *ctx->analysis;
+
+        if (res->nr_blocks) {
+                assert(res->nr_blocks == ctx->nir->info.num_ubos + 1);
+        } else {
+                res->nr_blocks = ctx->nir->info.num_ubos + 1;
+                res->blocks = calloc(res->nr_blocks, sizeof(struct bi_ubo_block));
+        }
+
+        ++res->refcnt;
 
         bi_foreach_instr_global(ctx, ins) {
                 if (!bi_is_direct_aligned_ubo(ins)) continue;
@@ -77,19 +87,16 @@ bi_analyze_ranges(bi_context *ctx)
                 unsigned offset = (ins->src[0].value / 4) & 3;
                 unsigned channels = bi_opcode_props[ins->op].sr_count;
 
-                assert(ubo < res.nr_blocks);
+                assert(ubo < res->nr_blocks);
                 assert(channels > 0 && channels <= 4);
 
                 unsigned used = BITSET_MASK(channels) << offset;
 
                 if (qword < MAX_UBO_QWORDS)
-                        res.blocks[ubo].used[qword] |= used & 0xf;
+                        res->blocks[ubo].used[qword] |= used & 0xf;
                 if (used > 0xf && qword + 1 < MAX_UBO_QWORDS)
-                        res.blocks[ubo].used[qword + 1] |= used >> 4;
-
+                        res->blocks[ubo].used[qword + 1] |= used >> 4;
         }
-
-        return res;
 }
 
 /* Select UBO words to push. A sophisticated implementation would consider the
@@ -99,6 +106,9 @@ bi_analyze_ranges(bi_context *ctx)
 static void
 bi_pick_ubo(struct panfrost_ubo_push *push, struct bi_ubo_analysis *analysis)
 {
+        if (analysis->done_pick)
+                return;
+
         for (signed ubo = analysis->nr_blocks - 1; ubo >= 0; --ubo) {
                 struct bi_ubo_block *block = &analysis->blocks[ubo];
 
@@ -125,13 +135,25 @@ bi_pick_ubo(struct panfrost_ubo_push *push, struct bi_ubo_analysis *analysis)
                         BITSET_SET(block->pushed, r);
                 }
         }
+
+        analysis->done_pick = true;
+}
+
+void
+bi_opt_push_ubo_analyze(bi_context *ctx)
+{
+        struct bi_ubo_analysis *analysis = *ctx->analysis;
+        if (analysis)
+                assert(!analysis->done_pick);
+
+        bi_analyze_ranges(ctx);
 }
 
 void
 bi_opt_push_ubo(bi_context *ctx)
 {
-        struct bi_ubo_analysis analysis = bi_analyze_ranges(ctx);
-        bi_pick_ubo(ctx->info.push, &analysis);
+        struct bi_ubo_analysis *analysis = *ctx->analysis;
+        bi_pick_ubo(ctx->info.push, analysis);
 
         ctx->ubo_mask = 0;
 
@@ -155,9 +177,9 @@ bi_opt_push_ubo(bi_context *ctx)
                 unsigned channels = bi_opcode_props[ins->op].sr_count;
 
                 /* Check if we decided to push this */
-                assert(ubo < analysis.nr_blocks);
-                if ((!BITSET_TEST(analysis.blocks[ubo].pushed, offset / 16) ||
-                     !BITSET_TEST(analysis.blocks[ubo].pushed,
+                assert(ubo < analysis->nr_blocks);
+                if ((!BITSET_TEST(analysis->blocks[ubo].pushed, offset / 16) ||
+                     !BITSET_TEST(analysis->blocks[ubo].pushed,
                                   (offset + (channels - 1) * 4) / 16))) {
                         ctx->ubo_mask |= BITSET_BIT(ubo);
                         continue;
@@ -183,5 +205,8 @@ bi_opt_push_ubo(bi_context *ctx)
                 bi_remove_instruction(ins);
         }
 
-        free(analysis.blocks);
+        if (--analysis->refcnt == 0) {
+                free(analysis->blocks);
+                free(analysis);
+        }
 }

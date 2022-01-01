@@ -656,6 +656,8 @@ enum bi_idvs_mode {
         BI_IDVS_VARYING = 2,
 };
 
+struct bi_ubo_analysis;
+
 typedef struct {
        const struct panfrost_compile_inputs *inputs;
        nir_shader *nir;
@@ -684,11 +686,19 @@ typedef struct {
        /* Mask of UBOs that need to be uploaded */
        uint32_t ubo_mask;
 
+       /* TODO: Rename variable.. */
+       struct bi_ubo_analysis **analysis;
+
        /* Stats for shader-db */
        unsigned instruction_count;
        unsigned loop_count;
        unsigned spills;
        unsigned fills;
+
+       /* Extra data (TODO: re-order?) */
+       unsigned offset;
+       bool optimize;
+       bool skip_internal;
 } bi_context;
 
 static inline void
@@ -952,6 +962,7 @@ void bi_opt_mod_prop_backward(bi_context *ctx);
 void bi_opt_dead_code_eliminate(bi_context *ctx);
 void bi_opt_fuse_dual_texture(bi_context *ctx);
 void bi_opt_dce_post_ra(bi_context *ctx);
+void bi_opt_push_ubo_analyze(bi_context *ctx);
 void bi_opt_push_ubo(bi_context *ctx);
 void bi_lower_swizzle(bi_context *ctx);
 void bi_lower_fau(bi_context *ctx);

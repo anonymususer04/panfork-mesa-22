@@ -408,21 +408,21 @@ bi_allocate_registers(bi_context *ctx, bool *success, bool full_regs)
                 (BITFIELD64_MASK(16) | (BITFIELD64_MASK(16) << 48));
 
         bi_foreach_instr_global(ctx, ins) {
+                /* Blend shaders expect the src colour to be in r0-r3 */
+                if (ins->op == BI_OPCODE_BLEND &&
+                    !ctx->inputs->is_blend) {
+                        unsigned node = bi_get_node(ins->src[0]);
+                        assert(node < node_count);
+                        l->solutions[node] = 0;
+
+                        /* Dual source blend input in r4-r7 */
+                        node = bi_get_node(ins->src[4]);
+                        if (node < node_count)
+                                l->solutions[node] = 4;
+                }
+
                 bi_foreach_dest(ins, d) {
                         unsigned dest = bi_get_node(ins->dest[d]);
-
-                        /* Blend shaders expect the src colour to be in r0-r3 */
-                        if (ins->op == BI_OPCODE_BLEND &&
-                            !ctx->inputs->is_blend) {
-                                unsigned node = bi_get_node(ins->src[0]);
-                                assert(node < node_count);
-                                l->solutions[node] = 0;
-
-                                /* Dual source blend input in r4-r7 */
-                                node = bi_get_node(ins->src[4]);
-                                if (node < node_count)
-                                        l->solutions[node] = 4;
-                        }
 
                         if (dest < node_count)
                                 l->affinity[dest] = default_affinity;

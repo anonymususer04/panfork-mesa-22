@@ -78,6 +78,8 @@
 enum pipe_format
 panfrost_afbc_format(const struct panfrost_device *dev, enum pipe_format format)
 {
+        format = util_format_linear(format);
+
         /* Don't allow swizzled formats on v7 */
         switch (format) {
         case PIPE_FORMAT_B8G8R8A8_UNORM:

@@ -89,6 +89,10 @@ nodearray_sparse_search(const nodearray *a, uint32_t key, uint32_t **elem)
 
         unsigned left = 0;
         unsigned right = size - 1;
+
+        if (data[right] <= skey)
+                left = right;
+
         while (left != right) {
                 unsigned probe = (left + right + 1) / 2;
 

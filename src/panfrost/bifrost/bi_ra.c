@@ -202,13 +202,22 @@ lcra_linear_solutions(struct lcra_state *l, int8_t *solutions, unsigned i)
         uint64_t possible = l->affinity[i];
 
         if (lcra_linear_sparse(l, i)) {
-                util_dynarray_foreach(&l->linear[i], uint32_t, elem) {
-                        /* TODO: Can we use NEON at all here? */
-                        unsigned j = nodearray_key(elem);
-                        uint64_t constraint = nodearray_value(elem);
+                nodearray_sparse_foreach_vec(&l->linear[i], elem, val) {
+                        unsigned j = nodearray_key((uint32_t *)elem);
+                        for (unsigned x = 0; x < 16; ++x) {
 
-                        possible &= lcra_solution_mask(constraint, solutions[j]);
+                                uint64_t constraint = *val;
+
+                                possible &= lcra_solution_mask(constraint, solutions[j + x]);
+                        }
                 }
+//                util_dynarray_foreach(&l->linear[i], uint32_t, elem) {
+                        /* TODO: Can we use NEON at all here? */
+//                        unsigned j = nodearray_key(elem);
+//                        uint64_t constraint = nodearray_value(elem);
+
+//                        possible &= lcra_solution_mask(constraint, solutions[j]);
+//                }
 
                 return possible;
         } else {
@@ -251,11 +260,15 @@ lcra_count_constraints(struct lcra_state *l, unsigned i)
         unsigned count = 0;
         struct util_dynarray *constraints = &l->linear[i];
 
-        /* For sparse arrays, the top bits encode the node */
-        uint32_t mask = lcra_linear_sparse(l, i) ? 0xff : ~0;
-
-        util_dynarray_foreach(constraints, uint32_t, elem)
-                count += util_bitcount(*elem & mask);
+        if (lcra_linear_sparse(l, i))
+                nodearray_sparse_foreach_val(constraints, elem) {
+                        uint64_t *ptr = (uint64_t *)elem;
+                        count += util_bitcount64(ptr[0]);
+                        count += util_bitcount64(ptr[1]);
+                }
+        else
+                util_dynarray_foreach(constraints, uint64_t, elem)
+                        count += util_bitcount64(*elem);
 
         return count;
 }
@@ -333,9 +346,9 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uin
                         unsigned writemask = bi_writemask(ins, d);
 
                         assert(nodearray_sparse(live, ~0));
-                        util_dynarray_foreach(live, uint32_t, elem) {
+                        nodearray_sparse_foreach(live, elem, value) {
                                 unsigned i = nodearray_key(elem);
-                                unsigned liveness = nodearray_value(elem);
+                                unsigned liveness = *value;
 
                                 if (liveness)
                                         lcra_add_node_interference(l, node,
@@ -356,10 +369,10 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uin
                         uint64_t clobber = BITFIELD64_MASK(16) | BITFIELD64_BIT(48);
 
                         assert(nodearray_sparse(live, ~0));
-                        util_dynarray_foreach(live, uint32_t, elem) {
+                        nodearray_sparse_foreach(live, elem, value) {
                                 unsigned i = nodearray_key(elem);
 
-                                if (nodearray_value(elem))
+                                if (*value)
                                         l->affinity[i] &= ~clobber;
                         }
                 }
@@ -535,9 +548,9 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
         signed best_node = -1;
 
         if (lcra_linear_sparse(l, l->spill_node)) {
-                util_dynarray_foreach(&l->linear[l->spill_node], uint32_t, elem) {
+                nodearray_sparse_foreach(&l->linear[l->spill_node], elem, value) {
                         unsigned i = nodearray_key(elem);
-                        unsigned constraint = nodearray_value(elem);
+                        unsigned constraint = *value;
 
                         /* Only spill nodes that interfere with the node failing
                          * register allocation. It's pointless to spill anything else */

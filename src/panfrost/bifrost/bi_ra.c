@@ -126,11 +126,15 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
 static void
 lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_i, unsigned j, uint8_t *cmask_j)
 {
-        if (i == j)
-                return;
-
         uint8x16_t constraint_fw = vdupq_n_u8(0);
-
+/*
+        uint8_t xx[16];
+        if (i - j < 16) {
+                memcpy(xx, cmask_j, 16);
+                xx[i - j] = 0;
+                cmask_j = xx;
+        }
+*/
         uint8x16_t cmask_j_vec = vld1q_u8(cmask_j);
         uint8x16_t cmask_i_vec = vdupq_n_u8(cmask_i);
 
@@ -166,11 +170,34 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
                 if (!cf[n])
                         continue;
 
+                if (j + n == i)
+                        continue;
+
                 /* Use dense arrays after adding 256 elements */
                 /* why not change threshold? */
                 nodearray_orr(&l->linear[j + n], i, cf[n], 256, l->node_count);
+
+                printf("interfere %i / %i: %x\n", j + n, i, cf[n]);
         }
 
+#if 1
+        uint8_t of[16];
+        vst1q_u8(of, constraint_bw);
+
+        for (unsigned n = 0; n < 16; ++n) {
+                if (!of[n])
+                        continue;
+
+//                if (j + n == i)
+//                        continue;
+
+                /* Use dense arrays after adding 256 elements */
+                /* why not change threshold? */
+                nodearray_orr(&l->linear[i], j + n, of[n], 256, l->node_count);
+
+                printf("Interfere %i / %i: %x\n", i, j + n, of[n]);
+        }
+//#else
         bool new = true;
         uint8_t *st = nodearray_orr_loc(&l->linear[i], j, 256, l->node_count, &new);
         if (!new) {
@@ -178,6 +205,7 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
                 constraint_bw = vorrq_u8(oc, constraint_bw);
         }
         vst1q_u8(st, constraint_bw);
+#endif
 }
 
 static uint64_t
@@ -458,6 +486,17 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uin
                         unsigned writemask = bi_writemask(ins, d);
 
                         assert(nodearray_sparse(live, ~0));
+
+                        if (0)
+                        nodearray_sparse_foreach(live, it) {
+                                unsigned i = it.key;
+                                unsigned liveness = it.value;
+
+                                assert(liveness);
+                                assert(nodearray_get(live, i, ~0) == liveness);
+                                lcra_add_node_interference(l, node, writemask, i, liveness);
+                        }
+                        else
                         nodearray_sparse_foreach_vec(live, elem, value) {
                                 unsigned base = nodearray_key((uint32_t *)elem);
                                 lcra_add_node_interference_vec(l, node, writemask, base, value);
@@ -810,7 +849,7 @@ bi_register_allocate(bi_context *ctx)
         /* Number of bytes of memory we've spilled into */
         unsigned spill_count = ctx->info.tls_size;
 
-        bi_reindex(ctx);
+//        bi_reindex(ctx);
 
         /* Try with reduced register pressure to improve thread count on v7 */
         if (ctx->arch == 7) {

@@ -746,7 +746,7 @@ bi_max_temp(bi_context *ctx)
 #ifdef TEMPSHL
         return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2) << 1;
 #else
-        return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2) << 1;
+        return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2);
 #endif
 }
 
@@ -787,7 +787,7 @@ bi_src_index(nir_src *src)
 
                 return bi_imm_u32(bi_extend_constant(v, nir_src_bit_size(*src)));
         } else if (src->is_ssa) {
-                return bi_get_index(src->ssa->index, false, 0);
+                return bi_get_index(src->ssa->index + 160, false, 0);
         } else {
                 assert(!src->reg.indirect);
                 return bi_get_index(src->reg.reg->index, true, 0);
@@ -798,7 +798,7 @@ static inline bi_index
 bi_dest_index(nir_dest *dst)
 {
         if (dst->is_ssa)
-                return bi_get_index(dst->ssa.index, false, 0);
+                return bi_get_index(dst->ssa.index + 160, false, 0);
         else {
                 assert(!dst->reg.indirect);
                 return bi_get_index(dst->reg.reg->index, true, 0);
@@ -814,9 +814,6 @@ bi_get_node(bi_index index)
 #ifdef TEMPSHL
                 return (index.value << 1) | index.reg;
 #else
-        if (!index.reg)
-                return index.value << 1;
-        else
                 return index.value;
 #endif
 }
@@ -830,10 +827,7 @@ bi_node_to_index(bi_context *ctx, unsigned node, unsigned node_count)
 #ifdef TEMPSHL
         return bi_get_index(node >> 1, node & PAN_IS_REG, 0);
 #else
-        if (node < ctx->reg_alloc)
-                return bi_get_index(node, node < ctx->reg_alloc, 0);
-        else
-                return bi_get_index(node >> 1, node < ctx->reg_alloc, 0);
+        return bi_get_index(node, node < ctx->reg_alloc, 0);
 #endif
 }
 

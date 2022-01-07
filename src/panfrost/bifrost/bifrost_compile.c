@@ -3778,6 +3778,9 @@ bi_compile_variant_nir_part_one(nir_shader *nir,
                 nir_print_shader(nir, stdout);
         }
 
+        // XXX
+        ctx->ssa_alloc = 160;
+
         nir_foreach_function(func, nir) {
                 if (!func->impl)
                         continue;
@@ -3788,6 +3791,7 @@ bi_compile_variant_nir_part_one(nir_shader *nir,
                 emit_cf_list(ctx, &func->impl->body);
                 break; /* TODO: Multi-function shaders */
         }
+        printf("r: %i\n", ctx->reg_alloc);
 
         unsigned block_source_count = 0;
 
@@ -3833,6 +3837,9 @@ bi_compile_variant_nir_part_two(bi_context *ctx,
 {
         bool optimize = ctx->optimize;
         bool skip_internal = ctx->skip_internal;
+
+        if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal)
+                bi_print_shader(ctx, stdout);
 
         /* Runs before copy prop */
         if (optimize && !ctx->inputs->no_ubo_to_push) {

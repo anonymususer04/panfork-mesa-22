@@ -771,7 +771,7 @@ bi_reindex_single(struct bi_reindex_ctx *reindex, bi_index idx)
 {
         if (idx.type == BI_INDEX_NORMAL && !idx.reg) {
                 if (reindex->ssa[idx.value] == 0)
-                        reindex->ssa[idx.value] = ++reindex->ssa_alloc;
+                        reindex->ssa[idx.value] = ++reindex->ssa_alloc;// << 1;
 
                 idx.value = reindex->ssa[idx.value];
         }
@@ -787,7 +787,7 @@ bi_reindex(bi_context *ctx)
                 .ssa_alloc = ctx->reg_alloc + 16,
         };
 
-        bi_foreach_instr_global(ctx, I) {
+        bi_foreach_instr_global_rev(ctx, I) {
                 bi_foreach_src(I, s)
                         I->src[s] = bi_reindex_single(&reindex, I->src[s]);
 

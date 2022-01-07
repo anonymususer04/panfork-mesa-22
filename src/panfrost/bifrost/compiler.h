@@ -738,7 +738,7 @@ bi_fau(enum bir_fau value, bool hi)
         };
 }
 
-#define TEMPSHL
+//#define TEMPSHL
 
 static inline unsigned
 bi_max_temp(bi_context *ctx)
@@ -746,7 +746,7 @@ bi_max_temp(bi_context *ctx)
 #ifdef TEMPSHL
         return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2) << 1;
 #else
-        return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2);
+        return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2) << 1;
 #endif
 }
 
@@ -814,6 +814,9 @@ bi_get_node(bi_index index)
 #ifdef TEMPSHL
                 return (index.value << 1) | index.reg;
 #else
+        if (!index.reg)
+                return index.value << 1;
+        else
                 return index.value;
 #endif
 }
@@ -827,7 +830,10 @@ bi_node_to_index(bi_context *ctx, unsigned node, unsigned node_count)
 #ifdef TEMPSHL
         return bi_get_index(node >> 1, node & PAN_IS_REG, 0);
 #else
-        return bi_get_index(node, node < ctx->reg_alloc, 0);
+        if (node < ctx->reg_alloc)
+                return bi_get_index(node, node < ctx->reg_alloc, 0);
+        else
+                return bi_get_index(node >> 1, node < ctx->reg_alloc, 0);
 #endif
 }
 

@@ -87,6 +87,28 @@ lcra_alloc_equations(unsigned node_count, unsigned min_ssa)
 }
 
 static void
+lcra_realloc_equations(struct lcra_state *l, unsigned node_count)
+{
+        assert(node_count >= l->node_count);
+        if (node_count == l->node_count)
+                return;
+
+        l->linear = realloc(l->linear, sizeof(l->linear[0]) * node_count);
+        l->solutions = realloc(l->solutions, sizeof(l->linear[0]) * node_count);
+        l->affinity = realloc(l->affinity, sizeof(l->linear[0]) * node_count);
+
+        /* By now, we shouldn't need this anymore, don't bother with it */
+        free(l->insert_hint);
+        l->insert_hint = NULL;
+
+        unsigned extra_count = node_count - l->node_count;
+
+        memset(l->linear + l->node_count, 0, sizeof(l->linear[0]) * extra_count);
+        memset(l->solutions + l->node_count, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * extra_count);
+        memset(l->affinity + l->node_count, 0, sizeof(l->affinity[0]) * extra_count);
+}
+
+static void
 lcra_free(struct lcra_state *l)
 {
         for (unsigned i = 0; i < l->node_count; ++i)
@@ -416,6 +438,13 @@ lcra_solve(struct lcra_state *l)
         }
 
         return true;
+}
+
+static bool
+lcra_solve_continue(struct lcra_state *l)
+{
+        // solutions is cleared in lcra_realloc_equations
+        return lcra_solve(l);
 }
 
 /* Register spilling is implemented with a cost-benefit system. Costs are set
@@ -783,15 +812,30 @@ bi_count_read_index(bi_instr *I, bi_index index)
 /* Once we've chosen a spill node, spill it and returns bytes spilled */
 
 static unsigned
-bi_spill_register(bi_context *ctx, bi_index index, uint32_t offset)
+bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_t offset)
 {
         bi_builder b = { .shader = ctx };
         unsigned channels = 0;
 
+        unsigned node = bi_get_node(index);
+
+        util_dynarray_fini(&l->linear[node]);
+        for (unsigned i = 0; i < l->node_count; ++i)
+                nodearray_bic(&l->linear[i], node, 0xff, l->node_count);
+
+        struct util_dynarray dest_worklist, src_worklist;
+        util_dynarray_init(&dest_worklist, NULL);
+        util_dynarray_init(&src_worklist, NULL);
+
+        unsigned max_ssa = ctx->ssa_alloc;
+
         /* Spill after every store, fill before every load */
+        /* TODO: If there are multiple close uses.. */
         bi_foreach_instr_global_safe(ctx, I) {
                 bi_foreach_dest(I, d) {
                         if (!bi_is_equiv(I->dest[d], index)) continue;
+
+                        util_dynarray_append(&dest_worklist, bi_instr *, I);
 
                         unsigned extra = I->dest[d].offset;
                         bi_index tmp = bi_temp(ctx);
@@ -811,6 +855,8 @@ bi_spill_register(bi_context *ctx, bi_index index, uint32_t offset)
                 }
 
                 if (bi_has_arg(I, index)) {
+                        util_dynarray_append(&src_worklist, bi_instr *, I);
+
                         b.cursor = bi_before_instr(I);
                         bi_index tmp = bi_temp(ctx);
 
@@ -823,6 +869,65 @@ bi_spill_register(bi_context *ctx, bi_index index, uint32_t offset)
                         ctx->fills++;
                 }
         }
+
+        // TODO: Do we need to make sure that we don't involve a BLEND
+        // instruction anywhere?
+
+        // TODO: alignment on Valhall
+
+        unsigned node_count = bi_max_temp(ctx);
+        lcra_realloc_equations(l, node_count);
+
+        util_dynarray_foreach(&dest_worklist, bi_instr *, _I) {
+                bi_instr *I = *_I;
+
+                bi_foreach_dest(I, d) {
+                        unsigned nn = bi_get_node(I->dest[d]);
+
+                        if (nn < max_ssa || nn > node_count) continue;
+
+                        l->affinity[nn] = l->affinity[node];
+                        // todo: ralloc context
+                        util_dynarray_clone(&l->linear[nn], NULL, &l->linear[node]);
+
+                        // We don't need a forward constraint
+                }
+        }
+        util_dynarray_foreach(&src_worklist, bi_instr *, _I) {
+                bi_instr *I = *_I;
+
+                unsigned nn = ~0;
+                unsigned Ssrc = ~0;
+                bi_foreach_src(I, s) {
+                        nn = bi_get_node(I->src[s]);
+                        if (nn < max_ssa || nn > node_count) continue;
+                        Ssrc = s;
+                        break;
+                }
+                assert(found);
+
+                l->affinity[nn] = l->affinity[node];
+
+                unsigned Scount = bi_count_read_registers(I, Ssrc);
+                unsigned Srmask = BITFIELD_MASK(Scount);
+                uint8_t Smask = (Srmask << I->src[Ssrc].offset);
+
+                util_dynarray_clone(&l->linear[nn], NULL, &l->linear[node]);
+                bi_foreach_src(I, src) {
+
+                        unsigned sn = bi_get_node(I->src[src]);
+                        if (sn >= max_ssa) continue;
+
+                        unsigned count = bi_count_read_registers(I, src);
+                        unsigned rmask = BITFIELD_MASK(count);
+                        uint8_t mask = (rmask << I->src[src].offset);
+
+                        lcra_add_node_interference(l, nn, Smask, sn, mask);
+                }
+        }
+
+        util_dynarray_fini(&dest_worklist);
+        util_dynarray_fini(&src_worklist);
 
         return (channels * 4);
 }
@@ -894,25 +999,26 @@ bi_register_allocate(bi_context *ctx)
                 }
         }
 
-        /* Otherwise, use the register file and spill until we succeed */
-        while (!success && ((iter_count--) > 0)) {
+        if (!success) {
                 bi_invalidate_liveness(ctx);
                 l = bi_allocate_registers(ctx, &success, true);
+                ctx->info.work_reg_count = 64;
+        }
 
-                if (success) {
-                        ctx->info.work_reg_count = 64;
-                } else {
-                        signed spill_node = bi_choose_spill_node(ctx, l);
-                        lcra_free(l);
-                        l = NULL;
+        /* Otherwise, use the register file and spill until we succeed */
+        while (((iter_count--) > 0)) {
 
-                        if (spill_node == -1)
-                                unreachable("Failed to choose spill node\n");
+                if (lcra_solve_continue(l))
+                        break;
 
-                        spill_count += bi_spill_register(ctx,
-                                                         bi_node_to_index(ctx, spill_node, bi_max_temp(ctx)),
-                                        spill_count);
-                }
+                signed spill_node = bi_choose_spill_node(ctx, l);
+
+                if (spill_node == -1)
+                        unreachable("Failed to choose spill node\n");
+
+                spill_count += bi_spill_register(ctx, l,
+                                                 bi_node_to_index(ctx, spill_node, bi_max_temp(ctx)),
+                                                 spill_count);
         }
 
         assert(success);

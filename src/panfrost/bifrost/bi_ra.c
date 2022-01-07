@@ -431,6 +431,7 @@ lcra_linear_solutions(struct lcra_state *l, int8_t *solutions, unsigned i)
 static bool
 lcra_solve(struct lcra_state *l)
 {
+//        printf("solving up to %i\n", l->node_count);
         for (unsigned step = 0; step < l->node_count; ++step) {
                 if (l->solutions[step] != LCRA_NOT_SOLVED) continue;
                 if (l->affinity[step] == 0) continue;
@@ -830,9 +831,6 @@ bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_
 
         unsigned node = bi_get_node(index);
 
-        util_dynarray_fini(&l->linear[node]);
-        l->affinity[node] = 0;
-
         struct util_dynarray dest_worklist, src_worklist;
         util_dynarray_init(&dest_worklist, NULL);
         util_dynarray_init(&src_worklist, NULL);
@@ -935,6 +933,9 @@ bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_
                         lcra_add_node_interference(l, nn, Smask, sn, mask);
                 }
         }
+
+        util_dynarray_fini(&l->linear[node]);
+        l->affinity[node] = 0;
 
         util_dynarray_fini(&dest_worklist);
         util_dynarray_fini(&src_worklist);

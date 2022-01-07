@@ -112,7 +112,6 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
          * allocation can be done in parallel with the smaller bits
          * representing smaller registers. */
 
-        // can we do this another way?
         for (unsigned D = 0; D < 4; ++D) {
                 if (cmask_i & (cmask_j << D)) {
                         constraint_fw |= (1 << (3 + D));
@@ -134,14 +133,7 @@ static void
 lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_i, unsigned j, uint8_t *cmask_j, bool fw)
 {
         uint8x16_t constraint_fw = vdupq_n_u8(0);
-/*
-        uint8_t xx[16];
-        if (i - j < 16) {
-                memcpy(xx, cmask_j, 16);
-                xx[i - j] = 0;
-                cmask_j = xx;
-        }
-*/
+
         uint8x16_t cmask_j_vec = vld1q_u8(cmask_j);
         uint8x16_t cmask_i_vec = vdupq_n_u8(cmask_i);
 
@@ -206,8 +198,9 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
         vst1q_u8(st, constraint_bw);
 
         // if "they" get RAd first, they don't need to care about us
-        if (i > l->min_ssa && j + 15 < i && !fw)
-                return;
+        // TODO: This shouldn't affect results!
+//        if (i > l->min_ssa && j + 15 < i && !fw)
+//                return;
 
 //        printf("bitmask: %x\n", bitmask);
         u_foreach_bit(n, bitmask) {
@@ -715,6 +708,7 @@ bi_rewrite_index_src_single(bi_instr *ins, bi_index old, bi_index new)
 static signed
 bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
 {
+        // TODO: cache no_spill?
         /* Pick a node satisfying bi_spill_register's preconditions */
         BITSET_WORD *no_spill = calloc(sizeof(BITSET_WORD), BITSET_WORDS(l->node_count));
 
@@ -900,17 +894,16 @@ bi_register_allocate(bi_context *ctx)
                 }
         }
 
+        bi_invalidate_liveness(ctx);
+
         /* Otherwise, use the register file and spill until we succeed */
         while (!success && ((iter_count--) > 0)) {
-                bi_invalidate_liveness(ctx);
-                l = bi_allocate_registers(ctx, &success, true);
+                bi_allocate_registers(ctx, &success, &l, true);
 
                 if (success) {
                         ctx->info.work_reg_count = 64;
                 } else {
                         signed spill_node = bi_choose_spill_node(ctx, l);
-                        lcra_free(l);
-                        l = NULL;
 
                         if (spill_node == -1)
                                 unreachable("Failed to choose spill node\n");

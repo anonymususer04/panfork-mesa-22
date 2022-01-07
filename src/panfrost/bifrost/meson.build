@@ -154,6 +154,7 @@ if with_tests
 	'test/test-pack-formats.cpp',
 	'test/test-packing.cpp',
 	'test/test-scheduler-predicates.cpp',
+	'test/test-nodearray.cpp',
       ),
       c_args : [c_msvc_compat_args, no_override_init_args],
       gnu_symbol_visibility : 'hidden',

@@ -346,13 +346,13 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uin
                         unsigned writemask = bi_writemask(ins, d);
 
                         assert(nodearray_sparse(live, ~0));
-                        nodearray_sparse_foreach(live, elem, value) {
-                                unsigned i = nodearray_key(elem);
-                                unsigned liveness = *value;
+                        nodearray_sparse_foreach(live, it) {
+                                unsigned i = it.key;
+                                unsigned liveness = it.value;
 
-                                if (liveness)
-                                        lcra_add_node_interference(l, node,
-                                                        writemask, i, liveness);
+                                assert(liveness);
+                                assert(nodearray_get(live, i, ~0) == liveness);
+                                lcra_add_node_interference(l, node, writemask, i, liveness);
                         }
                 }
 
@@ -369,10 +369,10 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uin
                         uint64_t clobber = BITFIELD64_MASK(16) | BITFIELD64_BIT(48);
 
                         assert(nodearray_sparse(live, ~0));
-                        nodearray_sparse_foreach(live, elem, value) {
-                                unsigned i = nodearray_key(elem);
+                        nodearray_sparse_foreach(live, it) {
+                                unsigned i = it.key;
 
-                                if (*value)
+                                if (it.value)
                                         l->affinity[i] &= ~clobber;
                         }
                 }
@@ -548,9 +548,9 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
         signed best_node = -1;
 
         if (lcra_linear_sparse(l, l->spill_node)) {
-                nodearray_sparse_foreach(&l->linear[l->spill_node], elem, value) {
-                        unsigned i = nodearray_key(elem);
-                        unsigned constraint = *value;
+                nodearray_sparse_foreach(&l->linear[l->spill_node], it) {
+                        unsigned i = it.key;
+                        unsigned constraint = it.value;
 
                         /* Only spill nodes that interfere with the node failing
                          * register allocation. It's pointless to spill anything else */

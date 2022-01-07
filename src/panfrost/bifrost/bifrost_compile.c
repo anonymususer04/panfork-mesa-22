@@ -3785,7 +3785,7 @@ bi_compile_variant_nir_part_one(nir_shader *nir,
 
                 ctx->reg_alloc += func->impl->reg_alloc;
 
-                ctx->ssa_offset = 0;//ctx->reg_alloc + 16;
+                ctx->ssa_offset = ctx->reg_alloc + 16;
                 ctx->ssa_alloc = ctx->ssa_offset + func->impl->ssa_alloc;
 
                 emit_cf_list(ctx, &func->impl->body);

@@ -177,10 +177,10 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
                 /* why not change threshold? */
                 nodearray_orr(&l->linear[j + n], i, cf[n], 256, l->node_count);
 
-                printf("interfere %i / %i: %x\n", j + n, i, cf[n]);
+//                printf("interfere %i / %i: %x\n", j + n, i, cf[n]);
         }
 
-#if 1
+#if 0
         uint8_t of[16];
         vst1q_u8(of, constraint_bw);
 
@@ -197,7 +197,7 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
 
                 printf("Interfere %i / %i: %x\n", i, j + n, of[n]);
         }
-//#else
+#else
         bool new = true;
         uint8_t *st = nodearray_orr_loc(&l->linear[i], j, 256, l->node_count, &new);
         if (!new) {

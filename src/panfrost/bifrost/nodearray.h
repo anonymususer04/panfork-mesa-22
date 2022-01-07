@@ -353,7 +353,7 @@ nodearray_orr_loc(nodearray *a, unsigned key, unsigned max_sparse, unsigned max,
                         uint8_t *vv;
                         left = nodearray_sparse_search(a, key, &elem, &vv);
 
-                        printf("%i %i\n", key, nodearray_key(elem));
+//                        printf("%i %i\n", key, nodearray_key(elem));
                         if (key == nodearray_key(elem)) {
                                 *nnew = false;
                                 return vv;

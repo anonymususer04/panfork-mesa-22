@@ -49,6 +49,7 @@ struct lcra_state {
          * [-3, 3] so encoded by 8-bit field. */
 
         nodearray *linear;
+        unsigned *constraints_count;
 
         /* Before solving, forced registers; after solving, solutions. */
         int8_t *solutions;
@@ -76,8 +77,11 @@ lcra_alloc_equations(unsigned node_count, unsigned min_ssa)
         l->node_count = node_count;
         l->min_ssa = min_ssa;
 
+        unsigned node_aligned = ALIGN_POT(node_count, 16);
+
         l->linear = calloc(sizeof(l->linear[0]), node_count);
-        l->solutions = calloc(sizeof(l->solutions[0]), ALIGN_POT(node_count, 16));
+        l->constraints_count = calloc(sizeof(l->constraints_count[0]), node_aligned);
+        l->solutions = calloc(sizeof(l->solutions[0]), node_aligned);
         l->affinity = calloc(sizeof(l->affinity[0]), node_count);
         l->insert_hint = calloc(sizeof(l->insert_hint[0]), node_count);
 
@@ -94,9 +98,12 @@ lcra_realloc_equations(struct lcra_state *l, unsigned node_count)
 {
         assert(node_count > l->node_count);
 
+        unsigned node_aligned = ALIGN_POT(node_count, 16);
+
         l->linear = realloc(l->linear, sizeof(l->linear[0]) * node_count);
-        l->solutions = realloc(l->solutions, sizeof(l->linear[0]) * node_count);
-        l->affinity = realloc(l->affinity, sizeof(l->linear[0]) * node_count);
+        l->constraints_count = realloc(l->constraints_count, sizeof(l->constraints_count[0]) * node_aligned);
+        l->solutions = realloc(l->solutions, sizeof(l->solutions[0]) * node_aligned);
+        l->affinity = realloc(l->affinity, sizeof(l->affinity[0]) * node_count);
 
         /* By now, we shouldn't need this anymore, don't bother with it */
         free(l->insert_hint);
@@ -108,6 +115,7 @@ lcra_realloc_equations(struct lcra_state *l, unsigned node_count)
         memset(l->solutions, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * node_count);
 
         memset(l->linear + l->node_count, 0, sizeof(l->linear[0]) * extra_count);
+        memset(l->constraints_count + l->node_count, 0, sizeof(l->constraints_count[0]) * extra_count);
         memset(l->affinity + l->node_count, 0, sizeof(l->affinity[0]) * extra_count);
 
         for (unsigned i = 0; i < l->node_count; ++i) {
@@ -157,9 +165,14 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
                 }
         }
 
+        unsigned count = util_bitcount(constraint_fw);
+
         /* Use dense arrays after adding 256 elements */
         nodearray_orr(&l->linear[j], i, constraint_fw, 256, l->node_count);
         nodearray_orr(&l->linear[i], j, constraint_bw, 256, l->node_count);
+
+        l->constraints_count[i] += count;
+        l->constraints_count[j] += count;
 }
 
 static void
@@ -218,9 +231,25 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
 //        printf("AA: %x %x %x %x\n", vget_lane_u16(toadd, 0), vget_lane_u16(toadd, 1), vget_lane_u16(toadd, 2), vget_lane_u16(toadd, 3));
 
         uint8x16_t constraint_bw = vshrq_n_u8(vrbitq_u8(constraint_fw), 1);
+        uint8x16_t bitcount = vcntq_u8(constraint_fw);
+
+        uint32x4x4_t ct_sum = vld1q_u32_x4(l->constraints_count + j);
 
         uint8_t cf[16];
         vst1q_u8(cf, constraint_fw);
+
+        // TODO: Subtract i == j constraints?
+        unsigned new_constraint = vaddvq_u8(bitcount);
+        l->constraints_count[i] += new_constraint;
+
+        uint16x8_t constraints_high = vmovl_high_u8(bitcount);
+        uint16x8_t constraints_low = vmovl_u8(vget_low_u8(bitcount));
+
+        ct_sum.val[0] = vaddw_u16(ct_sum.val[0], vget_low_u16(constraints_low));
+        ct_sum.val[1] = vaddw_high_u16(ct_sum.val[1], constraints_low);
+        ct_sum.val[2] = vaddw_u16(ct_sum.val[2], vget_low_u16(constraints_high));
+        ct_sum.val[3] = vaddw_high_u16(ct_sum.val[3], constraints_high);
+        vst1q_u32_x4(l->constraints_count + j, ct_sum);
 
         bool new = true;
         uint8_t *st = nodearray_orr_loc(&l->linear[i], j, 64, l->node_count, &new);
@@ -232,6 +261,7 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
 
         // if "they" get RAd first, they don't need to care about us
         // TODO: This shouldn't affect results!
+        // TOOD: Still do bitcount!
 //        if (i > l->min_ssa && j + 15 < i && !fw)
 //                return;
 
@@ -801,6 +831,8 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
                         }
                 }
         }
+
+        printf("spill node %i choose %i (bf %i)\n", l->spill_node, best_node, best_benefit);
 
         free(no_spill);
         return best_node;

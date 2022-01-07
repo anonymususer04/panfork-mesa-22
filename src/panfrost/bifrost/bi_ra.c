@@ -175,8 +175,8 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
         }
 
         uint32x4_t fac = (uint32x4_t)vdupq_n_u64(0x0f1f3f80f0f1f3f8ULL);
-        uint32x4_t mul = vmulq_u32(fac, (uint32x4_t)cd);
-        uint8x8x2_t lut = {{ vget_low_u8((uint8x16_t)mul), vget_high_u8((uint8x16_t)mul) }};
+        uint8x16_t mul = (uint8x16_t)vmulq_u32(fac, (uint32x4_t)cd);
+        uint8x8x2_t lut = {{ vget_low_u8(mul), vget_high_u8(mul) }};
         uint8x8_t tbl = (uint8x8_t)vmov_n_u64(0xfff0bffff07ff03ULL);
         uint16x4_t toadd = (uint16x4_t)vtbl2_u8(lut, tbl);
         uint16_t bitmask = vaddv_u16(toadd);

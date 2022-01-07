@@ -894,16 +894,17 @@ bi_register_allocate(bi_context *ctx)
                 }
         }
 
-        bi_invalidate_liveness(ctx);
-
         /* Otherwise, use the register file and spill until we succeed */
         while (!success && ((iter_count--) > 0)) {
-                bi_allocate_registers(ctx, &success, &l, true);
+                bi_invalidate_liveness(ctx);
+                l = bi_allocate_registers(ctx, &success, true);
 
                 if (success) {
                         ctx->info.work_reg_count = 64;
                 } else {
                         signed spill_node = bi_choose_spill_node(ctx, l);
+                        lcra_free(l);
+                        l = NULL;
 
                         if (spill_node == -1)
                                 unreachable("Failed to choose spill node\n");

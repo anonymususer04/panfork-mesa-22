@@ -143,6 +143,15 @@ nodearray_value(const uint32_t *elem)
         return *elem & 0xff;
 }
 
+static inline unsigned
+nodearray_largest_value(const nodearray *a)
+{
+        if (!a->size)
+                return 0;
+        uint8_t *dat = (uint8_t *)a->data + a->size / 5;
+        uint32_t *elem = (uint32_t *)dat - 1;
+        return nodearray_key(elem) + 15;
+}
 
 struct nodearray_sparse_elem_fake {
         uint8_t data[20];
@@ -247,6 +256,11 @@ nodearray_orr(nodearray *a, unsigned key, uint8_t value,
                 if (size < max_sparse && (size + 1) * 20 < max) {
                         /* We didn't find it, but we know where to insert it. */
 
+#ifdef TEST_NODEARRAY_ORR
+                        nodearray copy;
+                        util_dynarray_clone(&copy, NULL, a);
+#endif
+
 //                        unsigned osz = a->size;
                         ASSERTED void *grown = util_dynarray_grow(a, struct nodearray_sparse_elem_fake, 1);
                         assert(grown);
@@ -279,6 +293,20 @@ nodearray_orr(nodearray *a, unsigned key, uint8_t value,
 
                         far_elem[key & 15] = value;
                         *elem = nodearray_encode(key & ~15, 1);
+
+#ifdef TEST_NODEARRAY_ORR
+                        unsigned ll = nodearray_largest_value(&copy);
+                        for (unsigned i = 0; i < ll; ++i) {
+                                if (i == key)
+                                        continue;
+
+                                uint8_t left = nodearray_get(a, i, max);
+                                uint8_t right = nodearray_get(&copy, i, max);
+                                if (left != right)
+                                        printf("mismatch!! %p=%x %p=%x 0x%x/0x%x\n", a, left, &copy, right, i, ll);
+                        }
+                        util_dynarray_fini(&copy);
+#endif
 
                         return;
                 }
@@ -318,6 +346,16 @@ nodearray_orr_array(nodearray *a, const nodearray *b, unsigned max_sparse,
                 for (unsigned i = 0; i < 16; ++i)
                         nodearray_orr(a, base + i, value[i], max_sparse, max);
         }
+
+#ifdef TEST_NODEARRAY_ORR_ARRAY
+        unsigned ll = nodearray_largest_value(b);
+        for (unsigned i = 0; i < ll; ++i) {
+                uint8_t left = nodearray_get(a, i, max);
+                uint8_t right = nodearray_get(b, i, max);
+                if ((left ^ right) & right)
+                        printf("mismatch!! %p=%x %p=%x 0x%x/0x%x\n", a, left, b, right, i, ll);
+        }
+#endif
 }
 
 static inline void
@@ -354,6 +392,11 @@ nodearray_bic(nodearray *a, unsigned key, uint8_t value, unsigned max)
                 /* Delete the element, todo: what if we want to add the vec
                  * right back? */
 
+#ifdef TEST_NODEARRAY_BIC
+                nodearray copy;
+                util_dynarray_clone(&copy, NULL, a);
+#endif
+
 //                dump_array(a, "before");
 
 //                printf("memmove2(%p, %p, 0x%lx);\n", elem, elem + 1, (size - loc - 1) * sizeof(uint32_t) + loc * 16);
@@ -368,6 +411,20 @@ nodearray_bic(nodearray *a, unsigned key, uint8_t value, unsigned max)
 //                dump_array(a, "after");
 
                 (void)util_dynarray_pop(a, struct nodearray_sparse_elem_fake);
+
+#ifdef TEST_NODEARRAY_BIC
+                unsigned ll = nodearray_largest_value(&copy);
+                for (unsigned i = 0; i < ll; ++i) {
+                        if (i == key)
+                                continue;
+
+                        uint8_t left = nodearray_get(a, i, max);
+                        uint8_t right = nodearray_get(&copy, i, max);
+                        if (left != right)
+                                printf("mismatch!! %p=%x %p=%x 0x%x/0x%x\n", a, left, &copy, right, i, ll);
+                }
+                util_dynarray_fini(&copy);
+#endif
         } else {
                 *util_dynarray_element(a, uint8_t, key) &= ~value;
         }

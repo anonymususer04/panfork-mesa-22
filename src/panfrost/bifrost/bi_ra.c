@@ -174,6 +174,54 @@ lcra_test_linear_all(struct lcra_state *l, int8_t *solutions, uint8_t *row, uint
         return 0;
 }
 
+static uint64_t
+lcra_test_linear_all_sparshish(struct lcra_state *l, int8_t *solutions, uint32_t *elems, uint8_t *data, uint8_t *end, uint64_t affinity)
+{
+        /* 8 registers at a time appears to be the fastest configuration. */
+        for (unsigned reg = 0; reg < 64; reg += 8) {
+                uint8_t aff = affinity >> reg;
+                if (!aff)
+                        continue;
+
+                uint8x16_t possible = vdupq_n_u8(0xff);
+
+                int8x16_t constant = vdupq_n_s8(reg + 3);
+
+                uint32_t *ie = elems;
+                uint8_t *id = data;
+
+                while (id < end) {
+                        uint8x16_t constraint = vld1q_u8(id);
+                        id += 16;
+
+                        unsigned base = nodearray_key(ie);
+//                        printf("%i\n", nodearray_value(ie));
+                        ++ie;
+                        int8x16_t lhs = vsubq_s8(vld1q_s8(solutions + base), constant);
+
+                        /* This will return zero for small or large lhs, no need to
+                         * clamp */
+                        uint8x16_t shifted = vshlq_u8(constraint, lhs);
+
+                        if (vmaxvq_u8(possible) == 0)
+                                break;
+
+                        possible = vbicq_u8(possible, shifted);
+                }
+
+                uint8x8_t res = vand_u8(vget_high_u8(possible), vget_low_u8(possible));
+                res = vand_u8(res, vext_u8(res, res, 4));
+                res = vand_u8(res, vext_u8(res, res, 2));
+                res = vand_u8(res, vext_u8(res, res, 1));
+                uint8_t s = vget_lane_u8(res, 0);
+
+                if (s)
+                        return (uint64_t)(s & aff) << reg;
+        }
+
+        return 0;
+}
+
 #else
 
 static uint64_t
@@ -202,7 +250,13 @@ lcra_linear_solutions(struct lcra_state *l, int8_t *solutions, unsigned i)
         uint64_t possible = l->affinity[i];
 
         if (lcra_linear_sparse(l, i)) {
-                nodearray_sparse_foreach_vec(&l->linear[i], elem, val) {
+                uint32_t *elems = (uint32_t *)l->linear[i].data;
+                uint8_t *data = (uint8_t *)l->linear[i].data + l->linear[i].size / 5;
+                uint8_t *end = (uint8_t *)l->linear[i].data + l->linear[i].size;
+
+                possible = lcra_test_linear_all_sparshish(l, solutions, elems, data, end, possible);
+
+/*                nodearray_sparse_foreach_vec(&l->linear[i], elem, val) {
                         unsigned j = nodearray_key((uint32_t *)elem);
                         for (unsigned x = 0; x < 16; ++x) {
 
@@ -211,6 +265,7 @@ lcra_linear_solutions(struct lcra_state *l, int8_t *solutions, unsigned i)
                                 possible &= lcra_solution_mask(constraint, solutions[j + x]);
                         }
                 }
+*/
 //                util_dynarray_foreach(&l->linear[i], uint32_t, elem) {
                         /* TODO: Can we use NEON at all here? */
 //                        unsigned j = nodearray_key(elem);
@@ -650,6 +705,46 @@ bi_spill_register(bi_context *ctx, bi_index index, uint32_t offset)
         return (channels * 4);
 }
 
+struct bi_reindex_ctx {
+        /** Table of old SSA indices to new SSA indices */
+        unsigned *ssa;
+
+        /** Number of new SSA indices */
+        unsigned ssa_alloc;
+};
+
+static bi_index
+bi_reindex_single(struct bi_reindex_ctx *reindex, bi_index idx)
+{
+        if (idx.type == BI_INDEX_NORMAL && !idx.reg) {
+                if (reindex->ssa[idx.value] == 0)
+                        reindex->ssa[idx.value] = ++reindex->ssa_alloc;
+
+                idx.value = reindex->ssa[idx.value];
+        }
+
+        return idx;
+}
+
+static void
+bi_reindex(bi_context *ctx)
+{
+        struct bi_reindex_ctx reindex = {
+                .ssa = calloc(sizeof(reindex.ssa[0]), ctx->ssa_alloc),
+                .ssa_alloc = ctx->reg_alloc + 16,
+        };
+
+        bi_foreach_instr_global(ctx, I) {
+                bi_foreach_src(I, s)
+                        I->src[s] = bi_reindex_single(&reindex, I->src[s]);
+
+                bi_foreach_dest(I, d)
+                        I->dest[d] = bi_reindex_single(&reindex, I->dest[d]);
+        }
+
+        free(reindex.ssa);
+}
+
 void
 bi_register_allocate(bi_context *ctx)
 {
@@ -660,6 +755,8 @@ bi_register_allocate(bi_context *ctx)
 
         /* Number of bytes of memory we've spilled into */
         unsigned spill_count = ctx->info.tls_size;
+
+        bi_reindex(ctx);
 
         /* Try with reduced register pressure to improve thread count on v7 */
         if (ctx->arch == 7) {
@@ -690,7 +787,7 @@ bi_register_allocate(bi_context *ctx)
                                 unreachable("Failed to choose spill node\n");
 
                         spill_count += bi_spill_register(ctx,
-                                        bi_node_to_index(spill_node, bi_max_temp(ctx)),
+                                                         bi_node_to_index(ctx, spill_node, bi_max_temp(ctx)),
                                         spill_count);
                 }
         }

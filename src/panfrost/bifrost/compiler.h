@@ -741,7 +741,7 @@ bi_fau(enum bir_fau value, bool hi)
 static inline unsigned
 bi_max_temp(bi_context *ctx)
 {
-        return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2) << 1;
+        return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2);// << 1;
 }
 
 static inline bi_index
@@ -805,16 +805,16 @@ bi_get_node(bi_index index)
         if (bi_is_null(index) || index.type != BI_INDEX_NORMAL)
                 return ~0;
         else
-                return (index.value << 1) | index.reg;
+                return index.value;
 }
 
 static inline bi_index
-bi_node_to_index(unsigned node, unsigned node_count)
+bi_node_to_index(bi_context *ctx, unsigned node, unsigned node_count)
 {
         assert(node < node_count);
         assert(node_count < ~0u);
 
-        return bi_get_index(node >> 1, node & PAN_IS_REG, 0);
+        return bi_get_index(node, node < ctx->reg_alloc, 0);
 }
 
 /* Iterators for Bifrost IR */

@@ -175,7 +175,7 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
 
                 /* Use dense arrays after adding 256 elements */
                 /* why not change threshold? */
-                nodearray_orr(&l->linear[j + n], i, cf[n], 256, l->node_count);
+                nodearray_orr(&l->linear[j + n], i, cf[n], 64, l->node_count);
 
 //                printf("interfere %i / %i: %x\n", j + n, i, cf[n]);
         }
@@ -193,13 +193,13 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
 
                 /* Use dense arrays after adding 256 elements */
                 /* why not change threshold? */
-                nodearray_orr(&l->linear[i], j + n, of[n], 256, l->node_count);
+                nodearray_orr(&l->linear[i], j + n, of[n], 64, l->node_count);
 
                 printf("Interfere %i / %i: %x\n", i, j + n, of[n]);
         }
 #else
         bool new = true;
-        uint8_t *st = nodearray_orr_loc(&l->linear[i], j, 256, l->node_count, &new);
+        uint8_t *st = nodearray_orr_loc(&l->linear[i], j, 64, l->node_count, &new);
         if (!new) {
                 uint8x16_t oc = vld1q_u8(st);
                 constraint_bw = vorrq_u8(oc, constraint_bw);

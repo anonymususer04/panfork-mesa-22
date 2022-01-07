@@ -677,6 +677,8 @@ typedef struct {
        unsigned ssa_alloc;
        unsigned reg_alloc;
 
+       unsigned ssa_offset;
+
        /* Analysis results */
        bool has_liveness;
 
@@ -780,14 +782,14 @@ bi_extend_constant(uint32_t constant, unsigned bit_size)
  * sense */
 
 static inline bi_index
-bi_src_index(nir_src *src)
+bi_src_index(bi_context *ctx, nir_src *src)
 {
         if (nir_src_is_const(*src) && nir_src_bit_size(*src) <= 32) {
                 uint32_t v = nir_src_as_uint(*src);
 
                 return bi_imm_u32(bi_extend_constant(v, nir_src_bit_size(*src)));
         } else if (src->is_ssa) {
-                return bi_get_index(src->ssa->index + 160, false, 0);
+                return bi_get_index(src->ssa->index + ctx->ssa_offset, false, 0);
         } else {
                 assert(!src->reg.indirect);
                 return bi_get_index(src->reg.reg->index, true, 0);
@@ -795,10 +797,10 @@ bi_src_index(nir_src *src)
 }
 
 static inline bi_index
-bi_dest_index(nir_dest *dst)
+bi_dest_index(bi_context *ctx, nir_dest *dst)
 {
         if (dst->is_ssa)
-                return bi_get_index(dst->ssa.index + 160, false, 0);
+                return bi_get_index(dst->ssa.index + ctx->ssa_offset, false, 0);
         else {
                 assert(!dst->reg.indirect);
                 return bi_get_index(dst->reg.reg->index, true, 0);

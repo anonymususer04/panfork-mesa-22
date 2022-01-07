@@ -153,6 +153,13 @@ nodearray_largest_value(const nodearray *a)
         return nodearray_key(elem) + 15;
 }
 
+static inline uint8_t *
+nodearray_data_block_addr(const nodearray *a, unsigned block)
+{
+        uint8_t *dat = (uint8_t *)a->data + a->size / 5;
+        return dat + block * 16;
+}
+
 struct nodearray_sparse_elem_fake {
         uint8_t data[20];
 };
@@ -239,6 +246,137 @@ nodearray_orr(nodearray *a, unsigned key, uint8_t value,
                         left = nodearray_sparse_search(a, key, &elem, &vv);
 
                         unsigned diff = key - nodearray_key(elem);
+                        if (diff < 16) {
+                                // TOOD: Is this read bad for perf?
+                                if (!*vv)
+                                        ++*elem;
+                                *vv |= value;
+                                return;
+                        }
+
+                        /* We insert before `left`, so increment it if it's
+                         * out of order */
+                        if (nodearray_key(elem) < key)
+                                ++left;
+                }
+
+                if (size < max_sparse && (size + 1) * 20 < max) {
+                        /* We didn't find it, but we know where to insert it. */
+
+#ifdef TEST_NODEARRAY_ORR
+                        nodearray copy;
+                        util_dynarray_clone(&copy, NULL, a);
+#endif
+
+//                        unsigned osz = a->size;
+                        ASSERTED void *grown = util_dynarray_grow(a, struct nodearray_sparse_elem_fake, 1);
+                        assert(grown);
+
+                        /* First move vector data (TODO: why move at all??),
+                         * then "headers" */
+
+//                        printf("before\n");
+//                        dump_array(a);
+
+                        uint8_t *far_elem = util_dynarray_element(a, uint8_t, a->size / 5 + left * 16);
+                        if (left != size) {
+//                                printf("memmove(%p, %p, 0x%x);\n", far_elem + 16, far_elem - 4, (size - left) * 16);
+                                memmove(far_elem + 16, far_elem - 4, (size - left) * 16);
+                        }
+//                        printf("memset (%i %i) %p\n", a->size, left, far_elem);
+                        memset(far_elem, 0, 16);
+
+                        uint32_t *elem = util_dynarray_element(a, uint32_t, left);
+                        if (size) {
+//                                printf("memmove2(%p, %p, 0x%lx);\n", elem + 1, elem, (size - left) * sizeof(uint32_t) + left * 16);
+                                memmove(elem + 1, elem, (size - left) * sizeof(uint32_t) + left * 16);
+                        }
+
+//                        printf("after\n");
+//                        dump_array(a);
+
+                        for (unsigned i = 0; i < 16; ++i)
+                                assert(far_elem[i] == 0);
+
+                        far_elem[key & 15] = value;
+                        *elem = nodearray_encode(key & ~15, 1);
+
+#ifdef TEST_NODEARRAY_ORR
+                        unsigned ll = nodearray_largest_value(&copy);
+                        for (unsigned i = 0; i < ll; ++i) {
+                                if (i == key)
+                                        continue;
+
+                                uint8_t left = nodearray_get(a, i, max);
+                                uint8_t right = nodearray_get(&copy, i, max);
+                                if (left != right)
+                                        printf("mismatch!! %p=%x %p=%x 0x%x/0x%x\n", a, left, &copy, right, i, ll);
+                        }
+                        util_dynarray_fini(&copy);
+#endif
+
+                        return;
+                }
+
+                /* There are too many elements, so convert to a dense array */
+                nodearray old = *a;
+                util_dynarray_init(a, old.mem_ctx);
+
+                /* Align to 16 bytes to allow SIMD operations */
+                unsigned dyn_size = ALIGN_POT(max, 16);
+
+                uint8_t *elements = (uint8_t *)util_dynarray_resize(a, uint8_t, dyn_size);
+                assert(elements);
+                memset(elements, 0, dyn_size);
+
+                nodearray_sparse_foreach_vec(&old, x, vv) {
+                        unsigned key = nodearray_key((uint32_t *)x);
+
+                        assert(key < max);
+                        memcpy(elements + key, vv, 16);
+                }
+
+                util_dynarray_fini(&old);
+        }
+
+        *util_dynarray_element(a, uint8_t, key) |= value;
+}
+
+static inline void
+nodearray_orr_hint(nodearray *a, unsigned key, uint8_t value,
+              unsigned max_sparse, unsigned max, unsigned *insert_hint)
+{
+        assert(key < (1 << 24));
+        assert(key < max);
+
+        if (!value)
+                return;
+
+        if (nodearray_sparse(a, max)) {
+                // TODO: Why do this division?
+                unsigned size = util_dynarray_num_elements(a, struct nodearray_sparse_elem_fake);
+
+                unsigned left = 0;
+
+                if (size) {
+                        /* Do a binary search for key.. */
+                        uint32_t *elem;
+                        uint8_t *vv;
+                        elem = util_dynarray_element(a, uint32_t, *insert_hint);
+                        unsigned diff = key - nodearray_key(elem);
+                        if (diff < 16) {
+                                vv = nodearray_data_block_addr(a, *insert_hint) + diff;
+                                if (!*vv)
+                                        ++*elem;
+                                *vv |= value;
+                                return;
+                        }
+
+                        left = nodearray_sparse_search(a, key, &elem, &vv);
+
+                        *insert_hint = left;
+
+                        diff = key - nodearray_key(elem);
                         if (diff < 16) {
                                 // TOOD: Is this read bad for perf?
                                 if (!*vv)

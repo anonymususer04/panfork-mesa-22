@@ -54,6 +54,8 @@ struct lcra_state {
 
         /** Node which caused register allocation to fail */
         unsigned spill_node;
+
+        unsigned *insert_hint;
 };
 
 /* Cannot be -1 as that would be too close to valid solutions. */
@@ -75,6 +77,7 @@ lcra_alloc_equations(unsigned node_count)
         l->linear = calloc(sizeof(l->linear[0]), node_count);
         l->solutions = calloc(sizeof(l->solutions[0]), ALIGN_POT(node_count, 16));
         l->affinity = calloc(sizeof(l->affinity[0]), node_count);
+        l->insert_hint = calloc(sizeof(l->insert_hint[0]), node_count);
 
         memset(l->solutions, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * node_count);
 
@@ -90,6 +93,7 @@ lcra_free(struct lcra_state *l)
         free(l->linear);
         free(l->affinity);
         free(l->solutions);
+        free(l->insert_hint);
         free(l);
 }
 
@@ -175,7 +179,7 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
 
                 /* Use dense arrays after adding 256 elements */
                 /* why not change threshold? */
-                nodearray_orr(&l->linear[j + n], i, cf[n], 64, l->node_count);
+                nodearray_orr_hint(&l->linear[j + n], i, cf[n], 64, l->node_count, &l->insert_hint[j + n]);
 
 //                printf("interfere %i / %i: %x\n", j + n, i, cf[n]);
         }
@@ -849,7 +853,7 @@ bi_register_allocate(bi_context *ctx)
         /* Number of bytes of memory we've spilled into */
         unsigned spill_count = ctx->info.tls_size;
 
-//        bi_reindex(ctx);
+        bi_reindex(ctx);
 
         /* Try with reduced register pressure to improve thread count on v7 */
         if (ctx->arch == 7) {

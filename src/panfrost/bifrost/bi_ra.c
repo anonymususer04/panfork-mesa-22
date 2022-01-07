@@ -86,6 +86,9 @@ lcra_alloc_equations(unsigned node_count, unsigned min_ssa)
         return l;
 }
 
+static bool
+lcra_linear_sparse(struct lcra_state *l, unsigned row);
+
 static void
 lcra_realloc_equations(struct lcra_state *l, unsigned node_count)
 {
@@ -106,6 +109,14 @@ lcra_realloc_equations(struct lcra_state *l, unsigned node_count)
 
         memset(l->linear + l->node_count, 0, sizeof(l->linear[0]) * extra_count);
         memset(l->affinity + l->node_count, 0, sizeof(l->affinity[0]) * extra_count);
+
+        for (unsigned i = 0; i < l->node_count; ++i) {
+                if (!lcra_linear_sparse(l, i)) {
+                        memset(util_dynarray_resize(&l->linear[i], uint8_t, node_count), 0, extra_count);
+                }
+        }
+
+        l->node_count = node_count;
 }
 
 static void

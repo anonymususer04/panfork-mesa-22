@@ -1465,7 +1465,7 @@ bi_emit_load_const(bi_builder *b, nir_load_const_instr *instr)
                 acc |= (v << (i * instr->def.bit_size));
         }
 
-        bi_mov_i32_to(b, bi_get_index(instr->def.index, false, 0), bi_imm_u32(acc));
+        bi_mov_i32_to(b, bi_get_index(instr->def.index + b->shader->ssa_offset, false, 0), bi_imm_u32(acc));
 }
 
 static bi_index
@@ -3785,7 +3785,7 @@ bi_compile_variant_nir_part_one(nir_shader *nir,
 
                 ctx->reg_alloc += func->impl->reg_alloc;
 
-                ctx->ssa_offset = ctx->reg_alloc + 16;
+                ctx->ssa_offset = 0;//ctx->reg_alloc + 16;
                 ctx->ssa_alloc = ctx->ssa_offset + func->impl->ssa_alloc;
 
                 emit_cf_list(ctx, &func->impl->body);

@@ -740,7 +740,7 @@ bi_fau(enum bir_fau value, bool hi)
         };
 }
 
-//#define TEMPSHL
+#define TEMPSHL
 
 static inline unsigned
 bi_max_temp(bi_context *ctx)

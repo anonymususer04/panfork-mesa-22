@@ -123,6 +123,63 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
         nodearray_orr(&l->linear[i], j, constraint_bw, 256, l->node_count);
 }
 
+static void
+lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_i, unsigned j, uint8_t *cmask_j)
+{
+        if (i == j)
+                return;
+
+        uint8x16_t constraint_fw = vdupq_n_u8(0);
+
+        uint8x16_t cmask_j_vec = vld1q_u8(cmask_j);
+        uint8x16_t cmask_i_vec = vdupq_n_u8(cmask_i);
+
+        /* The constraint bits are reversed from lcra.c so that register
+         * allocation can be done in parallel with the smaller bits
+         * representing smaller registers. */
+
+        for (unsigned D = 0; D < 4; ++D) {
+                uint8x16_t shl = vshlq_n_u8(cmask_j_vec, D);
+                uint8x16_t cond = vtstq_u8(cmask_i_vec, shl);
+
+                uint8x16_t fw1 = vdupq_n_u8(1 << (3 + D));
+
+                uint8x16_t and1 = vandq_u8(fw1, cond);
+                constraint_fw = vorrq_u8(constraint_fw, and1);
+
+
+                uint8x16_t shr = vshrq_n_u8(cmask_j_vec, D);
+                uint8x16_t cond2 = vtstq_u8(cmask_i_vec, shr);
+
+                uint8x16_t fw2 = vdupq_n_u8(1 << (3 - D));
+
+                uint8x16_t and2 = vandq_u8(fw2, cond2);
+                constraint_fw = vorrq_u8(constraint_fw, and2);
+        }
+
+        uint8x16_t constraint_bw = vshrq_n_u8(vrbitq_u8(constraint_fw), 1);
+
+        uint8_t cf[16];
+        vst1q_u8(cf, constraint_fw);
+
+        for (unsigned n = 0; n < 16; ++n) {
+                if (!cf[n])
+                        continue;
+
+                /* Use dense arrays after adding 256 elements */
+                /* why not change threshold? */
+                nodearray_orr(&l->linear[j + n], i, cf[n], 256, l->node_count);
+        }
+
+        bool new = true;
+        uint8_t *st = nodearray_orr_loc(&l->linear[i], j, 256, l->node_count, &new);
+        if (!new) {
+                uint8x16_t oc = vld1q_u8(st);
+                constraint_bw = vorrq_u8(oc, constraint_bw);
+        }
+        vst1q_u8(st, constraint_bw);
+}
+
 static uint64_t
 lcra_solution_mask(uint64_t constraint, signed solution)
 {
@@ -401,13 +458,9 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uin
                         unsigned writemask = bi_writemask(ins, d);
 
                         assert(nodearray_sparse(live, ~0));
-                        nodearray_sparse_foreach(live, it) {
-                                unsigned i = it.key;
-                                unsigned liveness = it.value;
-
-                                assert(liveness);
-                                assert(nodearray_get(live, i, ~0) == liveness);
-                                lcra_add_node_interference(l, node, writemask, i, liveness);
+                        nodearray_sparse_foreach_vec(live, elem, value) {
+                                unsigned base = nodearray_key((uint32_t *)elem);
+                                lcra_add_node_interference_vec(l, node, writemask, base, value);
                         }
                 }
 
@@ -741,6 +794,7 @@ bi_reindex(bi_context *ctx)
                 bi_foreach_dest(I, d)
                         I->dest[d] = bi_reindex_single(&reindex, I->dest[d]);
         }
+        ctx->ssa_alloc = reindex.ssa_alloc;
 
         free(reindex.ssa);
 }

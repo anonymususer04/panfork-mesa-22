@@ -335,6 +335,80 @@ nodearray_orr(nodearray *a, unsigned key, uint8_t value,
         *util_dynarray_element(a, uint8_t, key) |= value;
 }
 
+static inline uint8_t *
+nodearray_orr_loc(nodearray *a, unsigned key, unsigned max_sparse, unsigned max, bool *nnew)
+{
+        assert(key < (1 << 24));
+        assert(key < max);
+
+        if (nodearray_sparse(a, max)) {
+                // TODO: Why do this division?
+                unsigned size = util_dynarray_num_elements(a, struct nodearray_sparse_elem_fake);
+
+                unsigned left = 0;
+
+                if (size) {
+                        /* Do a binary search for key.. */
+                        uint32_t *elem;
+                        uint8_t *vv;
+                        left = nodearray_sparse_search(a, key, &elem, &vv);
+
+                        if (key == nodearray_key(elem)) {
+                                *nnew = false;
+                                return vv;
+                        }
+
+                        /* We insert before `left`, so increment it if it's
+                         * out of order */
+                        if (nodearray_key(elem) < key)
+                                ++left;
+                }
+
+                if (size < max_sparse && (size + 1) * 20 < max) {
+                        /* We didn't find it, but we know where to insert it. */
+
+                        ASSERTED void *grown = util_dynarray_grow(a, struct nodearray_sparse_elem_fake, 1);
+                        assert(grown);
+
+                        uint8_t *far_elem = util_dynarray_element(a, uint8_t, a->size / 5 + left * 16);
+                        if (left != size) {
+                                memmove(far_elem + 16, far_elem - 4, (size - left) * 16);
+                        }
+
+                        uint32_t *elem = util_dynarray_element(a, uint32_t, left);
+                        if (size) {
+                                memmove(elem + 1, elem, (size - left) * sizeof(uint32_t) + left * 16);
+                        }
+
+                        // TODO: better value?
+                        *elem = nodearray_encode(key & ~15, 1);
+                        return far_elem;
+                }
+
+                /* There are too many elements, so convert to a dense array */
+                nodearray old = *a;
+                util_dynarray_init(a, old.mem_ctx);
+
+                /* Align to 16 bytes to allow SIMD operations */
+                unsigned dyn_size = ALIGN_POT(max, 16);
+
+                uint8_t *elements = (uint8_t *)util_dynarray_resize(a, uint8_t, dyn_size);
+                assert(elements);
+                memset(elements, 0, dyn_size);
+
+                nodearray_sparse_foreach_vec(&old, x, vv) {
+                        unsigned key = nodearray_key((uint32_t *)x);
+
+                        assert(key < max);
+                        memcpy(elements + key, vv, 16);
+                }
+
+                util_dynarray_fini(&old);
+        }
+
+        return util_dynarray_element(a, uint8_t, key);
+}
+
 static inline void
 nodearray_orr_array(nodearray *a, const nodearray *b, unsigned max_sparse,
                     unsigned max)

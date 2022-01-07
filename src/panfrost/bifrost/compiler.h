@@ -738,10 +738,16 @@ bi_fau(enum bir_fau value, bool hi)
         };
 }
 
+#define TEMPSHL
+
 static inline unsigned
 bi_max_temp(bi_context *ctx)
 {
-        return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2);// << 1;
+#ifdef TEMPSHL
+        return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2) << 1;
+#else
+        return (MAX2(ctx->reg_alloc, ctx->ssa_alloc) + 2);
+#endif
 }
 
 static inline bi_index
@@ -805,7 +811,11 @@ bi_get_node(bi_index index)
         if (bi_is_null(index) || index.type != BI_INDEX_NORMAL)
                 return ~0;
         else
+#ifdef TEMPSHL
+                return (index.value << 1) | index.reg;
+#else
                 return index.value;
+#endif
 }
 
 static inline bi_index
@@ -814,7 +824,11 @@ bi_node_to_index(bi_context *ctx, unsigned node, unsigned node_count)
         assert(node < node_count);
         assert(node_count < ~0u);
 
+#ifdef TEMPSHL
+        return bi_get_index(node >> 1, node & PAN_IS_REG, 0);
+#else
         return bi_get_index(node, node < ctx->reg_alloc, 0);
+#endif
 }
 
 /* Iterators for Bifrost IR */

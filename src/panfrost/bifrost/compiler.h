@@ -626,6 +626,9 @@ typedef struct bi_block {
 
         /* Flags available for pass-internal use */
         uint8_t pass_flags;
+
+        /* Offset by 1 */
+        unsigned worklist_pos;
 } bi_block;
 
 /* Subset of pan_shader_info needed per-variant, in order to support IDVS */

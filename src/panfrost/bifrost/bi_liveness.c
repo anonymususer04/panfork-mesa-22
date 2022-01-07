@@ -96,10 +96,6 @@ bi_compute_liveness(bi_context *ctx)
         unsigned temp_count = bi_max_temp(ctx);
 
         /* Set of bi_block */
-        struct set *work_list = _mesa_set_create(NULL,
-                        _mesa_hash_pointer,
-                        _mesa_key_pointer_equal);
-
         struct set *visited = _mesa_set_create(NULL,
                         _mesa_hash_pointer,
                         _mesa_key_pointer_equal);
@@ -109,17 +105,17 @@ bi_compute_liveness(bi_context *ctx)
                 util_dynarray_fini(&block->live_out);
         }
 
-        /* Initialize the work list with the exit block */
-        struct set_entry *cur;
 
-        cur = _mesa_set_add(work_list, pan_exit_block(&ctx->blocks));
+        struct util_dynarray work_list;
+        util_dynarray_init(&work_list, NULL);
+
+        util_dynarray_append(&work_list, struct bi_block *, (struct bi_block *)pan_exit_block(&ctx->blocks));
 
         /* Iterate the work list */
 
-        do {
+        while (util_dynarray_num_elements(&work_list, struct bi_block *)) {
                 /* Pop off a block */
-                bi_block *blk = (struct bi_block *) cur->key;
-                _mesa_set_remove(work_list, cur);
+                bi_block *blk = util_dynarray_pop(&work_list, struct bi_block *);
 
                 /* Update its liveness information */
                 bool progress = liveness_block_update(blk, temp_count);
@@ -127,15 +123,22 @@ bi_compute_liveness(bi_context *ctx)
                 /* If we made progress, we need to process the predecessors */
 
                 if (progress || !_mesa_set_search(visited, blk)) {
-                        bi_foreach_predecessor(blk, pred)
-                                _mesa_set_add(work_list, *pred);
+                        bi_foreach_predecessor(blk, pred) {
+                                unsigned size = util_dynarray_num_elements(&work_list, struct bi_block *);
+                                unsigned pos = (*pred)->worklist_pos - 1;
+                                if (pos < size && *util_dynarray_element(&work_list, struct bi_block *, pos) == *pred)
+                                        continue;
+
+                                util_dynarray_append(&work_list, struct bi_block *, *pred);
+                                (*pred)->worklist_pos = size + 1;
+                        }
                 }
 
                 _mesa_set_add(visited, blk);
-        } while((cur = _mesa_set_next_entry(work_list, NULL)) != NULL);
+        }
 
         _mesa_set_destroy(visited, NULL);
-        _mesa_set_destroy(work_list, NULL);
+        util_dynarray_fini(&work_list);
 
         ctx->has_liveness = true;
 }

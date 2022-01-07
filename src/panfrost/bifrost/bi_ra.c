@@ -206,7 +206,7 @@ lcra_linear_solutions(struct lcra_state *l, int8_t *solutions, unsigned i)
                         unsigned j = nodearray_key((uint32_t *)elem);
                         for (unsigned x = 0; x < 16; ++x) {
 
-                                uint64_t constraint = *val;
+                                uint64_t constraint = val[x];
 
                                 possible &= lcra_solution_mask(constraint, solutions[j + x]);
                         }

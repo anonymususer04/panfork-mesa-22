@@ -89,9 +89,7 @@ lcra_alloc_equations(unsigned node_count, unsigned min_ssa)
 static void
 lcra_realloc_equations(struct lcra_state *l, unsigned node_count)
 {
-        assert(node_count >= l->node_count);
-        if (node_count == l->node_count)
-                return;
+        assert(node_count > l->node_count);
 
         l->linear = realloc(l->linear, sizeof(l->linear[0]) * node_count);
         l->solutions = realloc(l->solutions, sizeof(l->linear[0]) * node_count);
@@ -103,8 +101,10 @@ lcra_realloc_equations(struct lcra_state *l, unsigned node_count)
 
         unsigned extra_count = node_count - l->node_count;
 
+        /* Reset ALL solutions */
+        memset(l->solutions, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * node_count);
+
         memset(l->linear + l->node_count, 0, sizeof(l->linear[0]) * extra_count);
-        memset(l->solutions + l->node_count, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * extra_count);
         memset(l->affinity + l->node_count, 0, sizeof(l->affinity[0]) * extra_count);
 }
 
@@ -820,8 +820,7 @@ bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_
         unsigned node = bi_get_node(index);
 
         util_dynarray_fini(&l->linear[node]);
-        for (unsigned i = 0; i < l->node_count; ++i)
-                nodearray_bic(&l->linear[i], node, 0xff, l->node_count);
+        l->affinity[node] = 0;
 
         struct util_dynarray dest_worklist, src_worklist;
         util_dynarray_init(&dest_worklist, NULL);

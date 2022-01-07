@@ -3791,7 +3791,6 @@ bi_compile_variant_nir_part_one(nir_shader *nir,
                 emit_cf_list(ctx, &func->impl->body);
                 break; /* TODO: Multi-function shaders */
         }
-        printf("r: %i\n", ctx->reg_alloc);
 
         unsigned block_source_count = 0;
 

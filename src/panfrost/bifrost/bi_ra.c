@@ -35,6 +35,7 @@
 
 struct lcra_state {
         unsigned node_count;
+        unsigned min_ssa;
         uint64_t *affinity;
 
         /* Linear constraints imposed. For each node there there is a
@@ -68,11 +69,12 @@ struct lcra_state {
  */
 
 static struct lcra_state *
-lcra_alloc_equations(unsigned node_count)
+lcra_alloc_equations(unsigned node_count, unsigned min_ssa)
 {
         struct lcra_state *l = calloc(1, sizeof(*l));
 
         l->node_count = node_count;
+        l->min_ssa = min_ssa;
 
         l->linear = calloc(sizeof(l->linear[0]), node_count);
         l->solutions = calloc(sizeof(l->solutions[0]), ALIGN_POT(node_count, 16));
@@ -110,6 +112,7 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
          * allocation can be done in parallel with the smaller bits
          * representing smaller registers. */
 
+        // can we do this another way?
         for (unsigned D = 0; D < 4; ++D) {
                 if (cmask_i & (cmask_j << D)) {
                         constraint_fw |= (1 << (3 + D));
@@ -128,7 +131,7 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
 }
 
 static void
-lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_i, unsigned j, uint8_t *cmask_j)
+lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_i, unsigned j, uint8_t *cmask_j, bool fw)
 {
         uint8x16_t constraint_fw = vdupq_n_u8(0);
 /*
@@ -146,6 +149,8 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
          * allocation can be done in parallel with the smaller bits
          * representing smaller registers. */
 
+        uint8x16_t cd = vdupq_n_u8(0);
+
         for (unsigned D = 0; D < 4; ++D) {
                 uint8x16_t shl = vshlq_n_u8(cmask_j_vec, D);
                 uint8x16_t cond = vtstq_u8(cmask_i_vec, shl);
@@ -155,6 +160,8 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
                 uint8x16_t and1 = vandq_u8(fw1, cond);
                 constraint_fw = vorrq_u8(constraint_fw, and1);
 
+                cd = vorrq_u8(cd, cond);
+
 
                 uint8x16_t shr = vshrq_n_u8(cmask_j_vec, D);
                 uint8x16_t cond2 = vtstq_u8(cmask_i_vec, shr);
@@ -163,17 +170,47 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
 
                 uint8x16_t and2 = vandq_u8(fw2, cond2);
                 constraint_fw = vorrq_u8(constraint_fw, and2);
+
+                cd = vorrq_u8(cd, cond2);
         }
+
+        uint32x4_t fac = (uint32x4_t)vdupq_n_u64(0x0f1f3f80f0f1f3f8ULL);
+        uint32x4_t mul = vmulq_u32(fac, (uint32x4_t)cd);
+        uint8x8x2_t lut = {{ vget_low_u8((uint8x16_t)mul), vget_high_u8((uint8x16_t)mul) }};
+        uint8x8_t tbl = (uint8x8_t)vmov_n_u64(0xfff0bffff07ff03ULL);
+        uint16x4_t toadd = (uint16x4_t)vtbl2_u8(lut, tbl);
+        uint16_t bitmask = vaddv_u16(toadd);
+
+//        printf("mulled: %x %x %x %x\n", vgetq_lane_u32(mul, 0), vgetq_lane_u32(mul, 1), vgetq_lane_u32(mul, 2), vgetq_lane_u32(mul, 3));
+
+/*#define P(x) printf(" %x", vgetq_lane_u8(mul, x))
+#define PP(x) P(x); P(x + 1)
+#define PPP(x) PP(x); PP(x + 2)
+#define PPPP(x) PPP(x); PPP(x + 4)
+#define PPPPP(x) PPPP(x); PPPP(x + 8)*/
+//        PPPPP(0);
+
+//        printf("AA: %x %x %x %x\n", vget_lane_u16(toadd, 0), vget_lane_u16(toadd, 1), vget_lane_u16(toadd, 2), vget_lane_u16(toadd, 3));
 
         uint8x16_t constraint_bw = vshrq_n_u8(vrbitq_u8(constraint_fw), 1);
 
         uint8_t cf[16];
         vst1q_u8(cf, constraint_fw);
 
-        for (unsigned n = 0; n < 16; ++n) {
-                if (!cf[n])
-                        continue;
+        bool new = true;
+        uint8_t *st = nodearray_orr_loc(&l->linear[i], j, 64, l->node_count, &new);
+        if (!new) {
+                uint8x16_t oc = vld1q_u8(st);
+                constraint_bw = vorrq_u8(oc, constraint_bw);
+        }
+        vst1q_u8(st, constraint_bw);
 
+        // if "they" get RAd first, they don't need to care about us
+        if (i > l->min_ssa && j + 15 < i && !fw)
+                return;
+
+//        printf("bitmask: %x\n", bitmask);
+        u_foreach_bit(n, bitmask) {
                 if (j + n == i)
                         continue;
 
@@ -202,13 +239,6 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
                 printf("Interfere %i / %i: %x\n", i, j + n, of[n]);
         }
 #else
-        bool new = true;
-        uint8_t *st = nodearray_orr_loc(&l->linear[i], j, 64, l->node_count, &new);
-        if (!new) {
-                uint8x16_t oc = vld1q_u8(st);
-                constraint_bw = vorrq_u8(oc, constraint_bw);
-        }
-        vst1q_u8(st, constraint_bw);
 #endif
 }
 
@@ -491,6 +521,8 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uin
 
                         assert(nodearray_sparse(live, ~0));
 
+                        bool force_fw = (ins->op == BI_OPCODE_BLEND);
+
                         if (0)
                         nodearray_sparse_foreach(live, it) {
                                 unsigned i = it.key;
@@ -503,7 +535,7 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uin
                         else
                         nodearray_sparse_foreach_vec(live, elem, value) {
                                 unsigned base = nodearray_key((uint32_t *)elem);
-                                lcra_add_node_interference_vec(l, node, writemask, base, value);
+                                lcra_add_node_interference_vec(l, node, writemask, base, value, force_fw);
                         }
                 }
 
@@ -560,7 +592,7 @@ static struct lcra_state *
 bi_allocate_registers(bi_context *ctx, bool *success, bool full_regs)
 {
         unsigned node_count = bi_max_temp(ctx);
-        struct lcra_state *l = lcra_alloc_equations(node_count);
+        struct lcra_state *l = lcra_alloc_equations(node_count, ctx->ssa_offset);
 
         /* Blend shaders are restricted to R0-R15. Other shaders at full
          * occupancy also can access R48-R63. At half occupancy they can access

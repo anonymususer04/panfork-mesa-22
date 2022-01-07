@@ -137,7 +137,7 @@ libpanfrost_bifrost = static_library(
   include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_panfrost_hw],
   dependencies: [idep_nir, idep_bi_opcodes_h, idep_bi_builder_h],
   link_with: [libpanfrost_util, libpanfrost_bifrost_disasm, libpanfrost_valhall_disasm],
-  c_args : [no_override_init_args],
+  c_args : [no_override_init_args, '-g'],
   gnu_symbol_visibility : 'hidden',
   build_by_default : false,
 )

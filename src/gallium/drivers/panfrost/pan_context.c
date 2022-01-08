@@ -227,7 +227,7 @@ panfrost_bind_rasterizer_state(
          * dependencies are too intricate to bother tracking in detail. However
          * we could probably diff the renderers for viewport dirty tracking,
          * that just cares about the scissor enable and the depth clips. */
-        ctx->dirty |= PAN_DIRTY_SCISSOR;
+        ctx->dirty |= PAN_DIRTY_SCISSOR | PAN_DIRTY_SCISSOR_DSC;
         ctx->dirty_shader[PIPE_SHADER_FRAGMENT] |= PAN_DIRTY_STAGE_RENDERER;
 }
 
@@ -758,7 +758,7 @@ panfrost_set_viewport_states(struct pipe_context *pipe,
         assert(num_viewports == 1);
 
         ctx->pipe_viewport = *viewports;
-        ctx->dirty |= PAN_DIRTY_VIEWPORT;
+        ctx->dirty |= PAN_DIRTY_VIEWPORT | PAN_DIRTY_VIEWPORT_DSC;
 }
 
 static void
@@ -773,7 +773,7 @@ panfrost_set_scissor_states(struct pipe_context *pipe,
         assert(num_scissors == 1);
 
         ctx->scissor = *scissors;
-        ctx->dirty |= PAN_DIRTY_SCISSOR;
+        ctx->dirty |= PAN_DIRTY_SCISSOR | PAN_DIRTY_SCISSOR_DSC;
 }
 
 static void

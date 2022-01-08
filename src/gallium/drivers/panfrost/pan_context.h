@@ -59,15 +59,18 @@ struct prim_convert_context;
 
 /* Dirty tracking flags. 3D is for general 3D state. Shader flags are
  * per-stage. Renderer refers to Renderer State Descriptors. Vertex refers to
- * vertex attributes/elements. */
+ * vertex attributes/elements. _DSC flags must be set alongside the
+ * corresponding unmarked flag, and may be cleared before the main flag is. */
 
 enum pan_dirty_3d {
         PAN_DIRTY_VIEWPORT       = BITFIELD_BIT(0),
-        PAN_DIRTY_SCISSOR        = BITFIELD_BIT(1),
-        PAN_DIRTY_VERTEX         = BITFIELD_BIT(2),
-        PAN_DIRTY_PARAMS         = BITFIELD_BIT(3),
-        PAN_DIRTY_DRAWID         = BITFIELD_BIT(4),
-        PAN_DIRTY_TLS_SIZE       = BITFIELD_BIT(5),
+        PAN_DIRTY_VIEWPORT_DSC   = BITFIELD_BIT(1),
+        PAN_DIRTY_SCISSOR_DSC    = BITFIELD_BIT(2),
+        PAN_DIRTY_SCISSOR        = BITFIELD_BIT(3),
+        PAN_DIRTY_VERTEX         = BITFIELD_BIT(4),
+        PAN_DIRTY_PARAMS         = BITFIELD_BIT(5),
+        PAN_DIRTY_DRAWID         = BITFIELD_BIT(6),
+        PAN_DIRTY_TLS_SIZE       = BITFIELD_BIT(7),
 };
 
 enum pan_dirty_shader {

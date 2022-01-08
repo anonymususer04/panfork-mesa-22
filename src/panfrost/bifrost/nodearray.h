@@ -645,6 +645,30 @@ nodearray_bic(nodearray *a, unsigned key, uint8_t value, unsigned max)
         }
 }
 
+static inline uint8_t
+nodearray_pop(nodearray *a, unsigned key, unsigned max)
+{
+        uint8_t *ptr;
+
+        if (nodearray_sparse(a, max)) {
+                if (!a->size)
+                        return 0;
+
+                uint32_t *elem;
+                nodearray_sparse_search(a, key, &elem, &ptr);
+
+                unsigned diff = key - nodearray_key(elem);
+                if (diff >= 16)
+                        return 0;
+        } else {
+                ptr = util_dynarray_element(a, uint8_t, key);
+        }
+
+        uint8_t ret = *ptr;
+        *ptr = 0;
+        return ret;
+}
+
 #ifdef __cplusplus
 } /* extern C */
 #endif

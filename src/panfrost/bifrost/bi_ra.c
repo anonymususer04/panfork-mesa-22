@@ -49,7 +49,7 @@ struct lcra_state {
          * [-3, 3] so encoded by 8-bit field. */
 
         nodearray *linear;
-        unsigned *constraints_count;
+        unsigned *constraint_count;
 
         /* Before solving, forced registers; after solving, solutions. */
         int8_t *solutions;
@@ -80,7 +80,7 @@ lcra_alloc_equations(unsigned node_count, unsigned min_ssa)
         unsigned node_aligned = ALIGN_POT(node_count, 16);
 
         l->linear = calloc(sizeof(l->linear[0]), node_count);
-        l->constraints_count = calloc(sizeof(l->constraints_count[0]), node_aligned);
+        l->constraint_count = calloc(sizeof(l->constraint_count[0]), node_aligned);
         l->solutions = calloc(sizeof(l->solutions[0]), node_aligned);
         l->affinity = calloc(sizeof(l->affinity[0]), node_count);
         l->insert_hint = calloc(sizeof(l->insert_hint[0]), node_count);
@@ -101,7 +101,7 @@ lcra_realloc_equations(struct lcra_state *l, unsigned node_count)
         unsigned node_aligned = ALIGN_POT(node_count, 16);
 
         l->linear = realloc(l->linear, sizeof(l->linear[0]) * node_count);
-        l->constraints_count = realloc(l->constraints_count, sizeof(l->constraints_count[0]) * node_aligned);
+        l->constraint_count = realloc(l->constraint_count, sizeof(l->constraint_count[0]) * node_aligned);
         l->solutions = realloc(l->solutions, sizeof(l->solutions[0]) * node_aligned);
         l->affinity = realloc(l->affinity, sizeof(l->affinity[0]) * node_count);
 
@@ -110,17 +110,24 @@ lcra_realloc_equations(struct lcra_state *l, unsigned node_count)
         l->insert_hint = NULL;
 
         unsigned extra_count = node_count - l->node_count;
+        /* Keep Valgrind happy... */
+        unsigned extra_aligned = node_aligned - l->node_count;
 
-        /* Reset ALL solutions */
-        memset(l->solutions, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * node_count);
+        /* Reset ALL solutions: TODO: Base it on first node interfering with
+         * the one we spill */
+        memset(l->solutions, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * node_aligned);
 
         memset(l->linear + l->node_count, 0, sizeof(l->linear[0]) * extra_count);
-        memset(l->constraints_count + l->node_count, 0, sizeof(l->constraints_count[0]) * extra_count);
+        memset(l->constraint_count + l->node_count, 0, sizeof(l->constraint_count[0]) * extra_aligned);
         memset(l->affinity + l->node_count, 0, sizeof(l->affinity[0]) * extra_count);
 
         for (unsigned i = 0; i < l->node_count; ++i) {
                 if (!lcra_linear_sparse(l, i)) {
-                        memset(util_dynarray_resize(&l->linear[i], uint8_t, node_count), 0, extra_count);
+                        /* Don't memset the return value from
+                         * util_dynarray_resize directly, because the size of
+                         * the dynarray is aligned to 16 bytes */
+                        util_dynarray_resize(&l->linear[i], uint8_t, node_aligned);
+                        memset(util_dynarray_element(&l->linear[i], uint8_t, l->node_count), 0, extra_aligned);
                 }
         }
 
@@ -171,8 +178,8 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
         nodearray_orr(&l->linear[j], i, constraint_fw, 256, l->node_count);
         nodearray_orr(&l->linear[i], j, constraint_bw, 256, l->node_count);
 
-        l->constraints_count[i] += count;
-        l->constraints_count[j] += count;
+        l->constraint_count[i] += count;
+        l->constraint_count[j] += count;
 }
 
 static void
@@ -233,14 +240,14 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
         uint8x16_t constraint_bw = vshrq_n_u8(vrbitq_u8(constraint_fw), 1);
         uint8x16_t bitcount = vcntq_u8(constraint_fw);
 
-        uint32x4x4_t ct_sum = vld1q_u32_x4(l->constraints_count + j);
+        uint32x4x4_t ct_sum = vld1q_u32_x4(l->constraint_count + j);
 
         uint8_t cf[16];
         vst1q_u8(cf, constraint_fw);
 
         // TODO: Subtract i == j constraints?
         unsigned new_constraint = vaddvq_u8(bitcount);
-        l->constraints_count[i] += new_constraint;
+        l->constraint_count[i] += new_constraint;
 
         uint16x8_t constraints_high = vmovl_high_u8(bitcount);
         uint16x8_t constraints_low = vmovl_u8(vget_low_u8(bitcount));
@@ -249,7 +256,7 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
         ct_sum.val[1] = vaddw_high_u16(ct_sum.val[1], constraints_low);
         ct_sum.val[2] = vaddw_u16(ct_sum.val[2], vget_low_u16(constraints_high));
         ct_sum.val[3] = vaddw_high_u16(ct_sum.val[3], constraints_high);
-        vst1q_u32_x4(l->constraints_count + j, ct_sum);
+        vst1q_u32_x4(l->constraint_count + j, ct_sum);
 
         bool new = true;
         uint8_t *st = nodearray_orr_loc(&l->linear[i], j, 64, l->node_count, &new);
@@ -261,7 +268,6 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
 
         // if "they" get RAd first, they don't need to care about us
         // TODO: This shouldn't affect results!
-        // TOOD: Still do bitcount!
 //        if (i > l->min_ssa && j + 15 < i && !fw)
 //                return;
 
@@ -292,7 +298,7 @@ lcra_add_node_interference_vec(struct lcra_state *l, unsigned i, unsigned cmask_
                 /* why not change threshold? */
                 nodearray_orr(&l->linear[i], j + n, of[n], 64, l->node_count);
 
-                printf("Interfere %i / %i: %x\n", i, j + n, of[n]);
+//                printf("Interfere %i / %i: %x\n", i, j + n, of[n]);
         }
 #else
 #endif
@@ -662,6 +668,8 @@ bi_allocate_registers(bi_context *ctx, bool *success, bool full_regs)
          * occupancy also can access R48-R63. At half occupancy they can access
          * the whole file. */
 
+        full_regs = false;
+
         uint64_t default_affinity =
                 ctx->inputs->is_blend ? BITFIELD64_MASK(16) :
                 full_regs ? BITFIELD64_MASK(64) :
@@ -806,7 +814,10 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
 
                         if (BITSET_TEST(no_spill, i)) continue;
 
-                        unsigned benefit = lcra_count_constraints(l, i);
+                        unsigned cct = l->constraint_count[i];
+//                        printf("sp: %i vs %i\n", benefit, cct);
+
+                        unsigned benefit = cct;
 
                         if (benefit > best_benefit) {
                                 best_benefit = benefit;
@@ -823,7 +834,10 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
 
                         if (BITSET_TEST(no_spill, i)) continue;
 
-                        unsigned benefit = lcra_count_constraints(l, i);
+                        unsigned cct = l->constraint_count[i];
+//                        printf("ds: %i vs %i\n", benefit, cct);
+
+                        unsigned benefit = cct;
 
                         if (benefit > best_benefit) {
                                 best_benefit = benefit;
@@ -832,25 +846,29 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
                 }
         }
 
-        printf("spill node %i choose %i (bf %i)\n", l->spill_node, best_node, best_benefit);
+//        printf("\n\nbest_benefit:: %i  || %i\n", best_benefit, best_node);
+
+//        printf("spill node %i choose %i (bf %i)\n", l->spill_node, best_node, best_benefit);
 
         free(no_spill);
         return best_node;
 }
 
-static unsigned
-bi_count_read_index(bi_instr *I, bi_index index)
+static uint8_t
+bi_read_mask_index(bi_instr *I, bi_index index)
 {
-        unsigned max = 0;
+        unsigned mask = 0;
 
         bi_foreach_src(I, s) {
                 if (bi_is_equiv(I->src[s], index)) {
                         unsigned count = bi_count_read_registers(I, s);
-                        max = MAX2(max, count + I->src[s].offset);
+                        unsigned rmask = BITFIELD_MASK(count);
+
+                        mask |= rmask << I->src[s].offset;
                 }
         }
 
-        return max;
+        return mask;
 }
 
 /* Once we've chosen a spill node, spill it and returns bytes spilled */
@@ -869,11 +887,37 @@ bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_
 
         unsigned max_ssa = ctx->ssa_alloc;
 
+#if 0
+        if (lcra_linear_sparse(l, node)) {
+                nodearray_sparse_foreach(&l->linear[node], it) {
+                        l->constraint_count[it.key] -= util_bitcount(it.value);
+                }
+        } else {
+                uint8_t *row = (uint8_t *)util_dynarray_begin(&l->linear[node]);
+                for (unsigned i = 0; i < l->node_count; ++i) {
+                        uint8_t value = row[i];
+                        if (value)
+                                l->constraint_count[i] -= util_bitcount(value);
+                }
+        }
+#else
+#if 0
+        for (unsigned i = 0; i < l->node_count; ++i) {
+                uint8_t value = nodearray_pop(&l->linear[i], i, l->node_count);
+                if (value)
+                        l->constraint_count[i] -= util_bitcount(value);
+        }
+#endif
+#endif
+
         /* Spill after every store, fill before every load */
         /* TODO: If there are multiple close uses.. */
         bi_foreach_instr_global_safe(ctx, I) {
                 bi_foreach_dest(I, d) {
                         if (!bi_is_equiv(I->dest[d], index)) continue;
+
+//                        printf("because of: ");
+//                        bi_print_instr(I, stdout);
 
                         util_dynarray_append(&dest_worklist, bi_instr *, I);
 
@@ -892,21 +936,42 @@ bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_
 
                         ctx->spills++;
                         channels = MAX2(channels, extra + count);
+
+//                        printf(" inserting SPILL %p with %i of node %i: ", st, bi_get_node(tmp), node);
+//                        bi_print_instr(st, stdout);
                 }
 
                 if (bi_has_arg(I, index)) {
                         util_dynarray_append(&src_worklist, bi_instr *, I);
 
+//                        printf("because of: ");
+//                        bi_print_instr(I, stdout);
+
                         b.cursor = bi_before_instr(I);
                         bi_index tmp = bi_temp(ctx);
 
-                        unsigned bits = bi_count_read_index(I, index) * 32;
+                        uint8_t mask = bi_read_mask_index(I, index);
                         bi_rewrite_index_src_single(I, index, tmp);
 
-                        bi_instr *ld = bi_load_to(&b, bits, tmp,
-                                        bi_imm_u32(offset), bi_zero(), BI_SEG_TL);
-                        ld->no_spill = true;
-                        ctx->fills++;
+//                        printf("mask: %x\n", mask);
+                        int readoff = -1;
+                        unsigned first;
+                        while ((first = ffs(mask))) {
+                                readoff += first;
+                                mask >>= first;
+                                unsigned size = ffs(~mask);
+                                mask >>= size;
+
+                                bi_instr *ld = bi_load_to(&b, size * 32, bi_word(tmp, readoff),
+                                                          bi_imm_u32(offset + 4 * readoff), bi_zero(), BI_SEG_TL);
+                                ld->no_spill = true;
+                                ctx->fills++;
+
+//                                printf(" inserting fill %p with %i of node %i: ", ld, bi_get_node(tmp), node);
+//                                bi_print_instr(ld, stdout);
+
+                                readoff += size;
+                        }
                 }
         }
 
@@ -944,7 +1009,7 @@ bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_
                         Ssrc = s;
                         break;
                 }
-                assert(found);
+                assert(Ssrc != ~0);
 
                 l->affinity[nn] = l->affinity[node];
 
@@ -964,10 +1029,24 @@ bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_
 
                         lcra_add_node_interference(l, nn, Smask, sn, mask);
                 }
+
+//                printf("interference for fill node %i\n", nn);
+//                if (lcra_linear_sparse(l, nn)) {
+//                        nodearray_sparse_foreach(&l->linear[nn], it)
+//                                printf("    %i: %x\n", it.key, it.value);
+//                } else {
+//                        unsigned i = 0;
+//                        util_dynarray_foreach(&l->linear[nn], uint8_t, elem) {
+//                                if (!*elem)
+//                                        continue;
+//                                printf("    %i; %x\n", i++, *elem);
+//                        }
+//                }
         }
 
         util_dynarray_fini(&l->linear[node]);
         l->affinity[node] = 0;
+        l->constraint_count[node] = 0;
 
         util_dynarray_fini(&dest_worklist);
         util_dynarray_fini(&src_worklist);
@@ -988,7 +1067,7 @@ bi_reindex_single(struct bi_reindex_ctx *reindex, bi_index idx)
 {
         if (idx.type == BI_INDEX_NORMAL && !idx.reg) {
                 if (reindex->ssa[idx.value] == 0)
-                        reindex->ssa[idx.value] = ++reindex->ssa_alloc;// << 1;
+                        reindex->ssa[idx.value] = reindex->ssa_alloc++;
 
                 idx.value = reindex->ssa[idx.value];
         }
@@ -1049,10 +1128,7 @@ bi_register_allocate(bi_context *ctx)
         }
 
         /* Otherwise, use the register file and spill until we succeed */
-        while (((iter_count--) > 0)) {
-
-                if (lcra_solve_continue(l))
-                        break;
+        while (((iter_count--) > 0) && !success) {
 
                 signed spill_node = bi_choose_spill_node(ctx, l);
 
@@ -1062,6 +1138,9 @@ bi_register_allocate(bi_context *ctx)
                 spill_count += bi_spill_register(ctx, l,
                                                  bi_node_to_index(ctx, spill_node, bi_max_temp(ctx)),
                                                  spill_count);
+
+                if (success = lcra_solve_continue(l))
+                        break;
         }
 
         assert(success);

@@ -2614,7 +2614,7 @@ panfrost_update_state_3d(struct panfrost_batch *batch)
 {
         unsigned dirty = batch->ctx->dirty;
 
-        if (dirty & (PAN_DIRTY_VIEWPORT | PAN_DIRTY_SCISSOR))
+        if (dirty & (PAN_DIRTY_VIEWPORT_DSC | PAN_DIRTY_SCISSOR_DSC))
                 batch->viewport = panfrost_emit_viewport(batch);
 
         if (dirty & PAN_DIRTY_TLS_SIZE)
@@ -3120,6 +3120,13 @@ panfrost_draw_vbo(struct pipe_context *pipe,
          * side effects. So the only problem case is rasterizer discard with a
          * shader without side effects -- but these draws are useless.
          */
+
+        /* Updating the viewport may change what skip_rasterization decides */
+        if (ctx->dirty & (PAN_DIRTY_VIEWPORT_DSC | PAN_DIRTY_SCISSOR_DSC)) {
+                batch->viewport = panfrost_emit_viewport(batch);
+                ctx->dirty &= ~(PAN_DIRTY_VIEWPORT_DSC | PAN_DIRTY_SCISSOR_DSC);
+        }
+
         if (panfrost_batch_skip_rasterization(batch)) {
                 struct panfrost_shader_state *vs =
                         panfrost_get_shader_state(ctx, PIPE_SHADER_VERTEX);

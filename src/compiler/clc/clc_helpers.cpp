@@ -952,6 +952,8 @@ llvm_mod_to_spirv(std::unique_ptr<::llvm::Module> mod,
    out_spirv->data = malloc(out_spirv->size);
    memcpy(out_spirv->data, spv_out.data(), out_spirv->size);
 
+   mod.reset();
+
    return 0;
 }
 

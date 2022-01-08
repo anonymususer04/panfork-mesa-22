@@ -98,27 +98,26 @@ nodearray_key(const uint32_t *elem)
 static inline bool
 nodearray_iter_next(struct nodearray_iter *i)
 {
-        while ((++i->key) & 15) {
-                uint8_t value = *(++i->val);
-                if (value) {
-                        i->value = value;
-                        return true;
-                }
-        }
-
-        ++i->elem;
-        if ((uint8_t *)i->elem == (uint8_t *)(i->a)->data + (i->a)->size / 5)
-                return false;
-
-        i->key = nodearray_key(i->elem);
-
         for (;;) {
+                while ((++i->key) & 15) {
+                        uint8_t value = *(++i->val);
+                        if (value) {
+                                i->value = value;
+                                return true;
+                        }
+                }
+
+                ++i->elem;
+                if ((uint8_t *)i->elem == (uint8_t *)(i->a)->data + (i->a)->size / 5)
+                        return false;
+
+                i->key = nodearray_key(i->elem);
+
                 uint8_t value = *(++i->val);
                 if (value) {
                         i->value = value;
                         return true;
                 }
-                ++i->key;
         }
 }
 

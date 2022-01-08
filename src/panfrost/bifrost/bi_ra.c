@@ -800,13 +800,15 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
                 }
         }
 
-        unsigned best_benefit = 0.0;
+        unsigned best_benefit = 0;
         signed best_node = -1;
 
         if (lcra_linear_sparse(l, l->spill_node)) {
                 nodearray_sparse_foreach(&l->linear[l->spill_node], it) {
                         unsigned i = it.key;
                         unsigned constraint = it.value;
+
+                        assert(i < l->node_count);
 
                         /* Only spill nodes that interfere with the node failing
                          * register allocation. It's pointless to spill anything else */
@@ -815,7 +817,7 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
                         if (BITSET_TEST(no_spill, i)) continue;
 
                         unsigned cct = l->constraint_count[i];
-//                        printf("sp: %i vs %i\n", benefit, cct);
+//                        printf("sp: %i vs %i\n", i, cct);
 
                         unsigned benefit = cct;
 
@@ -835,7 +837,7 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
                         if (BITSET_TEST(no_spill, i)) continue;
 
                         unsigned cct = l->constraint_count[i];
-//                        printf("ds: %i vs %i\n", benefit, cct);
+//                        printf("ds: %i vs %i\n", i, cct);
 
                         unsigned benefit = cct;
 
@@ -891,19 +893,22 @@ bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_
         if (lcra_linear_sparse(l, node)) {
                 nodearray_sparse_foreach(&l->linear[node], it) {
                         l->constraint_count[it.key] -= util_bitcount(it.value);
+                        nodearray_pop(&l->linear[it.key], node, l->node_count);
                 }
         } else {
                 uint8_t *row = (uint8_t *)util_dynarray_begin(&l->linear[node]);
                 for (unsigned i = 0; i < l->node_count; ++i) {
                         uint8_t value = row[i];
-                        if (value)
+                        if (value) {
                                 l->constraint_count[i] -= util_bitcount(value);
+                                nodearray_pop(&l->linear[i], node, l->node_count);
+                        }
                 }
         }
 #else
-#if 0
+#if 1
         for (unsigned i = 0; i < l->node_count; ++i) {
-                uint8_t value = nodearray_pop(&l->linear[i], i, l->node_count);
+                uint8_t value = nodearray_pop(&l->linear[i], node, l->node_count);
                 if (value)
                         l->constraint_count[i] -= util_bitcount(value);
         }

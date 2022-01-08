@@ -893,7 +893,7 @@ bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_
         if (lcra_linear_sparse(l, node)) {
                 nodearray_sparse_foreach(&l->linear[node], it) {
                         l->constraint_count[it.key] -= util_bitcount(it.value);
-                        nodearray_pop(&l->linear[it.key], node, l->node_count);
+//                        nodearray_pop(&l->linear[it.key], node, l->node_count);
                 }
         } else {
                 uint8_t *row = (uint8_t *)util_dynarray_begin(&l->linear[node]);
@@ -901,14 +901,19 @@ bi_spill_register(bi_context *ctx, struct lcra_state *l, bi_index index, uint32_
                         uint8_t value = row[i];
                         if (value) {
                                 l->constraint_count[i] -= util_bitcount(value);
-                                nodearray_pop(&l->linear[i], node, l->node_count);
+//                                nodearray_pop(&l->linear[i], node, l->node_count);
                         }
                 }
         }
 #else
 #if 1
         for (unsigned i = 0; i < l->node_count; ++i) {
-                uint8_t value = nodearray_pop(&l->linear[i], node, l->node_count);
+                // Yes, this is completely wrong. It produces better RA somehow?
+
+                // TODO: Do this pop when adding interference...
+                // Or maybe this is the best place to do it, because it won't
+                // cost any perf if there is no spilling
+                uint8_t value = nodearray_pop(&l->linear[i], i, l->node_count);
                 if (value)
                         l->constraint_count[i] -= util_bitcount(value);
         }

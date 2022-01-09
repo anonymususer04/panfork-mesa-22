@@ -38,7 +38,7 @@ bi_opt_dead_code_eliminate(bi_context *ctx)
 
         bi_foreach_block_rev(ctx, block) {
                 nodearray live;
-                util_dynarray_init(&live, block);
+                nodearray_init(&live);
 
                 bi_foreach_successor(block, succ)
                         nodearray_orr_array(&live, &succ->live_in, ~0, ~0);
@@ -49,7 +49,7 @@ bi_opt_dead_code_eliminate(bi_context *ctx)
                         bi_foreach_dest(ins, d) {
                                 unsigned index = bi_get_node(ins->dest[d]);
 
-                                uint8_t l = nodearray_get(&live, index, ~0);
+                                uint8_t l = nodearray_get(&live, index);
                                 if (index < temp_count && !(l & bi_writemask(ins, d)))
                                         ins->dest[d] = bi_null();
 
@@ -62,7 +62,7 @@ bi_opt_dead_code_eliminate(bi_context *ctx)
                                 bi_liveness_ins_update(&live, ins, temp_count);
                 }
 
-                util_dynarray_fini(&block->live_in);
+                nodearray_reset(&block->live_in);
                 block->live_in = live;
         }
 }

@@ -47,18 +47,63 @@
 
 #include <stdint.h>
 
-#include "util/u_dynarray.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct util_dynarray nodearray;
+/*
+// Defined in compiler.h
+typedef struct {
+        void *data;
+        unsigned size; // either 8-bit or 32-bit elements
+        unsigned sparse_capacity;
+} nodearray;
+*/
+
+#define nodearray_sparse_foreach(buf, elem) \
+   for (uint32_t *elem = (uint32_t *)(buf)->data; \
+        elem < (uint32_t *)(buf)->data + (buf)->size; elem++)
+
+#define nodearray_dense_foreach(buf, elem) \
+   for (uint8_t *elem = (uint8_t *)(buf)->data; \
+        elem < (uint8_t *)(buf)->data + (buf)->size; elem++)
+
+#define nodearray_dense_foreach_64(buf, elem) \
+   for (uint64_t *elem = (uint64_t *)(buf)->data; \
+        (uint8_t *)elem < (uint8_t *)(buf)->data + (buf)->size; elem++)
 
 static inline bool
-nodearray_sparse(const nodearray *a, unsigned max)
+nodearray_sparse(const nodearray *a)
 {
-        return a->size < max;
+        return a->sparse_capacity != ~0;
+}
+
+static inline void
+nodearray_clone(nodearray *dest, const nodearray *src)
+{
+        dest->size = src->size;
+        dest->sparse_capacity = src->sparse_capacity;
+        if (nodearray_sparse(src)) {
+                dest->data = malloc(src->sparse_capacity * sizeof(uint32_t));
+                memcpy(dest->data, src->data, src->size * sizeof(uint32_t));
+        } else {
+                unsigned aligned = ALIGN_POT(src->size, 16);
+                dest->data = malloc(aligned * sizeof(uint8_t));
+                memcpy(dest->data, src->data, aligned * sizeof(uint8_t));
+        }
+}
+
+static inline void
+nodearray_init(nodearray *a)
+{
+        *a = (nodearray) {0};
+}
+
+static inline void
+nodearray_reset(nodearray *a)
+{
+        free(a->data);
+        nodearray_init(a);
 }
 
 static inline uint32_t
@@ -82,13 +127,12 @@ nodearray_value(const uint32_t *elem)
 static inline unsigned
 nodearray_sparse_search(const nodearray *a, uint32_t key, uint32_t **elem)
 {
-        uint32_t *data = (uint32_t *)util_dynarray_begin(a);
-        unsigned size = util_dynarray_num_elements(a, uint32_t);
+        uint32_t *data = (uint32_t *)a->data;
 
         uint32_t skey = nodearray_encode(key, 0xff);
 
         unsigned left = 0;
-        unsigned right = size - 1;
+        unsigned right = a->size - 1;
         while (left != right) {
                 unsigned probe = (left + right + 1) / 2;
 
@@ -103,9 +147,9 @@ nodearray_sparse_search(const nodearray *a, uint32_t key, uint32_t **elem)
 }
 
 static inline uint8_t
-nodearray_get(const nodearray *a, unsigned key, unsigned max)
+nodearray_get(const nodearray *a, unsigned key)
 {
-        if (nodearray_sparse(a, max)) {
+        if (nodearray_sparse(a)) {
                 if (!a->size)
                         return 0;
 
@@ -117,7 +161,9 @@ nodearray_get(const nodearray *a, unsigned key, unsigned max)
                 else
                         return 0;
         } else {
-                return *util_dynarray_element(a, uint8_t, key);
+                assert(key < a->size);
+                uint8_t *data = a->data;
+                return data[key];
         }
 }
 
@@ -131,8 +177,8 @@ nodearray_orr(nodearray *a, unsigned key, uint8_t value,
         if (!value)
                 return;
 
-        if (nodearray_sparse(a, max)) {
-                unsigned size = util_dynarray_num_elements(a, uint32_t);
+        if (nodearray_sparse(a)) {
+                unsigned size = a->size;
 
                 unsigned left = 0;
 
@@ -155,62 +201,87 @@ nodearray_orr(nodearray *a, unsigned key, uint8_t value,
                 if (size < max_sparse && (size + 1) * 4 < max) {
                         /* We didn't find it, but we know where to insert it. */
 
-                        ASSERTED void *grown = util_dynarray_grow(a, uint32_t, 1);
-                        assert(grown);
+                        uint32_t *data = (uint32_t *)a->data;
+                        uint32_t *data_move = data + left;
 
-                        uint32_t *elem = util_dynarray_element(a, uint32_t, left);
-                        if (left != size)
-                                memmove(elem + 1, elem, (size - left) * sizeof(uint32_t));
+                        uint32_t *elem = NULL;
+
+                        bool realloc = (++a->size) > a->sparse_capacity;
+
+                        if (realloc) {
+                                a->sparse_capacity = CLAMP(a->sparse_capacity * 2, 64, max / 4);
+
+                                /* This case shouldn't happen, but handle it just in case */
+                                if (a->size > a->sparse_capacity)
+                                        ++a->sparse_capacity;
+
+                                a->data = malloc(a->sparse_capacity * sizeof(uint32_t));
+                                elem = (uint32_t *)a->data + left;
+
+                                if (left)
+                                        memcpy(a->data, data, left * sizeof(uint32_t));
+
+                                if (left != size)
+                                        memcpy(elem + 1, data_move, (size - left) * sizeof(uint32_t));
+                        } else {
+                                elem = data_move;
+                                if (left != size)
+                                        memmove(elem + 1, elem, (size - left) * sizeof(uint32_t));
+                        }
 
                         *elem = nodearray_encode(key, value);
+
+                        if (realloc)
+                                free(data);
 
                         return;
                 }
 
                 /* There are too many elements, so convert to a dense array */
                 nodearray old = *a;
-                util_dynarray_init(a, old.mem_ctx);
 
                 /* Align to 16 bytes to allow SIMD operations */
                 unsigned dyn_size = ALIGN_POT(max, 16);
 
-                uint8_t *elements = (uint8_t *)util_dynarray_resize(a, uint8_t, dyn_size);
-                assert(elements);
-                memset(elements, 0, dyn_size);
+                a->data = calloc(dyn_size, sizeof(uint8_t));
+                a->size = max;
+                a->sparse_capacity = ~0;
 
-                util_dynarray_foreach(&old, uint32_t, x) {
+                uint8_t *data = (uint8_t *)a->data;
+
+                nodearray_sparse_foreach(&old, x) {
                         unsigned key = nodearray_key(x);
                         uint8_t value = nodearray_value(x);
 
                         assert(key < max);
-                        elements[key] = value;
+                        data[key] = value;
                 }
 
-                util_dynarray_fini(&old);
+                free(old.data);
         }
 
-        *util_dynarray_element(a, uint8_t, key) |= value;
+        *((uint8_t *)a->data + key) |= value;
 }
 
 static inline void
 nodearray_orr_array(nodearray *a, const nodearray *b, unsigned max_sparse,
                     unsigned max)
 {
-        assert(nodearray_sparse(b, max));
+        assert(nodearray_sparse(b));
 
-        util_dynarray_foreach(b, uint32_t, elem)
+        nodearray_sparse_foreach(b, elem)
                 nodearray_orr(a, nodearray_key(elem), nodearray_value(elem),
                               max_sparse, max);
 }
 
 static inline void
-nodearray_bic(nodearray *a, unsigned key, uint8_t value, unsigned max)
+nodearray_bic(nodearray *a, unsigned key, uint8_t value)
 {
         if (!value)
                 return;
 
-        if (nodearray_sparse(a, max)) {
-                unsigned size = util_dynarray_num_elements(a, uint32_t);
+        if (nodearray_sparse(a)) {
+                unsigned size = a->size;
                 if (!size)
                         return;
 
@@ -227,9 +298,9 @@ nodearray_bic(nodearray *a, unsigned key, uint8_t value, unsigned max)
 
                 /* Delete the element */
                 memmove(elem, elem + 1, (size - loc - 1) * sizeof(uint32_t));
-                (void)util_dynarray_pop(a, uint32_t);
+                --a->size;
         } else {
-                *util_dynarray_element(a, uint8_t, key) &= ~value;
+                *((uint8_t *)a->data + key) &= ~value;
         }
 }
 

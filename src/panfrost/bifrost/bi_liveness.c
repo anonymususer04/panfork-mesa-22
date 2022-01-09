@@ -41,7 +41,7 @@ bi_liveness_ins_update(nodearray *live, bi_instr *ins, unsigned max)
                 unsigned node = bi_get_node(ins->dest[d]);
 
                 if (node < max)
-                        nodearray_bic(live, node, bi_writemask(ins, d), ~0);
+                        nodearray_bic(live, node, bi_writemask(ins, d));
         }
 
         bi_foreach_src(ins, src) {
@@ -63,7 +63,7 @@ liveness_block_update(bi_block *blk, unsigned temp_count)
                 nodearray_orr_array(&blk->live_out, &succ->live_in, ~0, ~0);
 
         nodearray live;
-        util_dynarray_clone(&live, blk, &blk->live_out);
+        nodearray_clone(&live, &blk->live_out);
 
         bi_foreach_instr_in_block_rev(blk, ins)
                 bi_liveness_ins_update(&live, (bi_instr *) ins, temp_count);
@@ -75,7 +75,7 @@ liveness_block_update(bi_block *blk, unsigned temp_count)
         if (!progress)
                 progress = memcmp(live.data, blk->live_in.data, live.size);
 
-        util_dynarray_fini(&blk->live_in);
+        nodearray_reset(&blk->live_in);
         blk->live_in = live;
 
         return progress;
@@ -105,8 +105,8 @@ bi_compute_liveness(bi_context *ctx)
                         _mesa_key_pointer_equal);
 
         list_for_each_entry(bi_block, block, &ctx->blocks, link) {
-                util_dynarray_fini(&block->live_in);
-                util_dynarray_fini(&block->live_out);
+                nodearray_reset(&block->live_in);
+                nodearray_reset(&block->live_out);
         }
 
         /* Initialize the work list with the exit block */

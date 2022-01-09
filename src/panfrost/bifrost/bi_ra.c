@@ -76,7 +76,7 @@ lcra_alloc_equations(unsigned node_count)
         l->solutions = calloc(sizeof(l->solutions[0]), ALIGN_POT(node_count, 16));
         l->affinity = calloc(sizeof(l->affinity[0]), node_count);
 
-        memset(l->solutions, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * node_count);
+        memset(l->solutions, LCRA_NOT_SOLVED, sizeof(l->solutions[0]) * ALIGN_POT(node_count, 16));
 
         return l;
 }
@@ -85,7 +85,7 @@ static void
 lcra_free(struct lcra_state *l)
 {
         for (unsigned i = 0; i < l->node_count; ++i)
-                util_dynarray_fini(&l->linear[i]);
+                nodearray_reset(&l->linear[i]);
 
         free(l->linear);
         free(l->affinity);
@@ -192,7 +192,7 @@ lcra_test_linear_all(struct lcra_state *l, int8_t *solutions, uint8_t *row, uint
 static bool
 lcra_linear_sparse(struct lcra_state *l, unsigned row)
 {
-        return nodearray_sparse(&l->linear[row], l->node_count);
+        return nodearray_sparse(&l->linear[row]);
 }
 
 /* May only return a subset of possible solutions for performance reasons */
@@ -202,7 +202,7 @@ lcra_linear_solutions(struct lcra_state *l, int8_t *solutions, unsigned i)
         uint64_t possible = l->affinity[i];
 
         if (lcra_linear_sparse(l, i)) {
-                util_dynarray_foreach(&l->linear[i], uint32_t, elem) {
+                nodearray_sparse_foreach(&l->linear[i], elem) {
                         /* TODO: Can we use NEON at all here? */
                         unsigned j = nodearray_key(elem);
                         uint64_t constraint = nodearray_value(elem);
@@ -213,7 +213,7 @@ lcra_linear_solutions(struct lcra_state *l, int8_t *solutions, unsigned i)
                 return possible;
         } else {
 
-                uint8_t *row = (uint8_t *)util_dynarray_begin(&l->linear[i]);
+                uint8_t *row = (uint8_t *)l->linear[i].data;
 
                 return lcra_test_linear_all(l, solutions, row, possible);
         }
@@ -249,13 +249,15 @@ static unsigned
 lcra_count_constraints(struct lcra_state *l, unsigned i)
 {
         unsigned count = 0;
-        struct util_dynarray *constraints = &l->linear[i];
+        nodearray *constraints = &l->linear[i];
 
-        /* For sparse arrays, the top bits encode the node */
-        uint32_t mask = lcra_linear_sparse(l, i) ? 0xff : ~0;
-
-        util_dynarray_foreach(constraints, uint32_t, elem)
-                count += util_bitcount(*elem & mask);
+        if (nodearray_sparse(constraints)) {
+                nodearray_sparse_foreach(constraints, elem)
+                        count += util_bitcount(nodearray_value(elem));
+        } else {
+                nodearray_dense_foreach_64(constraints, elem)
+                        count += util_bitcount64(*elem);
+        }
 
         return count;
 }
@@ -332,14 +334,14 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uin
 
                         unsigned writemask = bi_writemask(ins, d);
 
-                        assert(nodearray_sparse(live, ~0));
-                        util_dynarray_foreach(live, uint32_t, elem) {
+                        assert(nodearray_sparse(live));
+                        nodearray_sparse_foreach(live, elem) {
                                 unsigned i = nodearray_key(elem);
                                 unsigned liveness = nodearray_value(elem);
 
-                                if (liveness)
-                                        lcra_add_node_interference(l, node,
-                                                        writemask, i, liveness);
+                                assert(liveness);
+                                lcra_add_node_interference(l, node,
+                                                           writemask, i, liveness);
                         }
                 }
 
@@ -355,12 +357,12 @@ bi_mark_interference(bi_block *block, struct lcra_state *l, nodearray *live, uin
                         /* Blend shaders might clobber r0-r15, r48. */
                         uint64_t clobber = BITFIELD64_MASK(16) | BITFIELD64_BIT(48);
 
-                        assert(nodearray_sparse(live, ~0));
-                        util_dynarray_foreach(live, uint32_t, elem) {
+                        assert(nodearray_sparse(live));
+                        nodearray_sparse_foreach(live, elem) {
                                 unsigned i = nodearray_key(elem);
 
-                                if (nodearray_value(elem))
-                                        l->affinity[i] &= ~clobber;
+                                assert(nodearray_value(elem));
+                                l->affinity[i] &= ~clobber;
                         }
                 }
 
@@ -382,13 +384,13 @@ bi_compute_interference(bi_context *ctx, struct lcra_state *l, bool full_regs)
 
         bi_foreach_block_rev(ctx, blk) {
                 nodearray live;
-                util_dynarray_clone(&live, NULL, &blk->live_out);
+                nodearray_clone(&live, &blk->live_out);
 
                 bi_mark_interference(blk, l, &live, blk->reg_live_out,
                                 node_count, ctx->inputs->is_blend, !full_regs,
                                 ctx->arch >= 9);
 
-                util_dynarray_fini(&live);
+                nodearray_reset(&live);
         }
 }
 
@@ -535,7 +537,7 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
         signed best_node = -1;
 
         if (lcra_linear_sparse(l, l->spill_node)) {
-                util_dynarray_foreach(&l->linear[l->spill_node], uint32_t, elem) {
+                nodearray_sparse_foreach(&l->linear[l->spill_node], elem) {
                         unsigned i = nodearray_key(elem);
                         unsigned constraint = nodearray_value(elem);
 
@@ -553,7 +555,7 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
                         }
                 }
         } else {
-                uint8_t *row = (uint8_t *)util_dynarray_begin(&l->linear[l->spill_node]);
+                uint8_t *row = (uint8_t *)l->linear[l->spill_node].data;
 
                 for (unsigned i = 0; i < l->node_count; ++i) {
                         /* Only spill nodes that interfere with the node failing

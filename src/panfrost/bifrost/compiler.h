@@ -39,7 +39,11 @@
 extern "C" {
 #endif
 
-typedef struct util_dynarray nodearray;
+typedef struct {
+        void *data;
+        unsigned size; /* either 8-bit or 32-bit elements */
+        unsigned sparse_capacity;
+} nodearray;
 
 /* Swizzles across bytes in a 32-bit word. Expresses swz in the XML directly.
  * To express widen, use the correpsonding replicated form, i.e. H01 = identity

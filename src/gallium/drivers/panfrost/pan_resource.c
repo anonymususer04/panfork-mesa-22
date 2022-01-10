@@ -588,6 +588,9 @@ panfrost_resource_set_damage_region(struct pipe_screen *screen,
                                     unsigned int nrects,
                                     const struct pipe_box *rects)
 {
+	if (!res)
+		return;
+
         struct panfrost_device *dev = pan_device(screen);
         struct panfrost_resource *pres = pan_resource(res);
         struct pipe_scissor_state *damage_extent = &pres->damage.extent;

@@ -199,8 +199,9 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
         case PIPE_CAP_STREAM_OUTPUT_INTERLEAVE_BUFFERS:
                 return 1;
 
+        /* Requirement for OpenCL 1.2 */
         case PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS:
-                return 256;
+                return 2048;
 
         case PIPE_CAP_GLSL_FEATURE_LEVEL:
         case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:

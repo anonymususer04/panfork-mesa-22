@@ -300,7 +300,7 @@ clover::llvm::build_module_common(const Module &mod,
       if (offsets.count(name))
          b.syms.emplace_back(name, kernel_attributes(mod, name),
                              get_reqd_work_group_size(mod, name),
-                             0, offsets.at(name),
+                             0, offsets.at(name), 0,
                              make_kernel_args(mod, name, c));
    }
 

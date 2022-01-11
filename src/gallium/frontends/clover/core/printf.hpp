@@ -33,7 +33,9 @@ namespace clover {
       static std::unique_ptr<printf_handler>
       create(const intrusive_ptr<command_queue> &q,
              const std::vector<binary::printf_info> &info,
-             bool strings_in_buffer, cl_uint size);
+             unsigned info_offset,
+             bool strings_in_buffer,
+             cl_uint size);
 
       printf_handler(const printf_handler &arg) = delete;
       printf_handler &
@@ -47,7 +49,9 @@ namespace clover {
    private:
       printf_handler(const intrusive_ptr<command_queue> &q,
                      const std::vector<binary::printf_info> &infos,
-                     bool strings_in_buffer, cl_uint size);
+                     unsigned info_offset,
+                     bool strings_in_buffer,
+                     cl_uint size);
 
       intrusive_ptr<command_queue> _q;
       std::vector<binary::printf_info> _formatters;

@@ -599,6 +599,7 @@ binary clover::nir::spirv_to_nir(const binary &mod, const device &dev,
 
       free(blob.data);
 
+      unsigned printf_offset = b.printf_infos.size();
       b.printf_strings_in_buffer = false;
       b.printf_infos.reserve(printf_info_count);
       for (unsigned i = 0; i < printf_info_count; i++) {
@@ -616,7 +617,8 @@ binary clover::nir::spirv_to_nir(const binary &mod, const device &dev,
       ralloc_free(mem_ctx);
 
       b.syms.emplace_back(sym.name, sym.attributes,
-                          sym.reqd_work_group_size, section_id, 0, args);
+                          sym.reqd_work_group_size, section_id,
+                          0, printf_offset, args);
       b.secs.push_back(text);
       section_id++;
    }

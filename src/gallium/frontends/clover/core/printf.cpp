@@ -176,17 +176,23 @@ namespace {
 std::unique_ptr<printf_handler>
 printf_handler::create(const intrusive_ptr<command_queue> &q,
                        const std::vector<binary::printf_info> &infos,
+                       unsigned info_offset,
                        bool strings_in_buffer,
                        cl_uint size) {
    return std::unique_ptr<printf_handler>(
-                                       new printf_handler(q, infos, strings_in_buffer, size));
+                                       new printf_handler(q, infos, info_offset, strings_in_buffer, size));
 }
 
 printf_handler::printf_handler(const intrusive_ptr<command_queue> &q,
                                const std::vector<binary::printf_info> &infos,
+                               unsigned info_offset,
                                bool strings_in_buffer,
                                cl_uint size) :
-   _q(q), _formatters(infos), _strings_in_buffer(strings_in_buffer), _size(size), _buffer() {
+   _q(q), _strings_in_buffer(strings_in_buffer), _size(size), _buffer() {
+
+   _formatters.reserve(infos.size() - info_offset);
+   for (unsigned i = info_offset; i < infos.size();  ++i)
+      _formatters.push_back(infos[i]);
 
    if (_size) {
       std::string data;

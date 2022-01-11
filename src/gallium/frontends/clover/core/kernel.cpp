@@ -259,7 +259,7 @@ kernel::exec_context::bind(intrusive_ptr<command_queue> _q,
          break;
       }
       case binary::argument::printf_buffer: {
-         print_handler = printf_handler::create(q, b.printf_infos,
+         print_handler = printf_handler::create(q, b.printf_infos, bsym.printf_offset,
                                                 b.printf_strings_in_buffer,
                                                 q->device().max_printf_buffer_size());
          cl_mem print_mem = print_handler->get_mem();

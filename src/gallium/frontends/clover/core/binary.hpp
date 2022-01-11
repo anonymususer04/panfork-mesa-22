@@ -136,12 +136,12 @@ namespace clover {
       struct symbol {
          symbol(const std::string &name, const std::string &attributes,
                 const std::vector<::size_t> &reqd_work_group_size,
-                resource_id section, size_t offset,
+                resource_id section, size_t offset, size_t printf_offset,
                 const std::vector<argument> &args) :
             name(name), attributes(attributes),
             reqd_work_group_size(reqd_work_group_size),
             section(section),
-            offset(offset), args(args) { }
+            offset(offset), printf_offset(printf_offset), args(args) { }
          symbol() : name(), attributes(), reqd_work_group_size({0, 0, 0}),
             section(0), offset(0), args() { }
 
@@ -150,6 +150,7 @@ namespace clover {
          std::vector<::size_t> reqd_work_group_size;
          resource_id section;
          size_t offset;
+         size_t printf_offset;
          std::vector<argument> args;
       };
 

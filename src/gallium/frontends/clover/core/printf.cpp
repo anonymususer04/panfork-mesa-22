@@ -49,9 +49,9 @@ namespace {
 	 std::cerr << "Printf used but no printf occurred - may cause perfomance issue." << std::endl;
 
       for (size_t buf_pos = 0; buf_pos < buffer.size(); ) {
-         cl_uint fmt_idx = *(cl_uint*)&buffer[buf_pos];
+         cl_uint fmt_idx = *(cl_uint*)&buffer.at(buf_pos);
          assert(fmt_idx > 0);
-         binary::printf_info fmt = formatters[fmt_idx-1];
+         binary::printf_info fmt = formatters.at(fmt_idx-1);
 
          std::string format = (char *)fmt.strings.data();
          buf_pos += sizeof(cl_uint);

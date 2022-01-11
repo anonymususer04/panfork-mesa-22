@@ -150,7 +150,12 @@ namespace {
                         } else {
                            cl_long l = 0;
                            std::memcpy(&l, &buffer[elmt_buf_pos], elmt_size);
-                           printf(print_str.c_str(), l);
+                           /* Add l twice in case the calling convention
+                            * requires >32-bit arguments to be aligned in
+                            * registers. (ARM would would put the argument in
+                            * r2 and r3, but then printf might try to read
+                            * from r1.) */
+                           printf(print_str.c_str(), l, (int)l);
                         }
                      }
                   }

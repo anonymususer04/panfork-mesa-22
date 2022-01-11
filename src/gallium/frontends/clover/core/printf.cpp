@@ -150,7 +150,11 @@ namespace {
                         } else {
                            cl_long l = 0;
                            std::memcpy(&l, &buffer[elmt_buf_pos], elmt_size);
-                           printf(print_str.c_str(), l);
+                           /* Some calling conventions require the 64-bit 'l'
+                            * argument to be aligned, so use fprintf instead
+                            * of printf so that the same register is read if
+                            * the argument is printed as 32-bits or 64-bit. */
+                           fprintf(stdout, print_str.c_str(), l);
                         }
                      }
                   }

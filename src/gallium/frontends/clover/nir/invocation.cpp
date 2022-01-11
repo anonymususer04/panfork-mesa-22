@@ -589,8 +589,6 @@ binary clover::nir::spirv_to_nir(const binary &mod, const device &dev,
       blob_init(&blob);
       nir_serialize(&blob, nir, false);
 
-      ralloc_free(nir);
-
       const pipe_binary_program_header header { uint32_t(blob.size) };
       binary::section text { section_id, binary::section::text_executable, header.num_bytes, {} };
       text.data.insert(text.data.end(), reinterpret_cast<const char *>(&header),
@@ -614,6 +612,7 @@ binary clover::nir::spirv_to_nir(const binary &mod, const device &dev,
          b.printf_infos.push_back(info);
       }
 
+      ralloc_free(nir);
       ralloc_free(mem_ctx);
 
       b.syms.emplace_back(sym.name, sym.attributes,

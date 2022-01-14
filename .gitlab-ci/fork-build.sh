@@ -97,9 +97,9 @@ DESTDIR=_inst ninja install
 mkdir panfork
 mv _inst/usr/local/* panfork
 mv panfork/lib/*/* panfork
-rmdir panfork/lib/*
+rmdir panfork/lib/* panfork/lib
 
-touch panfork/"$(git describe)"
+touch panfork/"$(git log -1 | sed -n '1s/commit \([^ ]\)\( .*\)\?/\1/p')"
 
 tar cvJf ../panfork.tar.xz panfork
 sha256sum ../panfork.tar.xz

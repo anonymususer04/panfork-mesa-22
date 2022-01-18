@@ -681,8 +681,13 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                 if (!(reqs & PANFROST_JD_REQ_FS)) {
                         if (dev->debug & PAN_DBG_EMU_TILER)
                                 panfrost_emulate_tiler(&batch->tiler_jobs, dev->gpu_id);
-                        else
-                                hexdump(stdout, dev->tiler_heap->ptr.cpu, 1024*1024);
+                        else {
+                                fflush(stdout);
+                                FILE *stream = popen("tiler-hex-read", "w");
+                                fprintf(stream, "width %i\nheight %i\n", batch->key.width, batch->key.height);
+                                hexdump(stream, dev->tiler_heap->ptr.cpu, 1024*1024);
+                                pclose(stream);
+                        }
                 }
 
                 /* Jobs won't be complete if blackhole rendering, that's ok */

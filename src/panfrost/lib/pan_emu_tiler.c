@@ -42,8 +42,8 @@ __attribute__((packed))
 struct tiler_instr_set_offset {
         signed c           : 7;
         signed b           : 7;
-        signed offset      : 8;
-        unsigned layer     : 6;
+        signed offset      : 7;
+        unsigned layer     : 7;
         unsigned op        : 4;
 };
 
@@ -440,6 +440,22 @@ static void
 do_draw(struct tiler_context *tc, coord_t loc, int op, int layer, int a, int b, int c)
 {
         if (CLAMP(a, -128, 127) != a || CLAMP(b, -64, 63) != b || CLAMP(c, -64, 63) != c) {
+
+                if (CLAMP(a, -16384, 16383) != a || CLAMP(b, -8192, 8191) != b || CLAMP(c, -8192, 8191) != c) {
+
+                        struct tiler_instr_set_offset ins = {
+                                .op = 4,
+                                .layer = 0,
+                                .offset = DIV_ROUND_DOWN(a, 32768),
+                                .b = DIV_ROUND_DOWN(b, 16384),
+                                .c = DIV_ROUND_DOWN(c, 16384),
+                        };
+                        heap_add(tc, loc, &ins);
+
+                        assert(ins.offset == DIV_ROUND_DOWN(a, 32768));
+                        assert(ins.b == DIV_ROUND_DOWN(b, 16384));
+                        assert(ins.c == DIV_ROUND_DOWN(c, 16384));
+                }
 
                 struct tiler_instr_set_offset ins = {
                         .op = 4,

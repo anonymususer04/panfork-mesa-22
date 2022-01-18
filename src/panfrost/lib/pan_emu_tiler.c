@@ -68,7 +68,7 @@ tiler_draw_type(enum mali_draw_mode mode)
         }
 }
 
-enum foo { INVALID, END, REL, ABS, LOOP };
+enum foo { INVALID, END, REL, ABS };
 
 #define PROVOKE_LAST 16
 
@@ -175,9 +175,6 @@ generate_triangle(struct trigen_context *t, int *a, int *b, int *c)
                 assert(0);
         case END:
                 t->state = t->loop_pt;
-                return generate_triangle(t, a, b, c);
-        case LOOP:
-                t->loop_pt = t->state - 1;
                 return generate_triangle(t, a, b, c);
         case REL:
                 *b = *a + d.b;

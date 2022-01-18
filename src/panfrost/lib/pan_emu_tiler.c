@@ -3,6 +3,7 @@
 #include "gen_macros.h"
 #include "decode.h"
 #include "util/u_dynarray.h"
+#include "util/half_float.h"
 
 #include "pan_emu.h"
 
@@ -528,9 +529,18 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
         struct mali_tiler_job_packed *PANDECODE_PTR_VAR(p, NULL, job);
         pan_section_unpack(p, TILER_JOB, DRAW, draw);
         pan_section_unpack(p, TILER_JOB, PRIMITIVE, primitive);
+        pan_section_unpack(p, TILER_JOB, PRIMITIVE_SIZE, prim_size);
         pan_section_unpack(p, TILER_JOB, INVOCATION, invocation);
 
         struct position *PANDECODE_PTR_VAR(position, NULL, draw.position);
+
+        float *primsz_32 = NULL;
+        uint16_t *primsz_16 = NULL;
+        if (primitive.point_size_array_format) {
+                void *ptr = pandecode_fetch_gpu_mem(NULL, prim_size.size_array, 1);
+                primsz_32 = ptr;
+                primsz_16 = ptr;
+        }
 
 //        printf("draw: %"PRIx64", pos: %"PRIx64"\n", job + 128, draw.position);
 
@@ -578,6 +588,45 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                         maxy = MAX2(maxy, vp.y);
                 }
 
+                float extra_size = 0;
+                switch (verts_per_prim) {
+                case 1:
+                        switch (primitive.point_size_array_format) {
+                        case MALI_POINT_SIZE_ARRAY_FORMAT_NONE:
+                                extra_size = prim_size.constant;
+                                break;
+                        case MALI_POINT_SIZE_ARRAY_FORMAT_FP16:
+                                extra_size = _mesa_half_to_float(primsz_16[aa]);
+                                break;
+                        case MALI_POINT_SIZE_ARRAY_FORMAT_FP32:
+                                extra_size = primsz_32[aa];
+                                break;
+                        }
+                        break;
+                case 2:
+                        extra_size = prim_size.constant;
+                        break;
+                default:
+                        break;
+                }
+
+                extra_size = MAX2(extra_size, 0);
+
+                unsigned extra_size_fixed = extra_size * 32.0f;
+
+                /* Round to nearest even (here, multiple of four) */
+                if (extra_size_fixed == extra_size * 32.0f && extra_size_fixed & 1) {
+                        /* 1 -> 0, 3 -> 4, 5 -> 4, 7 -> 8 */
+                        extra_size_fixed += (extra_size_fixed & 2) ? 1 : -1;
+                }
+                extra_size_fixed /= 2;
+                extra_size_fixed = MIN2(extra_size_fixed, 65535);
+
+                minx -= extra_size;
+                maxx += extra_size;
+                miny -= extra_size;
+                maxy += extra_size;
+
                 int minx_tile = MAX2((int)minx / 16, 0);
                 int miny_tile = MAX2((int)miny / 16, 0);
                 int maxx_tile = MIN2(DIV_ROUND_UP((int)ceilf(maxx), 16), c->tx);
@@ -596,7 +645,7 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                                 }
 
                                 int bbb = (verts_per_prim > 1) ? (bb - aa) : 0;
-                                int ccc = (verts_per_prim > 2) ? (cc - aa) : 16;
+                                int ccc = (verts_per_prim > 2) ? (cc - aa) : extra_size_fixed;
 
                                 do_draw(c, l, c->op, 0, aa - ext->pos, bbb, ccc);
                                 ext->pos = aa;

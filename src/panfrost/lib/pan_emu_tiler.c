@@ -632,6 +632,8 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                 int maxx_tile = MIN2(DIV_ROUND_UP((int)ceilf(maxx), 16), c->tx);
                 int maxy_tile = MIN2(DIV_ROUND_UP((int)ceilf(maxy), 16), c->ty);
 
+//                minx_tile = 0; miny_tile = 0; maxx_tile = c->tx; maxy_tile = c->ty;
+
                 coord_t l = {0};
                 for (l.x = minx_tile; l.x < maxx_tile; ++l.x) {
                         for (l.y = miny_tile; l.y < maxy_tile; ++l.y) {

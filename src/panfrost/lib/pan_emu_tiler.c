@@ -81,6 +81,38 @@ struct draw_state_data {
 };
 
 const static struct draw_state_data states[][10] = {
+        [MALI_DRAW_MODE_POINTS] = {
+                {0, ABS, 0, ABS, 0},
+                {1, END},
+        },
+        [MALI_DRAW_MODE_POINTS + PROVOKE_LAST] = {
+                {0, ABS, 0, ABS, 0},
+                {1, END},
+        },
+        [MALI_DRAW_MODE_LINES] = {
+                {1, REL, -1, ABS, 0},
+                {1, END},
+        },
+        [MALI_DRAW_MODE_LINES + PROVOKE_LAST] = {
+                {0, REL, 1, ABS, 0},
+                {2, END},
+        },
+        [MALI_DRAW_MODE_LINE_STRIP] = {
+                {1, REL, -1, ABS, 0},
+                {0, END},
+        },
+        [MALI_DRAW_MODE_LINE_STRIP + PROVOKE_LAST] = {
+                {0, REL, 1, ABS, 0},
+                {1, END},
+        },
+        [MALI_DRAW_MODE_LINE_LOOP] = {
+                {1, REL, -1, ABS, 0},
+                {0, END},
+        },
+        [MALI_DRAW_MODE_LINE_LOOP + PROVOKE_LAST] = {
+                {0, REL, 1, ABS, 0},
+                {1, END},
+        },
         [MALI_DRAW_MODE_TRIANGLES] = {
                 {0, REL, 1, REL, 2},
                 {3, END},
@@ -195,6 +227,13 @@ generate_triangle(struct trigen_context *t, int *a, int *b, int *c)
                 assert(0);
         }
 
+        if ((t->type & 0xf) == MALI_DRAW_MODE_LINE_LOOP) {
+                if (*a == t->index_count)
+                        *a = 0;
+                if (*b == t->index_count)
+                        *b = 0;
+        }
+
         return check_pos(t, a, b, c);
 }
 
@@ -243,13 +282,15 @@ generate_triangle_indexed(struct trigen_context *t, int *a, int *b, int *c)
         if (!generate_triangle(t, a, b, c))
                 return false;
 
+        unsigned num = tiler_draw_type(t->type & 0xf);
+
         switch (t->index_type) {
         case MALI_INDEX_TYPE_NONE:
                 return true;
         case MALI_INDEX_TYPE_UINT16: {
                 int r = index_transform_u16(t, a);
-                if (!r) r = index_transform_u16(t, b);
-                if (!r) r = index_transform_u16(t, c);
+                if (!r && num > 1) r = index_transform_u16(t, b);
+                if (!r && num > 2) r = index_transform_u16(t, c);
                 if (r) {
                         /* We hit a primitive restart index */
                         t->pos = r;
@@ -261,8 +302,8 @@ generate_triangle_indexed(struct trigen_context *t, int *a, int *b, int *c)
         case MALI_INDEX_TYPE_UINT32: {
                 /* TODO: reduce duplication -- move switch to a new func? */
                 int r = index_transform_u32(t, a);
-                if (!r) r = index_transform_u32(t, b);
-                if (!r) r = index_transform_u32(t, c);
+                if (!r && num > 1) r = index_transform_u32(t, b);
+                if (!r && num > 2) r = index_transform_u32(t, c);
                 if (r) {
                         /* We hit a primitive restart index */
                         t->pos = r;
@@ -504,10 +545,12 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                 .base_vertex_offset = primitive.base_vertex_offset,
         };
 
+        unsigned verts_per_prim = tiler_draw_type(primitive.draw_mode);
+
         int aa, bb, cc;
         while (generate_triangle_indexed(&tris, &aa, &bb, &cc)) {
 
-                if (aa == bb || aa == cc || bb == cc)
+                if ((verts_per_prim > 1 && aa == bb) || (verts_per_prim > 2 && (aa == cc || bb == cc)))
                         continue;
 
                 struct position vp = position[aa];
@@ -517,17 +560,23 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                 float miny = vp.y;
                 float maxy = vp.y;
 
-                vp = position[bb];
-                minx = MIN2(minx, vp.x);
-                maxx = MAX2(maxx, vp.x);
-                miny = MIN2(miny, vp.y);
-                maxy = MAX2(maxy, vp.y);
+                // TODO: Handle points..
 
-                vp = position[cc];
-                minx = MIN2(minx, vp.x);
-                maxx = MAX2(maxx, vp.x);
-                miny = MIN2(miny, vp.y);
-                maxy = MAX2(maxy, vp.y);
+                if (verts_per_prim > 1) {
+                        vp = position[bb];
+                        minx = MIN2(minx, vp.x);
+                        maxx = MAX2(maxx, vp.x);
+                        miny = MIN2(miny, vp.y);
+                        maxy = MAX2(maxy, vp.y);
+                }
+
+                if (verts_per_prim > 2) {
+                        vp = position[cc];
+                        minx = MIN2(minx, vp.x);
+                        maxx = MAX2(maxx, vp.x);
+                        miny = MIN2(miny, vp.y);
+                        maxy = MAX2(maxy, vp.y);
+                }
 
                 int minx_tile = MAX2((int)minx / 16, 0);
                 int miny_tile = MAX2((int)miny / 16, 0);
@@ -546,7 +595,10 @@ do_tiler_job(struct tiler_context *c, mali_ptr job)
                                         ext->pos = 0;
                                 }
 
-                                do_draw(c, l, c->op, 0, aa - ext->pos, bb - aa, cc - aa);
+                                int bbb = (verts_per_prim > 1) ? (bb - aa) : 0;
+                                int ccc = (verts_per_prim > 2) ? (cc - aa) : 16;
+
+                                do_draw(c, l, c->op, 0, aa - ext->pos, bbb, ccc);
                                 ext->pos = aa;
 
                         }

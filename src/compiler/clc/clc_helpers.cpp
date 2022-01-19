@@ -745,11 +745,6 @@ static std::pair<std::unique_ptr<::llvm::Module>, std::unique_ptr<LLVMContext>>
 clc_compile_to_llvm_module(const struct clc_compile_args *args,
                            const struct clc_logger *logger)
 {
-   LLVMInitializeAllTargets();
-   LLVMInitializeAllTargetInfos();
-   LLVMInitializeAllTargetMCs();
-   LLVMInitializeAllAsmPrinters();
-
    std::string log;
    std::unique_ptr<LLVMContext> llvm_ctx { new LLVMContext };
    llvm_ctx->setDiagnosticHandlerCallBack(llvm_log_handler, &log);
@@ -993,11 +988,6 @@ clc_spir_to_spirv(const struct clc_binary *in_spir,
                   const struct clc_logger *logger,
                   struct clc_binary *out_spirv)
 {
-   LLVMInitializeAllTargets();
-   LLVMInitializeAllTargetInfos();
-   LLVMInitializeAllTargetMCs();
-   LLVMInitializeAllAsmPrinters();
-
    std::unique_ptr<LLVMContext> llvm_ctx{ new LLVMContext };
    ::llvm::StringRef spir_ref(static_cast<const char*>(in_spir->data), in_spir->size);
    auto mod = ::llvm::parseBitcodeFile(::llvm::MemoryBufferRef(spir_ref, "<spir>"), *llvm_ctx);

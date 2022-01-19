@@ -53,6 +53,7 @@ typedef enum {
 } midgard_special_arg_mod;
 
 typedef struct {
+        unsigned num_words;
         unsigned *midg_tags;
         struct midgard_disasm_stats midg_stats;
 
@@ -1130,13 +1131,14 @@ print_extended_branch_writeout_field(disassemble_context *ctx, FILE *fp, uint8_t
 
         unsigned I = next + br.offset * 4;
 
-        if (ctx->midg_tags[I] && ctx->midg_tags[I] != br.dest_tag) {
+        if (I < ctx->num_words && ctx->midg_tags[I] && ctx->midg_tags[I] != br.dest_tag) {
                 fprintf(fp, "\t/* XXX TAG ERROR: jumping to %s but tagged %s \n",
                         midgard_tag_props[br.dest_tag].name,
-                        midgard_tag_props[ctx->midg_tags[I]].name);
+                        midgard_tag_props[ctx->midg_tags[I] & 0xF].name);
         }
 
-        ctx->midg_tags[I] = br.dest_tag;
+        if (I < ctx->num_words)
+                ctx->midg_tags[I] = br.dest_tag;
 
         ctx->midg_stats.instruction_count++;
         return br.offset >= 0;
@@ -1932,6 +1934,7 @@ disassemble_midgard(FILE *fp, uint8_t *code, size_t size, unsigned gpu_id, bool 
         unsigned i = 0;
 
         disassemble_context ctx = {
+                .num_words = num_words,
                 .midg_tags = calloc(sizeof(ctx.midg_tags[0]), num_words),
                 .midg_stats = {0},
                 .midg_ever_written = 0,

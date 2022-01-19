@@ -48,6 +48,7 @@
 #define PAN_DBG_NO_CACHE        0x2000
 #define PAN_DBG_DUMP            0x4000
 #define PAN_DBG_FLUSH           0x8000
+#define PAN_DBG_PRINTF         0x10000
 
 struct panfrost_device;
 

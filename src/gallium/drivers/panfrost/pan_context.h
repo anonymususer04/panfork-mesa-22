@@ -221,6 +221,10 @@ struct panfrost_context {
 
         /* Mask of active render targets */
         uint8_t fb_rt_mask;
+
+        /* Used for printf from driver-internal compute kernels */
+        unsigned printf_info_count;
+        nir_printf_info *printf_info;
 };
 
 /* Corresponds to the CSO */

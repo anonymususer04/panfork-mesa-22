@@ -941,6 +941,30 @@ panfrost_upload_rt_conversion_sysval(struct panfrost_batch *batch,
 #endif
 
 static void
+panfrost_upload_printf_buffer_sysval(struct panfrost_batch *batch,
+                                     enum pipe_shader_type st,
+                                     struct sysval_uniform *uniform)
+{
+        struct panfrost_context *ctx = batch->ctx;
+        struct panfrost_bo *bo =
+                panfrost_batch_create_bo(batch, 1024 * 1024,
+                                         0, PIPE_SHADER_COMPUTE,
+                                         "Buffer for printf");
+
+        uint32_t pos = 4;
+        memcpy(bo->ptr.cpu, &pos, 4);
+
+        struct panfrost_printf_buffer buf = {
+                .bo = bo,
+                .printf_info_count = ctx->printf_info_count,
+                .printf_info = ctx->printf_info,
+        };
+        util_dynarray_append(&batch->printf_buffers, struct panfrost_printf_buffer, buf);
+
+        uniform->du[0] = bo->ptr.gpu;
+}
+
+static void
 panfrost_upload_sysval(struct panfrost_batch *batch,
                        enum pipe_shader_type st,
                        int sysval,
@@ -1011,6 +1035,9 @@ panfrost_upload_sysval(struct panfrost_batch *batch,
                 break;
         case PAN_SYSVAL_DRAWID:
                 uniform->u[0] = batch->ctx->drawid;
+                break;
+        case PAN_SYSVAL_PRINTF_BUFFER:
+                panfrost_upload_printf_buffer_sysval(batch, st, uniform);
                 break;
         default:
                 assert(0);

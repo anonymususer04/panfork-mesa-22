@@ -2009,6 +2009,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
         case nir_intrinsic_load_first_vertex:
         case nir_intrinsic_load_ssbo_address:
         case nir_intrinsic_load_work_dim:
+        case nir_intrinsic_load_printf_buffer_address:
                 emit_sysval_read(ctx, &instr->instr, 1, 0);
                 break;
 

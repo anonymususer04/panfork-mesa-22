@@ -563,6 +563,50 @@ panfrost_batch_to_fb_info(const struct panfrost_batch *batch,
         }
 }
 
+static void
+panfrost_batch_handle_printf(struct panfrost_batch *batch)
+{
+        util_dynarray_foreach(&batch->printf_buffers,
+                              struct panfrost_printf_buffer,
+                              elem) {
+                uint8_t *buffer = elem->bo->ptr.cpu;
+
+                uint32_t buffer_size;
+                memcpy(&buffer_size, buffer, 4);
+                uint8_t *buffer_end = buffer + buffer_size;
+                buffer += 4;
+
+                while (buffer < buffer_end) {
+
+                        uint32_t fmt_idx;
+                        memcpy(&fmt_idx, buffer, 4);
+                        buffer += 4;
+
+                        fmt_idx -= 1;
+                        if (fmt_idx >= elem->printf_info_count) {
+                                printf("Invalid printf index %i\n", fmt_idx + 1);
+                                break;
+                        }
+                        nir_printf_info info = elem->printf_info[fmt_idx];
+
+                        /* For now we use the format string as a literal
+                         * string, and print the arguments on the next line.
+                         * This is good enough for debugging. */
+                        printf("%s", info.strings);
+
+                        for (unsigned i = 0; i < info.num_args; ++i) {
+                                unsigned size = info.arg_sizes[i];
+                                uint64_t value = 0;
+                                memcpy(&value, buffer, MIN2(size, 8));
+
+                                printf(" 0x%"PRIx64, value);
+                                buffer += ALIGN_POT(size, 4);
+                        }
+                        printf("\n");
+                }
+        }
+}
+
 static int
 panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                             mali_ptr first_job_desc,
@@ -582,7 +626,11 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
          * after we're done but preventing double-frees if we were given a
          * syncobj */
 
-        if (!out_sync && dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC))
+        /* TODO: Allow printf from fragment shaders? */
+        bool wait_job = (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC)) ||
+                (!reqs && batch->printf_buffers.size);
+
+        if (!out_sync && wait_job)
                 out_sync = ctx->syncobj;
 
         submit.out_sync = out_sync;
@@ -659,10 +707,13 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                 return errno;
 
         /* Trace the job if we're doing that */
-        if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC)) {
+        if (wait_job) {
                 /* Wait so we can get errors reported back */
                 drmSyncobjWait(dev->fd, &out_sync, 1,
                                INT64_MAX, 0, NULL);
+
+                if (!reqs && batch->printf_buffers.size)
+                        panfrost_batch_handle_printf(batch);
 
                 if (getenv("BO_DUMP")) {
                         char *name;

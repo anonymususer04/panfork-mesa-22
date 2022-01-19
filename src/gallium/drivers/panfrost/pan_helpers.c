@@ -69,6 +69,7 @@ panfrost_analyze_sysvals(struct panfrost_shader_state *ss)
                 case PAN_SYSVAL_SAMPLE_POSITIONS:
                 case PAN_SYSVAL_MULTISAMPLED:
                 case PAN_SYSVAL_RT_CONVERSION:
+                case PAN_SYSVAL_PRINTF_BUFFER:
                         /* Nothing beyond the batch itself */
                         break;
                 default:

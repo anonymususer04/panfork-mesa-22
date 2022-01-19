@@ -132,6 +132,14 @@ struct panfrost_batch {
 
         /* Referenced resources */
         struct set *resources;
+
+        struct util_dynarray printf_buffers;
+};
+
+struct panfrost_printf_buffer {
+        struct panfrost_bo *bo;
+        unsigned printf_info_count;
+        nir_printf_info *printf_info;
 };
 
 /* Functions for managing the above */

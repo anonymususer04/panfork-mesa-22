@@ -1527,6 +1527,8 @@ compute_builtin_arg(nir_intrinsic_op op)
         case nir_intrinsic_load_global_invocation_id:
         case nir_intrinsic_load_global_invocation_id_zero_base:
                 return REGISTER_LDST_GLOBAL_THREAD_ID;
+        case nir_intrinsic_load_scratch_base_ptr:
+                return REGISTER_LDST_LOCAL_STORAGE_PTR;
         default:
                 unreachable("Invalid compute paramater loaded");
         }
@@ -1595,6 +1597,18 @@ emit_compute_builtin(compiler_context *ctx, nir_intrinsic_instr *instr)
         midgard_instruction ins = m_ldst_mov(reg, 0);
         ins.mask = mask_of(3);
         ins.swizzle[0][3] = COMPONENT_X; /* xyzx */
+        ins.load_store.arg_reg = compute_builtin_arg(instr->intrinsic);
+        emit_mir_instruction(ctx, ins);
+}
+
+static void
+emit_compute_scratch_ptr(compiler_context *ctx, nir_intrinsic_instr *instr)
+{
+        unsigned reg = nir_dest_index(&instr->dest);
+        midgard_instruction ins = m_ldst_mov(reg, 0);
+        ins.mask = mask_of(2);
+        ins.swizzle[0][2] = COMPONENT_X; /* xyxx */
+        ins.swizzle[0][3] = COMPONENT_X;
         ins.load_store.arg_reg = compute_builtin_arg(instr->intrinsic);
         emit_mir_instruction(ctx, ins);
 }
@@ -2056,6 +2070,10 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
         case nir_intrinsic_load_global_invocation_id:
         case nir_intrinsic_load_global_invocation_id_zero_base:
                 emit_compute_builtin(ctx, instr);
+                break;
+
+        case nir_intrinsic_load_scratch_base_ptr:
+                emit_compute_scratch_ptr(ctx, instr);
                 break;
 
         case nir_intrinsic_load_vertex_id_zero_base:

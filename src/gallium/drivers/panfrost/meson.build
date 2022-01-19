@@ -21,6 +21,7 @@
 
 files_panfrost = files(
   'pan_helpers.c',
+  'pan_kernel_build.c',
   'pan_public.h',
   'pan_screen.c',
   'pan_screen.h',

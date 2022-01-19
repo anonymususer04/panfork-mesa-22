@@ -60,6 +60,9 @@ panfrost_shader_compile(struct pipe_screen *pscreen,
                 s = tgsi_to_nir(ir, pscreen, false);
         }
 
+        if (s->info.stage == MESA_SHADER_KERNEL)
+                s->info.num_ubos = MAX2(s->info.num_ubos, 1);
+
         /* Lower this early so the backends don't have to worry about it */
         if (stage == MESA_SHADER_FRAGMENT)
                 NIR_PASS_V(s, nir_lower_fragcolor, state->nr_cbufs);

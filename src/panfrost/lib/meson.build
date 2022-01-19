@@ -79,6 +79,7 @@ libpanfrost_lib_files = files(
   'pan_blend.c',
   'pan_clear.c',
   'pan_core.c',
+  'pan_kernel.c',
   'pan_samples.c',
   'pan_tiler.c',
   'pan_texture.c',

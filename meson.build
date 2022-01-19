@@ -1632,7 +1632,7 @@ if with_gallium_opencl
     'linker', 'coverage', 'instrumentation', 'ipo', 'irreader',
     'lto', 'option', 'objcarcopts', 'profiledata'
   ]
-  llvm_optional_modules += ['frontendopenmp']
+  llvm_optional_modules += ['frontendopenmp', 'native', 'amdgpu', 'bpf']
 endif
 if with_clc
   llvm_modules += ['coverage', 'target', 'linker', 'irreader', 'option', 'libdriver', 'lto']

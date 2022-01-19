@@ -961,6 +961,16 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
         if (quirk_flipped_r24) {
                 ins.src[0] = ~0;
                 mir_copy_src(&ins, instr, 0, 1, &ins.src_abs[1], &ins.src_neg[1], &ins.src_invert[1], roundptr, is_int, broadcast_swizzle);
+
+                if (nir_dest_bit_size(*dest) == 32 &&
+                    nir_src_bit_size(instr->src[0].src) == 64) {
+
+                        ins.src_types[1] = nir_type_uint32;
+                        /* TODO: Is this correct? */
+                        for (unsigned c = 0; c < NIR_MAX_VEC_COMPONENTS; ++c) {
+                                ins.swizzle[1][c] *= 2;
+                        }
+                }
         } else {
                 for (unsigned i = 0; i < nr_inputs; ++i) {
                         unsigned to = i;

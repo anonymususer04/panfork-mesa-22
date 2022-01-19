@@ -323,7 +323,7 @@ panfrost_create_scanout_res(struct pipe_screen *screen,
                  * needed and missing them can lead to faults. */
 
                 unsigned header_size = panfrost_afbc_header_size(
-                                template->width0, template->height0);
+                        template->width0, template->height0, true);
 
                 unsigned pitch = ALIGN_POT(template->width0, 16) *
                         util_format_get_blocksize(template->format);

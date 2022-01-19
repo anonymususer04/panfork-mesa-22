@@ -235,7 +235,7 @@ pan_image_layout_init(const struct panfrost_device *dev,
                 /* Compute AFBC sizes if necessary */
                 if (afbc) {
                         slice->afbc.header_size =
-                                panfrost_afbc_header_size(width, height);
+                                panfrost_afbc_header_size(width, height, true);
 
                         /* Stride between two rows of AFBC headers */
                         slice->afbc.row_stride =

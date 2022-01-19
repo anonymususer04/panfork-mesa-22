@@ -287,7 +287,8 @@ if with_aco_tests and not with_amd_vk
 endif
 
 with_microsoft_clc = get_option('microsoft-clc').enabled()
-with_clc = with_microsoft_clc
+with_panfrost_clc = get_option('llvm') != 'disabled' and with_tools.contains('panfrost')
+with_clc = with_microsoft_clc or with_panfrost_clc
 with_libclc = with_clc
 with_spirv_to_dxil = get_option('spirv-to-dxil')
 

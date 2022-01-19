@@ -138,7 +138,7 @@ panfrost_format_supports_afbc(const struct panfrost_device *dev, enum pipe_forma
 }
 
 unsigned
-panfrost_afbc_header_size(unsigned width, unsigned height)
+panfrost_afbc_header_size(unsigned width, unsigned height, bool align)
 {
         /* Align to tile */
         unsigned aligned_width  = ALIGN_POT(width,  AFBC_TILE_WIDTH);
@@ -153,8 +153,10 @@ panfrost_afbc_header_size(unsigned width, unsigned height)
         unsigned header_bytes = tile_count * AFBC_HEADER_BYTES_PER_TILE;
 
         /* Align and go */
-        return ALIGN_POT(header_bytes, AFBC_CACHE_ALIGN);
-
+        if (align)
+                return ALIGN_POT(header_bytes, AFBC_CACHE_ALIGN);
+        else
+                return header_bytes;
 }
 
 /* The lossless colour transform (AFBC_FORMAT_MOD_YTR) requires RGB. */

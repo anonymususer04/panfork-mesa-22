@@ -84,8 +84,8 @@ panfrost_nir_sysval_for_intrinsic(nir_intrinsic_instr *instr)
                 return PAN_SYSVAL_VERTEX_INSTANCE_OFFSETS;
         case nir_intrinsic_load_draw_id:
                 return PAN_SYSVAL_DRAWID;
-        case nir_intrinsic_load_ssbo_address: 
-        case nir_intrinsic_get_ssbo_size: 
+        case nir_intrinsic_load_ssbo_address:
+        case nir_intrinsic_get_ssbo_size:
                 return panfrost_sysval_for_ssbo(instr);
         case nir_intrinsic_load_sampler_lod_parameters_pan:
                 return panfrost_sysval_for_sampler(instr);
@@ -93,6 +93,8 @@ panfrost_nir_sysval_for_intrinsic(nir_intrinsic_instr *instr)
                 return panfrost_sysval_for_image_size(instr);
         case nir_intrinsic_load_blend_const_color_rgba:
                 return PAN_SYSVAL_BLEND_CONSTANTS;
+        case nir_intrinsic_load_printf_buffer_address:
+                return PAN_SYSVAL_PRINTF_BUFFER;
         default:
                 return ~0;
         }

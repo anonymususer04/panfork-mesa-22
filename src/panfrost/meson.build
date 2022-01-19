@@ -67,6 +67,22 @@ bifrost_compiler = executable(
   build_by_default : with_tools.contains('panfrost')
 )
 
+# TODO: Automatically run this at build time if available. Add a Python script
+# so that we can use the files checked into git if there are no source
+# changes.
+# TODO: This doesn't use anything Panfrost-specific, could it be somewhere else?
+if with_clc
+  prog_pan_clc = executable(
+    'pan_clc',
+    ['util/pan_clc.c'],
+    include_directories : [inc_include, inc_src, inc_compiler, inc_panfrost, inc_gallium_aux],
+    c_args : [pre_args, no_override_init_args],
+    dependencies : [idep_nir, idep_clc, dep_libdrm],
+    native : true,
+    build_by_default : with_tools.contains('panfrost')
+  )
+endif
+
 if with_panfrost_vk
   subdir('vulkan')
 endif

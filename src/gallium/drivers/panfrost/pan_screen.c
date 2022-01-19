@@ -72,7 +72,8 @@ static const struct debug_named_value panfrost_debug_options[] = {
         {"indirect",  PAN_DBG_INDIRECT, "Use experimental compute kernel for indirect draws"},
         {"linear",    PAN_DBG_LINEAR,   "Force linear textures"},
         {"nocache",   PAN_DBG_NO_CACHE, "Disable BO cache"},
-        {"flush",     PAN_DBG_FLUSH, "Flush rendering more often"},
+        {"flush",     PAN_DBG_FLUSH,    "Flush rendering more often"},
+        {"printf",    PAN_DBG_PRINTF,   "Enable printf in internal compute kernels"},
         DEBUG_NAMED_VALUE_END
 };
 
@@ -726,6 +727,7 @@ panfrost_destroy_screen(struct pipe_screen *pscreen)
         panfrost_pool_cleanup(&screen->indirect_draw.bin_pool);
         panfrost_pool_cleanup(&screen->blitter.bin_pool);
         panfrost_pool_cleanup(&screen->blitter.desc_pool);
+        _mesa_hash_table_destroy(screen->compute_kernels, NULL);
         pan_blend_shaders_cleanup(dev);
 
         if (screen->vtbl.screen_destroy)
@@ -941,6 +943,8 @@ panfrost_create_screen(int fd, struct renderonly *ro)
 
         panfrost_resource_screen_init(&screen->base);
         pan_blend_shaders_init(dev);
+        pthread_mutex_init(&screen->compute_kernel_lock, NULL);
+        screen->compute_kernels = _mesa_pointer_hash_table_create(NULL);
         panfrost_pool_init(&screen->indirect_draw.bin_pool, NULL, dev,
                            PAN_BO_EXECUTE, 65536, "Indirect draw shaders",
                            false, true);

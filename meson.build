@@ -297,7 +297,8 @@ endif
 
 with_microsoft_clc = get_option('microsoft-clc').enabled()
 with_intel_clc = get_option('intel-clc').enabled()
-with_clc = with_microsoft_clc or with_intel_clc
+with_panfrost_clc = get_option('llvm') != 'disabled' and with_tools.contains('panfrost')
+with_clc = with_microsoft_clc or with_intel_clc or with_panfrost_clc
 with_libclc = with_clc
 with_spirv_to_dxil = get_option('spirv-to-dxil')
 

@@ -103,7 +103,8 @@ static void
 bi_set_sysval_push(struct bi_shader_info *info, unsigned sysval_ubo)
 {
         if (info->push->num_ranges &&
-            info->push->ranges[0].ubo == sysval_ubo) {
+            info->push->ranges[0].ubo == sysval_ubo &&
+            info->sysvals->ubo_count) {
 
                 unsigned pushed_sysvals = info->push->ranges[0].size / 4;
 

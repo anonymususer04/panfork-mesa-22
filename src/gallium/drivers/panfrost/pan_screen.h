@@ -40,6 +40,7 @@
 
 #include "pan_device.h"
 #include "pan_mempool.h"
+#include "pan_kernel.h"
 
 struct panfrost_batch;
 struct panfrost_context;
@@ -109,6 +110,9 @@ struct panfrost_screen {
         struct sw_winsys *sw_winsys;
 
         struct panfrost_vtable vtbl;
+
+        /* Used for driver-internal compute kernels */
+        struct hash_table *compute_kernels;
 };
 
 static inline struct panfrost_screen *
@@ -139,5 +143,14 @@ void panfrost_cmdstream_screen_init_v7(struct panfrost_screen *screen);
 
 #define perf_debug_ctx(ctx, ...) \
         perf_debug(pan_device((ctx)->base.screen), __VA_ARGS__);
+
+struct panfrost_kernel {
+        struct pan_kernel base;
+        void *cso;
+};
+
+struct panfrost_kernel *
+panfrost_get_kernel(struct panfrost_context *ctx,
+                    const struct pan_kernel_template *kernel);
 
 #endif /* PAN_SCREEN_H */

@@ -165,6 +165,13 @@ panfrost_batch_prepare_surface(struct panfrost_context *ctx,
         if (surf) {
                 struct panfrost_resource *rsrc = pan_resource(surf->texture);
                 pan_legalize_afbc_format(ctx, rsrc, surf->format, true);
+
+                struct panfrost_bo **afbc_sizes =
+                        &rsrc->afbc_data_size_info[surf->u.tex.level];
+                if (*afbc_sizes) {
+                        panfrost_bo_unreference(*afbc_sizes);
+                        *afbc_sizes = NULL;
+                }
         }
 }
 

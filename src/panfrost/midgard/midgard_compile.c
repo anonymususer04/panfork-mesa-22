@@ -1219,6 +1219,8 @@ emit_global(
 {
         midgard_instruction ins;
 
+        /* TODO: Use operations based on type, rather than bitsize?
+         * e.g. Always use ST_128 for >=32-bit types. */
         nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
         if (is_read) {
                 unsigned bitsize = nir_dest_bit_size(intr->dest) *
@@ -1239,7 +1241,7 @@ emit_global(
                 if (bitsize <= 32)
                         ins = m_st_32(srcdest, 0);
                 else if (bitsize <= 64)
-                        ins = m_st_64(srcdest, 0);
+                        ins = m_st_128(srcdest, 0); /* TODO: Does this break other things? */
                 else if (bitsize <= 128)
                         ins = m_st_128(srcdest, 0);
                 else
@@ -1248,6 +1250,11 @@ emit_global(
 
         mir_set_offset(ctx, &ins, offset, seg);
         mir_set_intr_mask(instr, &ins, is_read);
+
+        /* HACK HACK HACK! (See above comment for proper fix) */
+        if (!is_read && nir_src_bit_size(intr->src[0]) == 64) {
+                ins.mask = 0x3;
+        }
 
         /* Set a valid swizzle for masked out components */
         assert(ins.mask);

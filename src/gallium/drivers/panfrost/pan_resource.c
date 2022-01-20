@@ -251,7 +251,7 @@ panfrost_create_surface(struct pipe_context *pipe,
         struct panfrost_context *ctx = pan_context(pipe);
         struct pipe_surface *ps = NULL;
 
-        pan_legalize_afbc_format(ctx, pan_resource(pt), surf_tmpl->format);
+        pan_legalize_afbc_format(ctx, pan_resource(pt), surf_tmpl->format, true);
 
         ps = CALLOC_STRUCT(pipe_surface);
 
@@ -1210,7 +1210,8 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
 void
 pan_legalize_afbc_format(struct panfrost_context *ctx,
                          struct panfrost_resource *rsrc,
-                         enum pipe_format format)
+                         enum pipe_format format,
+                         bool write)
 {
         struct panfrost_device *dev = pan_device(ctx->base.screen);
 

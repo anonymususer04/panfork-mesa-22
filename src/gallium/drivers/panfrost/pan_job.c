@@ -158,12 +158,27 @@ panfrost_batch_submit(struct panfrost_context *ctx,
                       struct panfrost_batch *batch,
                       uint32_t in_sync, uint32_t out_sync);
 
+static void
+panfrost_batch_prepare_surface(struct panfrost_context *ctx,
+                               struct pipe_surface *surf)
+{
+        if (surf) {
+                struct panfrost_resource *rsrc = pan_resource(surf->texture);
+                pan_legalize_afbc_format(ctx, rsrc, surf->format, true);
+        }
+}
+
 static struct panfrost_batch *
 panfrost_get_batch(struct panfrost_context *ctx,
                    const struct pipe_framebuffer_state *key)
 {
         struct panfrost_device *dev = pan_device(ctx->base.screen);
         struct panfrost_batch *batch = NULL;
+
+        for (unsigned i = 0; i < key->nr_cbufs; ++i)
+                panfrost_batch_prepare_surface(ctx, key->cbufs[i]);
+
+        panfrost_batch_prepare_surface(ctx, key->zsbuf);
 
         /* When PAN_MESA_DEBUG=flush is set, don't have more than one active
          * batch at a time */

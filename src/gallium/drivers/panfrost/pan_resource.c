@@ -1213,13 +1213,21 @@ pan_legalize_afbc_format(struct panfrost_context *ctx,
         if (!drm_is_afbc(rsrc->image.layout.modifier))
                 return;
 
-        if (panfrost_afbc_format(dev, pan_blit_format(rsrc->base.format)) ==
-            panfrost_afbc_format(dev, pan_blit_format(format)))
-                return;
 
-        pan_resource_modifier_convert(ctx, rsrc,
+        if (panfrost_afbc_format(dev, pan_blit_format(rsrc->base.format)) !=
+            panfrost_afbc_format(dev, pan_blit_format(format))) {
+
+                pan_resource_modifier_convert(ctx, rsrc,
                         DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED,
                         "Reinterpreting AFBC surface as incompatible format");
+        } else if (write && rsrc->is_compact) {
+                pan_resource_modifier_convert(ctx, rsrc,
+                        rsrc->image.layout.modifier,
+                        "Rendering to compact AFBC texture");
+                rsrc->is_compact = false;
+                rsrc->no_compact = true;
+                rsrc->modifier_constant = false;
+        }
 }
 
 static bool
@@ -1440,6 +1448,7 @@ panfrost_ptr_unmap(struct pipe_context *pctx,
 {
         /* Gallium expects writeback here, so we tile */
 
+        struct panfrost_context *ctx = pan_context(pctx);
         struct panfrost_transfer *trans = pan_transfer(transfer);
         struct panfrost_resource *prsrc = (struct panfrost_resource *) transfer->resource;
         struct panfrost_device *dev = pan_device(pctx->screen);
@@ -1470,6 +1479,10 @@ panfrost_ptr_unmap(struct pipe_context *pctx,
                                 panfrost_flush_batches_accessing_rsrc(pan_context(pctx),
                                                 pan_resource(trans->staging.rsrc),
                                                 "AFBC write staging blit");
+                                panfrost_update_afbc_data_size(ctx, prsrc, transfer->level);
+
+                                if (transfer->level && transfer->level == prsrc->base.last_level)
+                                        panfrost_compact_afbc(ctx, prsrc);
                         }
                 }
 
@@ -1586,6 +1599,7 @@ panfrost_generate_mipmap(
         unsigned first_layer,
         unsigned last_layer)
 {
+        struct panfrost_context *ctx = pan_context(pctx);
         struct panfrost_resource *rsrc = pan_resource(prsrc);
 
         /* Generating a mipmap invalidates the written levels, so make that
@@ -1603,6 +1617,9 @@ panfrost_generate_mipmap(
                                 base_level, last_level,
                                 first_layer, last_layer,
                                 PIPE_TEX_FILTER_LINEAR);
+
+        if (drm_is_afbc(rsrc->image.layout.modifier))
+                panfrost_compact_afbc(ctx, rsrc);
 
         return blit_res;
 }

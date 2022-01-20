@@ -793,6 +793,10 @@ panfrost_resource_destroy(struct pipe_screen *screen,
         if (rsrc->image.crc.bo)
                 panfrost_bo_unreference(rsrc->image.crc.bo);
 
+        for (unsigned l = 0; l < ARRAY_SIZE(rsrc->afbc_data_size_info); ++l)
+                if (rsrc->afbc_data_size_info[l])
+                        panfrost_bo_unreference(rsrc->afbc_data_size_info[l]);
+
         free(rsrc->index_cache);
         free(rsrc->damage.tile_map.data);
 
@@ -1265,6 +1269,180 @@ panfrost_should_linear_convert(struct panfrost_device *dev,
         } else {
                 return false;
         }
+}
+
+static bool
+panfrost_can_compact(struct panfrost_context *ctx,
+                     struct panfrost_resource *rsrc)
+{
+        struct panfrost_device *dev = pan_device(ctx->base.screen);
+
+        if (rsrc->modifier_constant || !drm_is_afbc(rsrc->image.layout.modifier)
+            || !panfrost_is_2d(&rsrc->base) || (dev->debug & PAN_DBG_NO_MAGIC)
+            || rsrc->no_compact)
+                return false;
+
+        return true;
+}
+
+static void
+panfrost_update_afbc_data_size(struct panfrost_context *ctx,
+                               struct panfrost_resource *rsrc,
+                               unsigned level)
+{
+        struct panfrost_screen *screen = pan_screen(ctx->base.screen);
+        struct panfrost_device *dev = pan_device(ctx->base.screen);
+
+        if (!panfrost_can_compact(ctx, rsrc))
+                return;
+
+        struct pan_image_slice_layout *slice = &rsrc->image.layout.slices[level];
+
+        unsigned width = u_minify(rsrc->base.width0, level);
+        unsigned height = u_minify(rsrc->base.height0, level);
+        unsigned header_size = panfrost_afbc_header_size(width, height, false);
+
+        unsigned num_blocks = header_size / 16;
+
+        /* TODO: choose dynamically */
+        unsigned num_threads = 64;
+        rsrc->afbc_data_size_threads[level] = num_threads;
+
+        /* Four bytes per thread, four bytes per header entry */
+        unsigned threads_size = num_threads * sizeof(uint32_t);
+        unsigned data_size = threads_size + num_blocks * sizeof(uint32_t);
+
+        assert(!rsrc->afbc_data_size_info[level]);
+        struct panfrost_bo *bo = panfrost_bo_create(dev, data_size, 0,
+                                                    "AFBC data sizes");
+        rsrc->afbc_data_size_info[level] = bo;
+
+        /* We only use atomic add operations to change this part of the
+         * buffer, so it must be initialised. */
+        memset(bo->ptr.cpu, 0, threads_size);
+
+        mali_ptr rsrc_gpu = rsrc->image.data.bo->ptr.gpu;
+        mali_ptr bo_gpu = bo->ptr.gpu;
+
+        struct panfrost_batch *batch =
+                panfrost_get_fresh_batch_for_fbo(ctx, "AFBC data sizes");
+
+        unsigned literal_size = util_format_get_blocksize(rsrc->base.format) * 16;
+
+        /* We just created the BO, so don't need to worry about flushing
+         * writers */
+        panfrost_batch_add_bo(batch, bo, PIPE_SHADER_COMPUTE);
+
+        panfrost_batch_read_rsrc(batch, rsrc, PIPE_SHADER_COMPUTE);
+
+        screen->vtbl.magic_function_count(batch, bo_gpu + threads_size,
+                                          bo_gpu, rsrc_gpu + slice->offset,
+                                          literal_size, num_threads,
+                                          num_blocks);
+
+        panfrost_flush_batches_accessing_rsrc(ctx, rsrc, "AFBC data size flush");
+}
+
+static void
+panfrost_compact_afbc(struct panfrost_context *ctx,
+                      struct panfrost_resource *rsrc)
+{
+        struct panfrost_screen *screen = pan_screen(ctx->base.screen);
+        struct panfrost_device *dev = pan_device(ctx->base.screen);
+
+        if (!panfrost_can_compact(ctx, rsrc))
+                return;
+
+        assert(!rsrc->is_compact);
+
+        unsigned total_size = 0;
+
+        unsigned offsets[MAX_MIP_LEVELS];
+        unsigned header_sizes[MAX_MIP_LEVELS];
+
+        for (unsigned level = 0; level <= rsrc->base.last_level; ++level) {
+                if (!rsrc->afbc_data_size_info[level])
+                        panfrost_update_afbc_data_size(ctx, rsrc, level);
+        }
+
+        unsigned width = rsrc->base.width0;
+        unsigned height = rsrc->base.height0;
+
+        for (unsigned level = 0; level <= rsrc->base.last_level; ++level) {
+                struct panfrost_bo *bo = rsrc->afbc_data_size_info[level];
+                assert(bo);
+
+                panfrost_bo_wait(bo, INT64_MAX, true);
+
+                uint32_t *sizes = (uint32_t *)bo->ptr.cpu;
+
+                header_sizes[level] = panfrost_afbc_header_size(width, height, false);
+
+                unsigned thread_count = rsrc->afbc_data_size_threads[level];
+
+                total_size += sizes[thread_count - 1] + DIV_ROUND_UP(header_sizes[level], 64);
+
+                offsets[level] = total_size;
+
+                width = u_minify(width, 1);
+                height = u_minify(height, 1);
+        }
+
+        unsigned bo_size = total_size * 64;
+        unsigned old_size = rsrc->image.data.bo->size;
+
+        assert(bo_size <= old_size);
+
+        /* TODO: Bail if the resource was not compressed much */
+
+        static unsigned size_saved = 0;
+        size_saved += old_size - bo_size;
+        if (dev->debug & PAN_DBG_PERF)
+                printf("%i%%: %i KB -> %i KB (total %i MB saved)\n",
+                       100 * bo_size / old_size,
+                       old_size / 1024, bo_size / 1024, size_saved / 1024 / 1024);
+
+        struct panfrost_bo *image_bo =
+                panfrost_bo_create(dev, bo_size, 0, "AFBC compact texture");
+
+        mali_ptr dest = image_bo->ptr.gpu;
+        mali_ptr src = rsrc->image.data.bo->ptr.gpu;
+
+        panfrost_get_fresh_batch_for_fbo(ctx, "AFBC compaction");
+
+        unsigned copy_offset = 0;
+        for (unsigned level = 0; level <= rsrc->base.last_level; ++level) {
+                struct panfrost_batch *batch = panfrost_get_batch_for_fbo(ctx);
+
+                struct pan_image_slice_layout *slice = &rsrc->image.layout.slices[level];
+                struct panfrost_bo *size_info = rsrc->afbc_data_size_info[level];
+
+                panfrost_batch_read_rsrc(batch, rsrc, PIPE_SHADER_COMPUTE);
+                panfrost_batch_add_bo(batch, size_info, PIPE_SHADER_COMPUTE);
+                panfrost_bo_unreference(size_info);
+
+                unsigned thread_count = rsrc->afbc_data_size_threads[level];
+
+                screen->vtbl.magic_function_copy(batch,
+                                                 dest + copy_offset,
+                                                 src + slice->offset,
+                                                 size_info->ptr.gpu + thread_count * 4,
+                                                 size_info->ptr.gpu,
+                                                 DIV_ROUND_UP(header_sizes[level], 64),
+                                                 thread_count,
+                                                 header_sizes[level] / 16);
+
+                slice->offset = copy_offset;
+                copy_offset = offsets[level] * 64;
+
+                rsrc->afbc_data_size_info[level] = NULL;
+        }
+
+        panfrost_flush_batches_accessing_rsrc(ctx, rsrc, "AFBC compaction flush");
+
+        panfrost_bo_unreference(rsrc->image.data.bo);
+        rsrc->image.data.bo = image_bo;
+        rsrc->is_compact = true;
 }
 
 static void

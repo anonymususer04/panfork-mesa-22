@@ -87,6 +87,16 @@ struct panfrost_resource {
 
         struct sw_displaytarget *dt;
         unsigned dt_stride;
+
+        /* Whether a blit is required to update the surface */
+        bool is_compact;
+
+        /* To disable compaction */
+        bool no_compact;
+
+        /* Used for compacting AFBC resources */
+        struct panfrost_bo *afbc_data_size_info[MAX_MIP_LEVELS];
+        unsigned afbc_data_size_threads[MAX_MIP_LEVELS];
 };
 
 static inline struct panfrost_resource *

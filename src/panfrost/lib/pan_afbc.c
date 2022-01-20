@@ -64,6 +64,14 @@
  * and the driver never needs to know the internal data. For edge cases where
  * the driver really does need to read/write from the AFBC resource, we
  * generate a linear staging buffer and use the GPU to blit AFBC<--->linear.
+ *
+ * But because it turns out that we *do* know the format of the data, there
+ * are a couple of optimisations we can do. For most textures, a lot of the
+ * space in the resource is unused. For resources that are not often changed,
+ * we can use a compute shader to decode the metadata for each tile, to find
+ * out how much space is being used. We can then copy the memory down to
+ * remove the empty space in each tile, allowing the BO size to decrease. But
+ * note that the body for each tile must always be 64-byte aligned.
  */
 
 #define AFBC_TILE_WIDTH 16

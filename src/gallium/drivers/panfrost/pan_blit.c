@@ -82,6 +82,11 @@ panfrost_blit(struct pipe_context *pipe,
         if (!util_blitter_is_blit_supported(ctx->blitter, info))
                 unreachable("Unsupported blit\n");
 
+        /* This may need a blit itself, so avoid recursion by doing the
+         * conversion before starting the blit. */
+        pan_legalize_afbc_format(ctx, pan_resource(info->dst.resource),
+                                 info->dst.format, true);
+
         panfrost_blitter_save(ctx, ctx->blitter, info->render_condition_enable);
         util_blitter_blit(ctx->blitter, info);
 }

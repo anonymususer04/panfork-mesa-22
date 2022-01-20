@@ -1184,6 +1184,8 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
                 }
         }
 
+        panfrost_flush_batches_accessing_rsrc(ctx, rsrc, "Modifier conversion flush");
+
         panfrost_bo_unreference(rsrc->image.data.bo);
         if (rsrc->image.crc.bo)
                 panfrost_bo_unreference(rsrc->image.crc.bo);

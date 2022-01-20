@@ -49,6 +49,8 @@
 #include "pan_indirect_dispatch.h"
 #include "pan_blitter.h"
 
+#include "panfrost/util/magic_function.h"
+
 #define PAN_GPU_INDIRECTS (PAN_ARCH == 7)
 
 struct panfrost_rasterizer {
@@ -3819,6 +3821,117 @@ init_polygon_list(struct panfrost_batch *batch)
 #endif
 }
 
+/* TODO: Sync function args with CL kernel? */
+static void
+pan_magic_function_count(struct panfrost_batch *batch,
+                         mali_ptr sizes, mali_ptr offsets,
+                         mali_ptr headers,
+                         unsigned literal_size,
+                         unsigned num_threads,
+                         unsigned total_size)
+{
+        struct panfrost_context *ctx = batch->ctx;
+        struct pipe_context *pipe = &ctx->base;
+        struct panfrost_device *dev = pan_device(pipe->screen);
+
+        struct panfrost_kernel *kernel = panfrost_get_kernel(batch->ctx,
+                                             &pan_kernel_magic_function_count);
+
+        ctx->printf_info_count = kernel->base.printf_info_count;
+        ctx->printf_info = kernel->base.printf_info;
+
+        void *old_compute = ctx->shader[PIPE_SHADER_COMPUTE];
+        struct panfrost_constant_buffer old_cbuf =
+                ctx->constant_buffer[PIPE_SHADER_COMPUTE];
+
+        pipe->bind_compute_state(pipe, kernel->cso);
+
+        uint8_t *args = calloc(kernel->base.args_size, sizeof(uint8_t));
+
+        uint64_t args_cpu[] = {
+                sizes, offsets, headers, literal_size,
+                DIV_ROUND_UP(total_size, num_threads),
+                num_threads, total_size,
+        };
+
+        for (unsigned i = 0; i < ARRAY_SIZE(args_cpu); ++i) {
+                struct pan_kernel_arg_desc desc = kernel->base.args[i];
+                memcpy(args + desc.offset, &args_cpu[i], desc.size);
+
+                if (dev->debug & PAN_DBG_PRINTF)
+                        printf("magic_function_count arg %i: 0x%"PRIx64"\n",
+                               i, args_cpu[i]);
+        }
+
+        struct pipe_grid_info info = {
+                .input = args,
+                .work_dim = 1,
+                .block = { num_threads, 1, 1 },
+                .grid = { 1, 1, 1 },
+        };
+
+        panfrost_do_launch_grid(pipe, &info, batch, false);
+
+        ctx->shader[PIPE_SHADER_COMPUTE] = old_compute;
+        ctx->constant_buffer[PIPE_SHADER_COMPUTE] = old_cbuf;
+}
+
+static void
+pan_magic_function_copy(struct panfrost_batch *batch,
+                        mali_ptr dest, mali_ptr src,
+                        mali_ptr sizes, mali_ptr offsets,
+                        unsigned afbc_header_blocks,
+                        unsigned num_threads,
+                        unsigned total_size)
+{
+        struct panfrost_context *ctx = batch->ctx;
+        struct pipe_context *pipe = &ctx->base;
+        struct panfrost_device *dev = pan_device(pipe->screen);
+
+        struct panfrost_kernel *kernel = panfrost_get_kernel(batch->ctx,
+                                             &pan_kernel_magic_function_copy);
+
+        /* TODO: Do this sort of thing in panfrost_get_kernel? */
+        ctx->printf_info_count = kernel->base.printf_info_count;
+        ctx->printf_info = kernel->base.printf_info;
+
+        void *old_compute = ctx->shader[PIPE_SHADER_COMPUTE];
+        struct panfrost_constant_buffer old_cbuf =
+                ctx->constant_buffer[PIPE_SHADER_COMPUTE];
+
+        pipe->bind_compute_state(pipe, kernel->cso);
+
+        uint8_t *args = calloc(kernel->base.args_size, sizeof(uint8_t));
+
+        uint64_t args_cpu[] = {
+                dest, src, sizes, offsets,
+                afbc_header_blocks,
+                DIV_ROUND_UP(total_size, num_threads),
+                num_threads, total_size,
+        };
+
+        for (unsigned i = 0; i < ARRAY_SIZE(args_cpu); ++i) {
+                struct pan_kernel_arg_desc desc = kernel->base.args[i];
+                memcpy(args + desc.offset, &args_cpu[i], desc.size);
+
+                if (dev->debug & PAN_DBG_PRINTF)
+                        printf("magic_function_copy arg %i: 0x%"PRIx64"\n",
+                               i, args_cpu[i]);
+        }
+
+        struct pipe_grid_info info = {
+                .input = args,
+                .work_dim = 1,
+                .block = { num_threads, 1, 1 },
+                .grid = { 1, 1, 1 },
+        };
+
+        panfrost_do_launch_grid(pipe, &info, batch, false);
+
+        ctx->shader[PIPE_SHADER_COMPUTE] = old_compute;
+        ctx->constant_buffer[PIPE_SHADER_COMPUTE] = old_cbuf;
+}
+
 void
 GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
 {
@@ -3836,6 +3949,8 @@ GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
         screen->vtbl.init_polygon_list = init_polygon_list;
         screen->vtbl.get_compiler_options = GENX(pan_shader_get_compiler_options);
         screen->vtbl.compile_shader = GENX(pan_shader_compile);
+        screen->vtbl.magic_function_count = pan_magic_function_count;
+        screen->vtbl.magic_function_copy = pan_magic_function_copy;
 
         GENX(pan_blitter_init)(dev, &screen->blitter.bin_pool.base,
                                &screen->blitter.desc_pool.base);

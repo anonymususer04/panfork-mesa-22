@@ -1159,7 +1159,7 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
 {
         assert(!rsrc->modifier_constant);
 
-        perf_debug_ctx(ctx, "Disabling AFBC with a blit. Reason: %s", reason);
+        perf_debug_ctx(ctx, "Converting modifier with a blit. Reason: %s", reason);
 
         struct pipe_resource *tmp_prsrc =
                 panfrost_resource_create_with_modifier(

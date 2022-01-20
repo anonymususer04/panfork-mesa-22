@@ -74,6 +74,7 @@ static const struct debug_named_value panfrost_debug_options[] = {
         {"dump",      PAN_DBG_DUMP,     "Dump all graphics memory"},
         {"flush",     PAN_DBG_FLUSH,    "Flush rendering more often"},
         {"printf",    PAN_DBG_PRINTF,   "Enable printf in internal compute kernels"},
+        {"nomagic",   PAN_DBG_NO_MAGIC, "Disable \"magic\" lossless texture compression"},
         DEBUG_NAMED_VALUE_END
 };
 

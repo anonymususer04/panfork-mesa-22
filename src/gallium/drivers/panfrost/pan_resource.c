@@ -778,11 +778,16 @@ panfrost_resource_create_with_modifiers(struct pipe_screen *screen,
 }
 
 static void
-panfrost_resource_destroy(struct pipe_screen *screen,
+panfrost_resource_destroy(struct pipe_screen *pscreen,
                           struct pipe_resource *pt)
 {
-        struct panfrost_device *dev = pan_device(screen);
+        struct panfrost_screen *screen = pan_screen(pscreen);
+        struct panfrost_device *dev = pan_device(pscreen);
         struct panfrost_resource *rsrc = (struct panfrost_resource *) pt;
+
+        if (rsrc->compact_saved)
+                p_atomic_add_return(&screen->compaction_size_saved,
+                                    0 - rsrc->compact_saved);
 
         if (rsrc->scanout)
                 renderonly_scanout_destroy(rsrc->scanout, dev->ro);
@@ -1150,9 +1155,17 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
                               struct panfrost_resource *rsrc,
                               uint64_t modifier, const char *reason)
 {
+        struct panfrost_screen *screen = pan_screen(ctx->base.screen);
+
         assert(!rsrc->modifier_constant);
 
         perf_debug_ctx(ctx, "Converting modifier with a blit. Reason: %s", reason);
+
+        if (rsrc->compact_saved) {
+                p_atomic_add_return(&screen->compaction_size_saved,
+                                    0 - rsrc->compact_saved);
+                rsrc->compact_saved = 0;
+        }
 
         struct pipe_resource *tmp_prsrc =
                 panfrost_resource_create_with_modifier(
@@ -1391,13 +1404,15 @@ panfrost_compact_afbc(struct panfrost_context *ctx,
         assert(bo_size <= old_size);
 
         /* TODO: Bail if the resource was not compressed much */
+        rsrc->compact_saved = old_size - bo_size;
 
-        static unsigned size_saved = 0;
-        size_saved += old_size - bo_size;
+        unsigned saved = p_atomic_add_return(&screen->compaction_size_saved,
+                                             rsrc->compact_saved);
         if (dev->debug & PAN_DBG_PERF)
                 printf("%i%%: %i KB -> %i KB (total %i MB saved)\n",
                        100 * bo_size / old_size,
-                       old_size / 1024, bo_size / 1024, size_saved / 1024 / 1024);
+                       old_size / 1024, bo_size / 1024,
+                       saved / 1024 / 1024);
 
         struct panfrost_bo *image_bo =
                 panfrost_bo_create(dev, bo_size, 0, "AFBC compact texture");

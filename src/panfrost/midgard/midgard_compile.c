@@ -137,7 +137,6 @@ M_LOAD(ld_32, nir_type_uint32);
 M_LOAD(ld_64, nir_type_uint32);
 M_LOAD(ld_128, nir_type_uint32);
 M_STORE(st_32, nir_type_uint32);
-M_STORE(st_64, nir_type_uint32);
 M_STORE(st_128, nir_type_uint32);
 M_LOAD(ld_tilebuffer_raw, nir_type_uint32);
 M_LOAD(ld_tilebuffer_16f, nir_type_float16);

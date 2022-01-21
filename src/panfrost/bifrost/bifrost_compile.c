@@ -1345,7 +1345,7 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
                 break;
 
         case nir_intrinsic_load_printf_buffer_address:
-                bi_load_sysval_nir(b, instr, 1, 0);
+                bi_load_sysval_nir(b, instr, 2, 0);
                 break;
 
         case nir_intrinsic_load_first_vertex:

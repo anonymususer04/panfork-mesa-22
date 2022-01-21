@@ -946,6 +946,7 @@ panfrost_create_screen(int fd, struct renderonly *ro)
 
         panfrost_resource_screen_init(&screen->base);
         pan_blend_shaders_init(dev);
+        pthread_mutex_init(&screen->compute_kernel_lock, NULL);
         screen->compute_kernels = _mesa_pointer_hash_table_create(NULL);
         panfrost_pool_init(&screen->indirect_draw.bin_pool, NULL, dev,
                            PAN_BO_EXECUTE, 65536, "Indirect draw shaders",

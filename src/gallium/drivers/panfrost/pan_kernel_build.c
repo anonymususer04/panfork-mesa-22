@@ -34,12 +34,16 @@ panfrost_get_kernel(struct panfrost_context *ctx,
         struct panfrost_screen *screen = pan_screen(pscreen);
         struct panfrost_device *dev = pan_device(pscreen);
 
+        pthread_mutex_lock(&screen->compute_kernel_lock);
+
         struct hash_entry *he =
                 _mesa_hash_table_search(screen->compute_kernels,
                                         kernel);
 
-        if (he)
+        if (he) {
+                pthread_mutex_unlock(&screen->compute_kernel_lock);
                 return (struct panfrost_kernel *)he->data;
+        }
 
         static const char *dir = (void *)(uintptr_t)1;
         if ((uintptr_t)dir == 1)
@@ -77,6 +81,8 @@ panfrost_get_kernel(struct panfrost_context *ctx,
 
         _mesa_hash_table_insert(screen->compute_kernels,
                                 kernel, out);
+
+        pthread_mutex_unlock(&screen->compute_kernel_lock);
 
         return out;
 }

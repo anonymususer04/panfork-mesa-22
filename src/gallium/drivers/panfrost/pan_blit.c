@@ -88,5 +88,7 @@ panfrost_blit(struct pipe_context *pipe,
                                  info->dst.format, true);
 
         panfrost_blitter_save(ctx, ctx->blitter, info->render_condition_enable);
+        ctx->is_blit = true;
         util_blitter_blit(ctx->blitter, info);
+        ctx->is_blit = false;
 }

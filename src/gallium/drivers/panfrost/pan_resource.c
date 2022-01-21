@@ -1401,7 +1401,7 @@ panfrost_compact_afbc(struct panfrost_context *ctx,
         }
 
         unsigned bo_size = total_size * 64;
-        unsigned old_size = rsrc->image.data.bo->size;
+        unsigned old_size = rsrc->image.layout.data_size;
 
         assert(bo_size <= old_size);
 
@@ -1416,8 +1416,11 @@ panfrost_compact_afbc(struct panfrost_context *ctx,
                        old_size / 1024, bo_size / 1024,
                        saved / 1024 / 1024);
 
+        /* HACK: Set BO_SHARED flag to avoid fetching a too large BO from the
+         * cache. */
         struct panfrost_bo *image_bo =
-                panfrost_bo_create(dev, bo_size, 0, "AFBC compact texture");
+                panfrost_bo_create(dev, bo_size, PAN_BO_SHARED,
+                                   "AFBC compact texture");
 
         mali_ptr dest = image_bo->ptr.gpu;
         mali_ptr src = rsrc->image.data.bo->ptr.gpu;

@@ -1296,7 +1296,7 @@ panfrost_update_afbc_data_size(struct panfrost_context *ctx,
         struct pan_image_slice_layout *slice = &rsrc->image.layout.slices[level];
 
         unsigned width = u_minify(rsrc->base.width0, level);
-        unsigned height = u_minify(rsrc->base.width0, level);
+        unsigned height = u_minify(rsrc->base.height0, level);
         unsigned header_size = panfrost_afbc_header_size(width, height, false);
 
         unsigned num_blocks = header_size / 16;

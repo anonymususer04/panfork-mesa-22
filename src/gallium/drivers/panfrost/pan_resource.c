@@ -1244,7 +1244,6 @@ pan_legalize_afbc_format(struct panfrost_context *ctx,
                         rsrc->image.layout.modifier,
                         "Rendering to compact AFBC texture");
                 rsrc->is_compact = false;
-                rsrc->no_compact = true;
                 rsrc->modifier_constant = false;
         }
 }

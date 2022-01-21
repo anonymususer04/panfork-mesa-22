@@ -158,6 +158,7 @@ panfrost_batch_submit(struct panfrost_context *ctx,
                       struct panfrost_batch *batch,
                       uint32_t in_sync, uint32_t out_sync);
 
+/* TODO: Move to pan_resource.c? */
 static void
 panfrost_batch_prepare_surface(struct panfrost_context *ctx,
                                struct pipe_surface *surf)
@@ -172,6 +173,9 @@ panfrost_batch_prepare_surface(struct panfrost_context *ctx,
                         panfrost_bo_unreference(*afbc_sizes);
                         *afbc_sizes = NULL;
                 }
+
+                if (!ctx->is_blit)
+                        rsrc->no_compact = true;
         }
 }
 

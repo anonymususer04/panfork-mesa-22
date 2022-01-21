@@ -94,6 +94,9 @@ struct panfrost_resource {
         /* To disable compaction */
         bool no_compact;
 
+        /* How much RAM was saved? */
+        unsigned compact_saved;
+
         /* Used for compacting AFBC resources */
         struct panfrost_bo *afbc_data_size_info[MAX_MIP_LEVELS];
         unsigned afbc_data_size_threads[MAX_MIP_LEVELS];

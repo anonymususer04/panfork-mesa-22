@@ -798,6 +798,10 @@ panfrost_resource_destroy(struct pipe_screen *pscreen,
         if (rsrc->image.crc.bo)
                 panfrost_bo_unreference(rsrc->image.crc.bo);
 
+        for (unsigned l = 0; l < ARRAY_SIZE(rsrc->afbc_data_size_info); ++l)
+                if (rsrc->afbc_data_size_info[l])
+                        panfrost_bo_unreference(rsrc->afbc_data_size_info[l]);
+
         free(rsrc->index_cache);
         free(rsrc->damage.tile_map.data);
 

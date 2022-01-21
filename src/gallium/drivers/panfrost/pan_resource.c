@@ -1287,7 +1287,7 @@ panfrost_can_compact(struct panfrost_context *ctx,
         return true;
 }
 
-static void
+static bool
 panfrost_update_afbc_data_size(struct panfrost_context *ctx,
                                struct panfrost_resource *rsrc,
                                unsigned level)
@@ -1296,7 +1296,14 @@ panfrost_update_afbc_data_size(struct panfrost_context *ctx,
         struct panfrost_device *dev = pan_device(ctx->base.screen);
 
         if (!panfrost_can_compact(ctx, rsrc))
-                return;
+                return false;
+
+        struct panfrost_batch *batch =
+                panfrost_get_fresh_batch_for_fbo(ctx, "AFBC data sizes");
+
+        /* Creating a batch might change no_compact status */
+        if (rsrc->no_compact)
+                return false;
 
         struct pan_image_slice_layout *slice = &rsrc->image.layout.slices[level];
 
@@ -1326,9 +1333,6 @@ panfrost_update_afbc_data_size(struct panfrost_context *ctx,
         mali_ptr rsrc_gpu = rsrc->image.data.bo->ptr.gpu;
         mali_ptr bo_gpu = bo->ptr.gpu;
 
-        struct panfrost_batch *batch =
-                panfrost_get_fresh_batch_for_fbo(ctx, "AFBC data sizes");
-
         unsigned literal_size = util_format_get_blocksize(rsrc->image.layout.format) * 16;
 
         /* We just created the BO, so don't need to worry about flushing
@@ -1343,6 +1347,8 @@ panfrost_update_afbc_data_size(struct panfrost_context *ctx,
                                           num_blocks);
 
         panfrost_flush_batches_accessing_rsrc(ctx, rsrc, "AFBC data size flush");
+
+        return true;
 }
 
 static void
@@ -1363,8 +1369,11 @@ panfrost_compact_afbc(struct panfrost_context *ctx,
         unsigned header_sizes[MAX_MIP_LEVELS];
 
         for (unsigned level = 0; level <= rsrc->base.last_level; ++level) {
-                if (!rsrc->afbc_data_size_info[level])
-                        panfrost_update_afbc_data_size(ctx, rsrc, level);
+                if (!rsrc->afbc_data_size_info[level]) {
+                        bool res = panfrost_update_afbc_data_size(ctx, rsrc, level);
+                        if (!res)
+                                return;
+                }
         }
 
         unsigned width = rsrc->base.width0;

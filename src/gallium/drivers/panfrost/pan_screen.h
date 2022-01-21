@@ -128,6 +128,8 @@ struct panfrost_screen {
         /* Used for driver-internal compute kernels */
         pthread_mutex_t compute_kernel_lock;
         struct hash_table *compute_kernels;
+
+        unsigned compaction_size_saved;
 };
 
 static inline struct panfrost_screen *

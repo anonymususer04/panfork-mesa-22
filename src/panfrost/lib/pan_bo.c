@@ -204,6 +204,10 @@ panfrost_bo_cache_fetch(struct panfrost_device *dev,
                 if (entry->size < size || entry->flags != flags)
                         continue;
 
+                /* Don't use BOs that are over 2MB larger than needed */
+                if (entry->size > size + 2 * 1024 * 1024)
+                        continue;
+
                 /* If the oldest BO in the cache is busy, likely so is
                  * everything newer, so bail. */
                 if (!panfrost_bo_wait(entry, dontwait ? 0 : INT64_MAX,

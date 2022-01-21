@@ -802,6 +802,8 @@ panfrost_resource_destroy(struct pipe_screen *pscreen,
                 if (rsrc->afbc_data_size_info[l])
                         panfrost_bo_unreference(rsrc->afbc_data_size_info[l]);
 
+        (void) p_atomic_cmpxchg(&screen->last_rsrc, rsrc, NULL);
+
         free(rsrc->index_cache);
         free(rsrc->damage.tile_map.data);
 
@@ -1470,6 +1472,7 @@ panfrost_ptr_unmap(struct pipe_context *pctx,
         struct panfrost_context *ctx = pan_context(pctx);
         struct panfrost_transfer *trans = pan_transfer(transfer);
         struct panfrost_resource *prsrc = (struct panfrost_resource *) transfer->resource;
+        struct panfrost_screen *screen = pan_screen(pctx->screen);
         struct panfrost_device *dev = pan_device(pctx->screen);
 
         if (transfer->usage & PIPE_MAP_WRITE)
@@ -1500,8 +1503,11 @@ panfrost_ptr_unmap(struct pipe_context *pctx,
                                                 "AFBC write staging blit");
                                 panfrost_update_afbc_data_size(ctx, prsrc, transfer->level);
 
-                                if (transfer->level && transfer->level == prsrc->base.last_level)
-                                        panfrost_compact_afbc(ctx, prsrc);
+                                struct panfrost_resource *old_rsrc =
+                                        p_atomic_xchg(&screen->last_rsrc, prsrc);
+
+                                if (old_rsrc && old_rsrc != prsrc)
+                                        panfrost_compact_afbc(ctx, screen->last_rsrc);
                         }
                 }
 

@@ -129,6 +129,9 @@ struct panfrost_screen {
         pthread_mutex_t compute_kernel_lock;
         struct hash_table *compute_kernels;
 
+        /* Used to detect when a new resource is being uploaded */
+        struct panfrost_resource *last_rsrc;
+
         unsigned compaction_size_saved;
 };
 

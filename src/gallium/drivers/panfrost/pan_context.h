@@ -221,6 +221,7 @@ struct panfrost_context {
         enum pipe_render_cond_flag cond_mode;
 
         bool is_noop;
+        bool is_blit;
 
         /* Mask of active render targets */
         uint8_t fb_rt_mask;

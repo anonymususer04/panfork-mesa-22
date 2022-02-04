@@ -1547,6 +1547,9 @@ v3d_tlb_clear(struct v3d_job *job, unsigned buffers,
                 buffers &= ~PIPE_CLEAR_DEPTHSTENCIL;
         }
 
+        buffers &= PIPE_CLEAR_DEPTHSTENCIL
+                | (PIPE_CLEAR_COLOR0 * ((1U << job->nr_cbufs) - 1));
+
         for (int i = 0; i < job->nr_cbufs; i++) {
                 uint32_t bit = PIPE_CLEAR_COLOR0 << i;
                 if (!(buffers & bit))

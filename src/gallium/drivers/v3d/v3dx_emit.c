@@ -23,6 +23,7 @@
 
 #include "util/format/u_format.h"
 #include "util/half_float.h"
+#include "util/u_viewport.h"
 #include "v3d_context.h"
 #include "broadcom/common/v3d_macros.h"
 #include "broadcom/cle/v3dx_pack.h"
@@ -597,12 +598,12 @@ v3dX(emit_state)(struct pipe_context *pctx)
                                 v3d->viewport.scale[2];
                 }
                 cl_emit(&job->bcl, CLIPPER_Z_MIN_MAX_CLIPPING_PLANES, clip) {
-                        float z1 = (v3d->viewport.translate[2] -
-                                    v3d->viewport.scale[2]);
-                        float z2 = (v3d->viewport.translate[2] +
-                                    v3d->viewport.scale[2]);
-                        clip.minimum_zw = MIN2(z1, z2);
-                        clip.maximum_zw = MAX2(z1, z2);
+                        bool halfz = v3d->rasterizer->base.clip_halfz;
+                        float zmin, zmax;
+                        util_viewport_zmin_zmax(&v3d->viewport, halfz, &zmin, &zmax);
+
+                        clip.minimum_zw = zmin;
+                        clip.maximum_zw = zmax;
                 }
 
                 cl_emit(&job->bcl, VIEWPORT_OFFSET, vp) {

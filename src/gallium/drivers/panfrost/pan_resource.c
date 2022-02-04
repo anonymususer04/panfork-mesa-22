@@ -1353,7 +1353,7 @@ panfrost_update_afbc_data_size(struct panfrost_context *ctx,
         mali_ptr rsrc_gpu = rsrc->image.data.bo->ptr.gpu;
         mali_ptr bo_gpu = bo->ptr.gpu;
 
-        unsigned literal_size = util_format_get_blocksize(rsrc->base.format) * 16;
+        unsigned literal_size = util_format_get_blocksize(rsrc->image.layout.format) * 16;
 
         /* We just created the BO, so don't need to worry about flushing
          * writers */

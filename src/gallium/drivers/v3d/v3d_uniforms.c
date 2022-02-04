@@ -254,7 +254,10 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
         struct v3d_constbuf_stateobj *cb = &v3d->constbuf[stage];
         struct v3d_texture_stateobj *texstate = &v3d->tex[stage];
         struct v3d_uniform_list *uinfo = &shader->prog_data.base->uniforms;
+        struct v3d_resource *uniform_res = (struct v3d_resource *)cb->cb[0].buffer;
         const uint32_t *gallium_uniforms = cb->cb[0].user_buffer;
+        if (!gallium_uniforms && uniform_res)
+                gallium_uniforms = v3d_bo_map(uniform_res->bo);
 
         /* The hardware always pre-fetches the next uniform (also when there
          * aren't any), so we always allocate space for an extra slot. This

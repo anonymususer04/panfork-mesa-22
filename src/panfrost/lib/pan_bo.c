@@ -333,7 +333,7 @@ panfrost_bo_cache_evict_all(
 }
 
 void
-panfrost_bo_mmap(struct panfrost_bo *bo)
+panfrost_bo_mmap_with_flags(struct panfrost_bo *bo, void *ptr, int flags)
 {
         struct drm_panfrost_mmap_bo mmap_bo = { .handle = bo->gem_handle };
         int ret;
@@ -347,7 +347,7 @@ panfrost_bo_mmap(struct panfrost_bo *bo)
                 assert(0);
         }
 
-        bo->ptr.cpu = os_mmap(NULL, bo->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+        bo->ptr.cpu = os_mmap(ptr, bo->size, PROT_READ | PROT_WRITE, flags,
                               bo->dev->fd, mmap_bo.offset);
         if (bo->ptr.cpu == MAP_FAILED) {
                 bo->ptr.cpu = NULL;
@@ -358,7 +358,13 @@ panfrost_bo_mmap(struct panfrost_bo *bo)
         }
 }
 
-static void
+void
+panfrost_bo_mmap(struct panfrost_bo *bo)
+{
+        panfrost_bo_mmap_with_flags(bo, NULL, MAP_SHARED);
+}
+
+void
 panfrost_bo_munmap(struct panfrost_bo *bo)
 {
         if (!bo->ptr.cpu)

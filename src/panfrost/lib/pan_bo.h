@@ -126,6 +126,10 @@ panfrost_bo_create(struct panfrost_device *dev, size_t size,
                    uint32_t flags, const char *label);
 void
 panfrost_bo_mmap(struct panfrost_bo *bo);
+void
+panfrost_bo_mmap_with_flags(struct panfrost_bo *bo, void *ptr, int flags);
+void
+panfrost_bo_munmap(struct panfrost_bo *bo);
 struct panfrost_bo *
 panfrost_bo_import(struct panfrost_device *dev, int fd);
 int

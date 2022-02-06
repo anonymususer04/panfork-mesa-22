@@ -417,4 +417,7 @@ panfrost_clean_state_3d(struct panfrost_context *ctx)
         }
 }
 
+/* Reallocates BOs and calls fork(). Only use with surfaceless platforms. */
+int panfrost_fork(struct panfrost_context *ctx);
+
 #endif

@@ -27,6 +27,7 @@
 
 #include <sys/poll.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include "pan_bo.h"
 #include "pan_context.h"
@@ -1098,6 +1099,201 @@ panfrost_set_stream_output_targets(struct pipe_context *pctx,
                 pipe_so_target_reference(&so->targets[i], NULL);
 
         so->num_targets = num_targets;
+}
+
+static int
+pan_bo_compare(const void *a, const void *b)
+{
+        const struct panfrost_bo *left = *(void **)a, *right = *(void **)b;
+
+        return CLAMP((int64_t)left->ptr.gpu - (int64_t)right->ptr.gpu, -1, 1);
+}
+
+/* Used to fill a "hole" with POT-sized self-aligned objects from `lower` to
+ * `upper` (but also useful for hierarchical tiling) */
+static uint64_t
+pan_pot_fill(uint64_t lower, uint64_t upper)
+{
+        if (lower == upper)
+                return 0;
+
+        assert(lower < upper);
+
+        uint64_t xor = lower ^ upper;
+        /* lower < upper, so this bit will always be a transition from 0 to 1. */
+        unsigned bits = util_last_bit64(xor);
+
+        uint64_t midpoint = 1ULL << bits;
+        lower &= midpoint - 1;
+        upper &= midpoint - 1;
+
+        if (lower) {
+                /* We have not reached the midpoint, so start small and
+                 * increase in size with each call. */
+                uint64_t size = midpoint - lower;
+                return 1ULL << (ffsll(size) - 1);
+        } else {
+                /* We are at the midpoint, so start as large as possible. */
+                assert(upper);
+                return 1ULL << (util_last_bit64(upper) - 1);
+        }
+}
+
+int
+panfrost_fork(struct panfrost_context *ctx)
+{
+        struct panfrost_device *dev = pan_device(ctx->base.screen);
+        struct panfrost_device _new_dev, *new_dev = &_new_dev;
+        memcpy(new_dev, dev, sizeof(struct panfrost_device));
+
+        panfrost_flush_all_batches(ctx, "Preparing fork()");
+        panfrost_bo_cache_evict_all(dev);
+
+        new_dev->fd = drmOpenWithType("panfrost", NULL, DRM_NODE_RENDER);
+
+        struct util_sparse_array *new_arr = &new_dev->bo_map;
+        util_sparse_array_init(new_arr, sizeof(struct panfrost_bo), 512);
+
+        pthread_mutex_init(&new_dev->bo_cache.lock, NULL);
+        list_inithead(&new_dev->bo_cache.lru);
+        list_inithead(&new_dev->bo_list);
+
+        for (unsigned i = 0; i < ARRAY_SIZE(new_dev->bo_cache.buckets); ++i)
+                list_inithead(&new_dev->bo_cache.buckets[i]);
+
+        struct util_dynarray bo_array;
+        util_dynarray_init(&bo_array, NULL);
+
+        list_for_each_entry(struct panfrost_bo, bo, &dev->bo_list,
+                            bo_link) {
+                assert(bo->size);
+
+                panfrost_bo_wait(bo, INT64_MAX, true);
+
+                util_dynarray_append(&bo_array, struct panfrost_bo *, bo);
+        }
+
+        /* Creating a context should mean that there are at least *some*
+         * BOs that were allocated */
+        assert(util_dynarray_num_elements(&bo_array, struct panfrost_bo *));
+
+        qsort(util_dynarray_begin(&bo_array),
+              util_dynarray_num_elements(&bo_array, struct panfrost_bo *),
+              sizeof(struct panfrost_bo *),
+              pan_bo_compare);
+
+        struct util_dynarray temp_bos;
+        util_dynarray_init(&temp_bos, NULL);
+
+        struct util_dynarray created_bos;
+        util_dynarray_init(&created_bos, NULL);
+
+        mali_ptr last_addr = 0;
+        util_dynarray_foreach(&bo_array, struct panfrost_bo *, elem) {
+                struct panfrost_bo *bo = *elem;
+
+                mali_ptr gpu_addr = bo->ptr.gpu;
+
+                if (!last_addr)
+                        last_addr = gpu_addr;
+
+                uint64_t size;
+                while ((size = pan_pot_fill(last_addr, gpu_addr))) {
+
+                        struct panfrost_bo *pad_bo = panfrost_bo_create(
+                                new_dev, size, PAN_BO_SHARED | PAN_BO_DELAY_MMAP,
+                                "GPU address padding");
+
+                        util_dynarray_append(&temp_bos, struct panfrost_bo *,
+                                             pad_bo);
+
+                        assert(last_addr == pad_bo->ptr.gpu);
+                        last_addr += size;
+                }
+
+                uint32_t flags = bo->flags & (PAN_BO_EXECUTE
+                                              | PAN_BO_INVISIBLE
+                                              | PAN_BO_GROWABLE);
+
+                struct panfrost_bo *new_bo = panfrost_bo_create(
+                        new_dev, bo->size, flags, bo->label);
+
+                assert(new_bo->ptr.gpu == gpu_addr);
+
+                last_addr = new_bo->ptr.gpu + new_bo->size;
+                util_dynarray_append(&created_bos, struct panfrost_bo *, new_bo);
+
+                if (!(flags & PAN_BO_INVISIBLE)) {
+                        panfrost_bo_mmap(bo);
+
+                        memcpy(new_bo->ptr.cpu, bo->ptr.cpu, bo->size);
+                }
+        }
+
+        unsigned num_sync = 0;
+        uint32_t old_syncobj = 0;
+
+        /* TODO: Free these syncobjs when we are done */
+        for (unsigned i = 0; i < 10; ++i) {
+                uint32_t syncobj = 0;
+                drmSyncobjCreate(dev->fd, DRM_SYNCOBJ_CREATE_SIGNALED, &syncobj);
+
+                if (syncobj != old_syncobj + 1)
+                        num_sync = syncobj;
+
+                old_syncobj = syncobj;
+        }
+
+        uint32_t tmp_syncobj;
+        for (unsigned i = 0; i < num_sync - 1; ++i)
+                drmSyncobjCreate(new_dev->fd, DRM_SYNCOBJ_CREATE_SIGNALED,
+                                 &tmp_syncobj);
+
+        int ret = fork();
+        if (ret == -1)
+                return ret;
+
+        if (ret == 0) {
+                /* Create a new process group so that we do not receive
+                 * signals sent to the parent */
+                setpgid(0, 0);
+
+                unsigned num_bos = util_dynarray_num_elements(&bo_array, struct panfrost_bo *);
+                for (unsigned i = 0; i < num_bos; ++i) {
+                        struct panfrost_bo *bo =
+                                *util_dynarray_element(&bo_array, struct panfrost_bo *, i);
+                        struct panfrost_bo *new_bo =
+                                *util_dynarray_element(&created_bos, struct panfrost_bo *, i);
+
+                        if (bo->ptr.cpu) {
+                                panfrost_bo_munmap(new_bo);
+
+                                /* This replaces the memory used by the old BO */
+                                panfrost_bo_mmap_with_flags(new_bo, bo->ptr.cpu,
+                                                            MAP_SHARED | MAP_FIXED);
+                        }
+
+                        bo->gem_handle = new_bo->gem_handle;
+                }
+
+                close(dev->fd);
+
+                util_dynarray_foreach(&temp_bos, struct panfrost_bo *, elem)
+                        panfrost_bo_unreference(*elem);
+
+                dev->fd = new_dev->fd;
+                util_sparse_array_init(&dev->bo_map, sizeof(struct panfrost_bo), 512);
+        } else {
+                close(new_dev->fd);
+        }
+
+        util_sparse_array_finish(&new_dev->bo_map);
+
+        util_dynarray_fini(&created_bos);
+        util_dynarray_fini(&temp_bos);
+        util_dynarray_fini(&bo_array);
+
+        return ret;
 }
 
 struct pipe_context *

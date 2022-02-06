@@ -23,6 +23,8 @@
  * SOFTWARE.
  */
 
+#include <unistd.h>
+
 #include "util/macros.h"
 #include "util/u_prim.h"
 #include "util/u_vbuf.h"
@@ -3112,6 +3114,23 @@ panfrost_draw_vbo(struct pipe_context *pipe,
 {
         struct panfrost_context *ctx = pan_context(pipe);
         struct panfrost_device *dev = pan_device(pipe->screen);
+
+#ifndef NDEBUG
+        /* TODO: Move this somewhere less hot? But it needs to be called
+         * reasonably often as the place must be hit "naturally". */
+        while (getenv("PAN_FORK")) {
+                unsetenv("PAN_FORK");
+                if (panfrost_fork(ctx) == 0) {
+                        /* Wait for someone to attach a debugger and call
+                         * putenv("PAN_FORK_CONTINUE=1") before
+                         * continuing */
+
+                        while (!getenv("PAN_FORK_CONTINUE"))
+                                sleep(1);
+                        unsetenv("PAN_FORK_CONTINUE");
+                }
+        }
+#endif
 
         if (!panfrost_render_condition_check(ctx))
                 return;

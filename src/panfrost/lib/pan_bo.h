@@ -82,6 +82,8 @@ struct panfrost_bo {
         /* Must be first for casting */
         struct list_head bucket_link;
 
+        struct list_head bo_link;
+
         /* Used to link the BO to the BO cache LRU list. */
         struct list_head lru_link;
 

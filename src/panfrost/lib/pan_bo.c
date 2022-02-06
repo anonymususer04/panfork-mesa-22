@@ -80,6 +80,8 @@ panfrost_bo_alloc(struct panfrost_device *dev, size_t size,
         bo = pan_lookup_bo(dev, create_bo.handle);
         assert(!memcmp(bo, &((struct panfrost_bo){}), sizeof(*bo)));
 
+        list_addtail(&bo->bo_link, &dev->bo_list);
+
         bo->size = create_bo.size;
         bo->ptr.gpu = create_bo.offset;
         bo->gem_handle = create_bo.handle;
@@ -100,6 +102,8 @@ panfrost_bo_free(struct panfrost_bo *bo)
                 fprintf(stderr, "DRM_IOCTL_GEM_CLOSE failed: %m\n");
                 assert(0);
         }
+
+        list_del(&bo->bo_link);
 
         /* BO will be freed with the sparse array, but zero to indicate free */
         memset(bo, 0, sizeof(*bo));
@@ -492,6 +496,8 @@ panfrost_bo_import(struct panfrost_device *dev, int fd)
                 get_bo_offset.handle = gem_handle;
                 ret = drmIoctl(dev->fd, DRM_IOCTL_PANFROST_GET_BO_OFFSET, &get_bo_offset);
                 assert(!ret);
+
+                list_addtail(&bo->bo_link, &dev->bo_list);
 
                 bo->dev = dev;
                 bo->ptr.gpu = (mali_ptr) get_bo_offset.offset;

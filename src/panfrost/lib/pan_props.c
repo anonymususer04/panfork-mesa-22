@@ -277,6 +277,7 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
         util_sparse_array_init(&dev->bo_map, sizeof(struct panfrost_bo), 512);
 
         pthread_mutex_init(&dev->bo_cache.lock, NULL);
+        list_inithead(&dev->bo_list);
         list_inithead(&dev->bo_cache.lru);
 
         for (unsigned i = 0; i < ARRAY_SIZE(dev->bo_cache.buckets); ++i)

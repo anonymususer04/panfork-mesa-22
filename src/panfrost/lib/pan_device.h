@@ -206,6 +206,9 @@ struct panfrost_device {
         pthread_mutex_t bo_map_lock;
         struct util_sparse_array bo_map;
 
+        /* TODO: Lock? (Though fork() doesn't really work with threading) */
+        struct list_head bo_list;
+
         struct {
                 pthread_mutex_t lock;
 

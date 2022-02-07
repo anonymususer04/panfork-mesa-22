@@ -342,6 +342,7 @@ optimise_nir(nir_shader *nir, unsigned quirks, bool is_blend, bool is_blit)
                 .lower_tg4_broadcom_swizzle = true,
                 /* TODO: we have native gradient.. */
                 .lower_txd = true,
+                .lower_tex_buffer = true,
         };
 
         NIR_PASS(progress, nir, nir_lower_tex, &lower_tex_options);

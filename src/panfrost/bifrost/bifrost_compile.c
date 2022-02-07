@@ -3499,6 +3499,7 @@ bi_optimize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
                 .lower_txp = ~0,
                 .lower_tg4_broadcom_swizzle = true,
                 .lower_txd = true,
+                .lower_tex_buffer = true,
         };
 
         NIR_PASS(progress, nir, pan_nir_lower_64bit_intrin);

@@ -26,6 +26,7 @@
 
 #include <getopt.h>
 #include <string.h>
+#include "midgard/disassemble.h"
 #include "disassemble.h"
 #include "valhall/disassemble.h"
 #include "compiler.h"
@@ -235,7 +236,7 @@ disassemble(const char *filename)
 
         void *entrypoint = code;
 
-        if (filesize && code[0] == BI_FOURCC('M', 'B', 'S', '2')) {
+        if (filesize > 4 && code[0] == BI_FOURCC('M', 'B', 'S', '2')) {
                 for (int i = 0; i < filesize / 4; ++i) {
                         if (code[i] != BI_FOURCC('O', 'B', 'J', 'C'))
                                 continue;
@@ -250,8 +251,10 @@ disassemble(const char *filename)
 
         if ((gpu_id >> 12) >= 9)
                 disassemble_valhall(stdout, entrypoint, filesize, verbose);
-        else
+        else if ((gpu_id >> 12) >= 6)
                 disassemble_bifrost(stdout, entrypoint, filesize, verbose);
+        else
+                disassemble_midgard(stdout, entrypoint, filesize, 0x860, verbose);
 
         free(code);
 }
@@ -277,6 +280,7 @@ main(int argc, char **argv)
                 const char *name;
                 unsigned major, minor;
         } gpus[] = {
+                { "T860",  5, 0 },
                 { "G71",   6, 0 },
                 { "G72",   6, 2 },
                 { "G51",   7, 0 },
@@ -335,7 +339,7 @@ main(int argc, char **argv)
         else if (strcmp(argv[optind], "disasm") == 0)
                 disassemble(argv[optind + 1]);
         else {
-                fprintf(stderr, "Unknown command. Valid: compile/disasm\n");
+                fprintf(stderr, "Unknown command. Valid: compile/disasm/disasm-mdg\n");
                 return 1;
         }
 

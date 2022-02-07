@@ -4844,6 +4844,11 @@ typedef struct nir_lower_tex_options {
    bool lower_rect;
 
    /**
+    * If true, lower buffer textures to 65536-wide 2D textures.
+    */
+   bool lower_tex_buffer;
+
+   /**
     * If true, convert yuv to rgb.
     */
    unsigned lower_y_uv_external;

@@ -1055,7 +1055,6 @@ static void panfrost_upload_txs_sysval(struct panfrost_batch *batch,
         assert(dim);
 
         if (tex->target == PIPE_BUFFER) {
-                assert(dim == 1);
                 uniform->i[0] =
                         tex->u.buf.size / util_format_get_blocksize(tex->format);
                 return;

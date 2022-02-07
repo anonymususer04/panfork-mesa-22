@@ -732,7 +732,6 @@ panfrost_emit_texture_payload(const struct pan_image_view *iview,
         mali_ptr base = iview->image->data.bo->ptr.gpu + iview->image->data.offset;
 
         if (iview->buf.size) {
-                assert (iview->dim == MALI_TEXTURE_DIMENSION_1D);
                 base += iview->buf.offset;
         }
 
@@ -791,6 +790,11 @@ panfrost_emit_texture_payload(const struct pan_image_view *iview,
                                 panfrost_get_surface_strides(layout, iter.level,
                                                              &cfg.row_stride,
                                                              &cfg.surface_stride);
+                                if (iview->buf.size) {
+                                        cfg.surface_stride -= iview->buf.offset;
+                                        cfg.row_stride = PAN_TEX_BUF_WIDTH / 8 *
+                                                desc->block.bits;
+                                }
                         }
                         payload += pan_size(SURFACE_WITH_STRIDE);
 #endif
@@ -888,25 +892,26 @@ GENX(panfrost_new_texture)(const struct panfrost_device *dev,
                 array_size /=  6;
         }
 
-        unsigned width;
+        unsigned width, height;
 
         if (iview->buf.size) {
-                assert(iview->dim == MALI_TEXTURE_DIMENSION_1D);
                 assert(!iview->first_level && !iview->last_level);
                 assert(!iview->first_layer && !iview->last_layer);
                 assert(layout->nr_samples == 1);
                 assert(layout->height == 1 && layout->depth == 1);
                 assert(iview->buf.offset + iview->buf.size <= layout->width);
-                width = iview->buf.size;
+                width = MIN2(iview->buf.size, PAN_TEX_BUF_WIDTH);
+                height = DIV_ROUND_UP(iview->buf.size, PAN_TEX_BUF_WIDTH);
         } else {
                 width = u_minify(layout->width, iview->first_level);
+                height = u_minify(layout->height, iview->first_level);
         }
 
         pan_pack(out, TEXTURE, cfg) {
                 cfg.dimension = iview->dim;
                 cfg.format = dev->formats[format].hw;
                 cfg.width = width;
-                cfg.height = u_minify(layout->height, iview->first_level);
+                cfg.height = height;
                 if (iview->dim == MALI_TEXTURE_DIMENSION_3D)
                         cfg.depth = u_minify(layout->depth, iview->first_level);
                 else

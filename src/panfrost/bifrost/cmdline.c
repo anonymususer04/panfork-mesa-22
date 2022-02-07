@@ -27,6 +27,7 @@
 #include <getopt.h>
 #include <string.h>
 #include "disassemble.h"
+#include "midgard/disassemble.h"
 #include "compiler.h"
 
 #include "main/mtypes.h"
@@ -215,7 +216,14 @@ compile_shader(int stages, char **files)
   (uint32_t)(ch2) << 16  | (uint32_t)(ch3) << 24)
 
 static void
-disassemble(const char *filename)
+do_disassemble_midgard(FILE *fp, uint8_t *code, size_t size, bool verbose)
+{
+        disassemble_midgard(fp, code, size, 0x860, verbose);
+}
+
+static void
+disassemble(const char *filename,
+            void (*disasm_func)(FILE *, uint8_t *, size_t, bool))
 {
         FILE *fp = fopen(filename, "rb");
         assert(fp);
@@ -232,7 +240,7 @@ disassemble(const char *filename)
 
         fclose(fp);
 
-        if (filesize && code[0] == BI_FOURCC('M', 'B', 'S', '2')) {
+        if (filesize > 4 && code[0] == BI_FOURCC('M', 'B', 'S', '2')) {
                 for (int i = 0; i < filesize / 4; ++i) {
                         if (code[i] != BI_FOURCC('O', 'B', 'J', 'C'))
                                 continue;
@@ -240,10 +248,10 @@ disassemble(const char *filename)
                         unsigned size = code[i + 1];
                         unsigned offset = i + 2;
 
-                        disassemble_bifrost(stdout, (uint8_t*)(code + offset), size, verbose);
+                        disasm_func(stdout, (uint8_t*)(code + offset), size, verbose);
                 }
         } else {
-                disassemble_bifrost(stdout, (uint8_t*)code, filesize, verbose);
+                disasm_func(stdout, (uint8_t*)code, filesize, verbose);
         }
 
         free(code);
@@ -326,9 +334,11 @@ main(int argc, char **argv)
         if (strcmp(argv[optind], "compile") == 0)
                 compile_shader(argc - optind - 1, &argv[optind + 1]);
         else if (strcmp(argv[optind], "disasm") == 0)
-                disassemble(argv[optind + 1]);
+                disassemble(argv[optind + 1], disassemble_bifrost);
+        else if (strcmp(argv[optind], "disasm-mdg") == 0)
+                disassemble(argv[optind + 1], do_disassemble_midgard);
         else {
-                fprintf(stderr, "Unknown command. Valid: compile/disasm\n");
+                fprintf(stderr, "Unknown command. Valid: compile/disasm/disasm-mdg\n");
                 return 1;
         }
 

@@ -63,6 +63,7 @@ bifrost_compiler = executable(
   link_with : [
     libglsl_standalone,
     libpanfrost_bifrost,
+    libpanfrost_midgard,
   ],
   build_by_default : with_tools.contains('panfrost')
 )

@@ -134,6 +134,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
         case PIPE_CAP_FRAMEBUFFER_NO_ATTACHMENT:
         case PIPE_CAP_CLIP_HALFZ:
         case PIPE_CAP_QUADS_FOLLOW_PROVOKING_VERTEX_CONVENTION:
+        case PIPE_CAP_BUFFER_MAP_PERSISTENT_COHERENT:
                 return 1;
 
         case PIPE_CAP_MAX_RENDER_TARGETS:

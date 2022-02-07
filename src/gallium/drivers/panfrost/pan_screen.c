@@ -259,7 +259,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
                 return 0xffff;
 
         case PIPE_CAP_TEXTURE_TRANSFER_MODES:
-                return 0;
+                return PIPE_TEXTURE_TRANSFER_BLIT;
 
         case PIPE_CAP_ENDIANNESS:
                 return PIPE_ENDIAN_NATIVE;

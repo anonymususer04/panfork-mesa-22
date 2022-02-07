@@ -213,8 +213,9 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
         case PIPE_CAP_CONSTANT_BUFFER_OFFSET_ALIGNMENT:
                 return 16;
 
+        /* Arbitrary, could be as big as 1 << 32 */
         case PIPE_CAP_MAX_TEXTURE_BUFFER_SIZE:
-                return 65536;
+                return 1 << 27;
 
         /* Must be at least 64 for correct behaviour */
         case PIPE_CAP_TEXTURE_BUFFER_OFFSET_ALIGNMENT:

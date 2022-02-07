@@ -26,7 +26,11 @@
  */
 
 #include <sys/poll.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include "pan_bo.h"
@@ -1067,6 +1071,10 @@ pan_pot_fill(uint64_t lower, uint64_t upper)
         }
 }
 
+struct pan_fd_pair {
+        int fd[2];
+};
+
 int
 panfrost_fork(struct panfrost_context *ctx)
 {
@@ -1177,6 +1185,57 @@ panfrost_fork(struct panfrost_context *ctx)
                 drmSyncobjCreate(new_dev->fd, DRM_SYNCOBJ_CREATE_SIGNALED,
                                  &tmp_syncobj);
 
+        char fd_name[64];
+        snprintf(fd_name, 64, "/proc/%i/fd", getpid());
+        DIR *fd_dir = opendir(fd_name);
+
+        struct util_dynarray fd_reopen;
+        util_dynarray_init(&fd_reopen, NULL);
+
+        /* So we don't write buffered data in any streams twice */
+        fflush(NULL);
+
+        /* Reopen read-only fds pointing to regular files, so that they do
+         * not share an offset.
+         * Only reopen regular files, as trying to open a fifo can block
+         * forever. Only reopen files that were opened read-only, as other
+         * files might be log files where we would rather append new data at
+         * the end. */
+        struct dirent *ent;
+        while ((ent = readdir(fd_dir))) {
+                int fd = atoi(ent->d_name);
+                /* Valgrind uses fd 1024 and up for internal purposes */
+                if (fd < 3 || fd >= 1024)
+                        continue;
+
+                snprintf(fd_name, 64, "/proc/%i/fd/%i", getpid(), fd);
+                struct stat statbuf;
+                lstat(fd_name, &statbuf);
+                if ((statbuf.st_mode & 0700) != 0500)
+                        continue;
+
+                stat(fd_name, &statbuf);
+                if (!S_ISREG(statbuf.st_mode))
+                        continue;
+
+                bool already = false;
+                util_dynarray_foreach(&fd_reopen, struct pan_fd_pair, x)
+                        already |= (x->fd[0] == fd);
+                if (already)
+                        continue;
+
+                struct pan_fd_pair ins = {
+                        .fd[0] = open(fd_name, O_RDONLY),
+                        .fd[1] = fd,
+                };
+                util_dynarray_append(&fd_reopen, struct pan_fd_pair, ins);
+
+                /* TODO: Copy more fd attributes */
+                lseek64(ins.fd[0],
+                        lseek64(ins.fd[1], 0, SEEK_CUR), SEEK_SET);
+        }
+        closedir(fd_dir);
+
         int ret = fork();
         if (ret == -1)
                 return ret;
@@ -1211,9 +1270,19 @@ panfrost_fork(struct panfrost_context *ctx)
 
                 dev->fd = new_dev->fd;
                 util_sparse_array_init(&dev->bo_map, sizeof(struct panfrost_bo), 512);
+
+                util_dynarray_foreach(&fd_reopen, struct pan_fd_pair, pair) {
+                        dup2(pair->fd[0], pair->fd[1]);
+                        close(pair->fd[0]);
+                }
         } else {
                 close(new_dev->fd);
+
+                util_dynarray_foreach(&fd_reopen, struct pan_fd_pair, pair)
+                        close(pair->fd[0]);
         }
+
+        util_dynarray_fini(&fd_reopen);
 
         util_sparse_array_finish(&new_dev->bo_map);
 

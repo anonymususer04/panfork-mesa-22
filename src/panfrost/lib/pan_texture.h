@@ -40,6 +40,8 @@
 #include "pan_util.h"
 #include "pan_format.h"
 
+#define PAN_TEX_BUF_WIDTH 65536
+
 #define PAN_MODIFIER_COUNT 4
 extern uint64_t pan_best_modifiers[PAN_MODIFIER_COUNT];
 

@@ -145,11 +145,11 @@ static inline enum mali_texture_dimension
 panfrost_translate_texture_dimension(enum pipe_texture_target t) {
         switch (t)
         {
-        case PIPE_BUFFER:
         case PIPE_TEXTURE_1D:
         case PIPE_TEXTURE_1D_ARRAY:
                 return MALI_TEXTURE_DIMENSION_1D;
 
+        case PIPE_BUFFER:
         case PIPE_TEXTURE_2D:
         case PIPE_TEXTURE_2D_ARRAY:
         case PIPE_TEXTURE_RECT:

@@ -894,7 +894,7 @@ panvk_meta_copy_buf_texelsize(enum pipe_format imgfmt, unsigned mask)
 static enum pipe_format
 panvk_meta_copy_buf2img_format(enum pipe_format imgfmt)
 {
-   /* Pick blendable formats when we can, and the FLOAT variant matching the
+   /* Pick blendable formats when we can, and the UINT variant matching the
     * texelsize otherwise.
     */
    switch (util_format_get_blocksize(imgfmt)) {

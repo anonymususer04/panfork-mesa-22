@@ -547,7 +547,9 @@ typedef enum {
         midgard_op_atomic_cmpxchg64_be = 0x67,
 
         /* Used for compute shader's __global arguments, __local
-         * variables (or for register spilling) */
+         * variables (or for register spilling)
+         *  register = mask(swizzle(replicate(extend(byteswap(*mem)))))
+         * Masks are for each 32-bit component of the output register. */
 
         midgard_op_ld_u8         = 0x80, /* zero extends */
         midgard_op_ld_i8         = 0x81, /* sign extends */
@@ -558,6 +560,7 @@ typedef enum {
         midgard_op_ld_32         = 0x88, /* short2, int, float */
         midgard_op_ld_32_bswap2  = 0x89, /* 16-bit big endian vector */
         midgard_op_ld_32_bswap4  = 0x8A, /* 32-bit big endian scalar */
+        midgard_op_ld_32_bswap8  = 0x8B, /* Same as 0x8A */
         midgard_op_ld_64         = 0x8C, /* int2, float2, long */
         midgard_op_ld_64_bswap2  = 0x8D, /* 16-bit big endian vector */
         midgard_op_ld_64_bswap4  = 0x8E, /* 32-bit big endian vector */
@@ -600,6 +603,7 @@ typedef enum {
         midgard_op_ld_ubo_32         = 0xA8,
         midgard_op_ld_ubo_32_bswap2  = 0xA9,
         midgard_op_ld_ubo_32_bswap4  = 0xAA,
+        midgard_op_ld_ubo_32_bswap8  = 0xAB,
         midgard_op_ld_ubo_64         = 0xAC,
         midgard_op_ld_ubo_64_bswap2  = 0xAD,
         midgard_op_ld_ubo_64_bswap4  = 0xAE,
@@ -620,15 +624,17 @@ typedef enum {
         midgard_op_ld_tilebuffer_16f = 0xB9,
         midgard_op_ld_tilebuffer_raw = 0xBA,
 
-        midgard_op_st_u8         = 0xC0, /* zero extends */
-        midgard_op_st_i8         = 0xC1, /* sign extends */
-        midgard_op_st_u16        = 0xC4, /* zero extends */
-        midgard_op_st_i16        = 0xC5, /* sign extends */
-        midgard_op_st_u16_be     = 0xC6, /* zero extends, big endian */
-        midgard_op_st_i16_be     = 0xC7, /* sign extends, big endian */
+        /*  *mem = mask(typemask(byteswap(swizzle(register))))
+         * Mask is a quarter of the store swize, with a minimum of one
+         * byte per mask component. Masked out components are unchanged
+         * in memory. */
+        midgard_op_st_u8         = 0xC0,
+        midgard_op_st_u16        = 0xC4,
+        midgard_op_st_u16_be     = 0xC5, /* big endian */
         midgard_op_st_32         = 0xC8, /* short2, int, float */
         midgard_op_st_32_bswap2  = 0xC9, /* 16-bit big endian vector */
         midgard_op_st_32_bswap4  = 0xCA, /* 32-bit big endian scalar */
+        midgard_op_st_32_bswap8  = 0xCB, /* 32-bit big endian scalar */
         midgard_op_st_64         = 0xCC, /* int2, float2, long */
         midgard_op_st_64_bswap2  = 0xCD, /* 16-bit big endian vector */
         midgard_op_st_64_bswap4  = 0xCE, /* 32-bit big endian vector */

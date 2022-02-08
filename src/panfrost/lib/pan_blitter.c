@@ -982,6 +982,7 @@ static void *
 pan_blit_emit_tiler_job(struct pan_pool *pool,
                         struct pan_scoreboard *scoreboard,
                         mali_ptr tiler,
+                        bool preframe,
                         struct panfrost_ptr *job)
 {
         *job = pan_pool_alloc_desc(pool, TILER_JOB);
@@ -1007,36 +1008,89 @@ pan_blit_emit_tiler_job(struct pan_pool *pool,
 #endif
 
         panfrost_add_job(pool, scoreboard, MALI_JOB_TYPE_TILER,
-                         false, false, 0, 0, job, false);
+                         false, false, 0, 0, job, preframe);
         return pan_section_ptr(job->cpu, TILER_JOB, DRAW);
 }
 
-#if PAN_ARCH >= 6
-static void
-pan_preload_fb_alloc_pre_post_dcds(struct pan_pool *desc_pool,
-                                   struct pan_fb_info *fb)
-{
-        if (fb->bifrost.pre_post.dcds.gpu)
-                return;
+/**
+ * Hint about the frame shader mode. pan_queue_frame_shader may ignore these
+ * hints, but if a hint is specified, it must be accurate. These hints gate
+ * frame shader optimization.
+ */
+enum pan_frame_shader_hint {
+        /* Indicates the frame shader only needs to run for tiles that have
+         * any (non-frame shader) draws. Intended for tilebuffer preloads.
+         */
+        PAN_FRAME_SHADER_INTERSECT = (1 << 0),
 
-        fb->bifrost.pre_post.dcds =
-                pan_pool_alloc_desc_array(desc_pool, 3, DRAW);
+        /* Indicates the frame shader (only) affects the Z/S buffer and should
+         * run for all tiles. Will try to be run as early as possible.
+         */
+        PAN_FRAME_SHADER_EARLY_ZS_ALWAYS = (1 << 1),
+};
+
+#if PAN_ARCH >= 6
+static enum mali_pre_post_frame_shader_mode
+pan_select_frame_shader_mode(enum pan_frame_shader_hint hint)
+{
+#if PAN_ARCH >= 7
+        if (hint & PAN_FRAME_SHADER_EARLY_ZS_ALWAYS)
+                return MALI_PRE_POST_FRAME_SHADER_MODE_EARLY_ZS_ALWAYS;
+#endif
+
+        if (hint & PAN_FRAME_SHADER_INTERSECT)
+                return MALI_PRE_POST_FRAME_SHADER_MODE_INTERSECT;
+        else
+                return MALI_PRE_POST_FRAME_SHADER_MODE_ALWAYS;
+}
+#endif
+
+/**
+ * Queue a frame shader to a given framebuffer and scoreboard. A pre/post frame
+ * shader is a fragment draw that runs before/after all draws, drawing a quad
+ * covering the entire bounding box. Bifrost introduced hardware support for
+ * frame shaders with few limitations; on Midgard, frame shaders are lowered to
+ * standalone tiler jobs. This function is available on all architectures,
+ * regardless of underlying implementation.
+ *
+ * Returns a pointer to an empty fragment draw call descriptor, which should be
+ * filled in by the caller. If a tiler job is emitted, it is returned as the out
+ * pointer to job.
+ */
+static void *
+pan_queue_frame_shader(struct pan_pool *pool,
+                       struct pan_scoreboard *scoreboard,
+                       struct pan_fb_info *fb,
+                       enum pan_frame_shader_hint hint,
+                       struct panfrost_ptr *job)
+{
+#if PAN_ARCH >= 6
+        /* For now, we only use pre-frame shaders. */
+        unsigned dcd_idx = fb->bifrost.pre_post.modes[0] ? 1 : 0;
+
+        assert(!fb->bifrost.pre_post.modes[dcd_idx] && "too many frame shaders");
+
+        if (!fb->bifrost.pre_post.dcds.gpu)
+                fb->bifrost.pre_post.dcds = pan_pool_alloc_desc_array(pool, 3, DRAW);
+
+        fb->bifrost.pre_post.modes[dcd_idx] = pan_select_frame_shader_mode(hint);
+        return fb->bifrost.pre_post.dcds.cpu + (dcd_idx * pan_size(DRAW));
+#else
+        return pan_blit_emit_tiler_job(pool, scoreboard, 0, true, job);
+#endif
 }
 
-static void
-pan_preload_emit_pre_frame_dcd(struct pan_pool *desc_pool,
-                               struct pan_fb_info *fb, bool zs,
-                               mali_ptr coords, mali_ptr rsd,
-                               mali_ptr tsd)
+static struct panfrost_ptr
+pan_preload_fb_part(struct pan_pool *pool,
+                    struct pan_scoreboard *scoreboard,
+                    struct pan_fb_info *fb, bool zs,
+                    mali_ptr coords, mali_ptr tsd, mali_ptr tiler)
 {
-        unsigned dcd_idx = zs ? 0 : 1;
-        pan_preload_fb_alloc_pre_post_dcds(desc_pool, fb);
-        assert(fb->bifrost.pre_post.dcds.cpu);
-        void *dcd = fb->bifrost.pre_post.dcds.cpu +
-                    (dcd_idx * pan_size(DRAW));
-
+        struct panfrost_device *dev = pool->dev;
+        mali_ptr rsd = pan_preload_get_rsd(dev, fb, zs);
+        struct panfrost_ptr job = { 0 };
         int crc_rt = GENX(pan_select_crc_rt)(fb);
-
+        bool can_intersect = true;
         bool always_write = false;
 
         /* If CRC data is currently invalid and this batch will make it valid,
@@ -1051,12 +1105,10 @@ pan_preload_emit_pre_frame_dcd(struct pan_pool *desc_pool,
                         always_write = true;
         }
 
-        pan_preload_emit_dcd(desc_pool, fb, zs, coords, tsd, rsd, dcd, always_write);
         if (zs) {
                 enum pipe_format fmt = fb->zs.view.zs ?
                                        fb->zs.view.zs->image->layout.format :
                                        fb->zs.view.s->image->layout.format;
-                bool always = false;
 
                 /* If we're dealing with a combined ZS resource and only one
                  * component is cleared, we need to reload the whole surface
@@ -1065,80 +1117,23 @@ pan_preload_emit_pre_frame_dcd(struct pan_pool *desc_pool,
                  */
                 if (util_format_is_depth_and_stencil(fmt) &&
                     fb->zs.clear.z != fb->zs.clear.s)
-                        always = true;
-
-                /* We could use INTERSECT on Bifrost v7 too, but
-                 * EARLY_ZS_ALWAYS has the advantage of reloading the ZS tile
-                 * buffer one or more tiles ahead, making ZS data immediately
-                 * available for any ZS tests taking place in other shaders.
-                 * Thing's haven't been benchmarked to determine what's
-                 * preferable (saving bandwidth vs having ZS preloaded
-                 * earlier), so let's leave it like that for now.
-                 */
-                fb->bifrost.pre_post.modes[dcd_idx] =
-                        desc_pool->dev->arch > 6 ?
-                        MALI_PRE_POST_FRAME_SHADER_MODE_EARLY_ZS_ALWAYS :
-                        always ? MALI_PRE_POST_FRAME_SHADER_MODE_ALWAYS :
-                        MALI_PRE_POST_FRAME_SHADER_MODE_INTERSECT;
-        } else {
-                fb->bifrost.pre_post.modes[dcd_idx] =
-                        always_write ? MALI_PRE_POST_FRAME_SHADER_MODE_ALWAYS :
-                        MALI_PRE_POST_FRAME_SHADER_MODE_INTERSECT;
-        }
-}
-#else
-static struct panfrost_ptr
-pan_preload_emit_tiler_job(struct pan_pool *desc_pool,
-                           struct pan_scoreboard *scoreboard,
-                           struct pan_fb_info *fb, bool zs,
-                           mali_ptr coords, mali_ptr rsd, mali_ptr tsd)
-{
-        struct panfrost_ptr job =
-                pan_pool_alloc_desc(desc_pool, TILER_JOB);
-
-        pan_preload_emit_dcd(desc_pool, fb, zs, coords, tsd, rsd,
-                             pan_section_ptr(job.cpu, TILER_JOB, DRAW),
-                             false);
-
-        pan_section_pack(job.cpu, TILER_JOB, PRIMITIVE, cfg) {
-                cfg.draw_mode = MALI_DRAW_MODE_TRIANGLE_STRIP;
-                cfg.index_count = 4;
-                cfg.job_task_split = 6;
+                        can_intersect = false;
         }
 
-        pan_section_pack(job.cpu, TILER_JOB, PRIMITIVE_SIZE, cfg) {
-                cfg.constant = 1.0f;
-        }
+        /* For depth/stencil preloads, EARLY_ZS_ALWAYS has the advantage of
+         * reloading the ZS tile buffer one or more tiles ahead, making ZS data
+         * immediately available for any ZS tests taking place in other shaders.
+         * Thing's haven't been benchmarked to determine what's preferable
+         * (saving bandwidth vs having ZS preloaded earlier), so let's leave it
+         * like that for now.
+         */
+        enum pan_frame_shader_hint hint = zs ? PAN_FRAME_SHADER_EARLY_ZS_ALWAYS :
+                                          can_intersect ? PAN_FRAME_SHADER_INTERSECT : 0;
 
-        void *invoc = pan_section_ptr(job.cpu,
-                                      TILER_JOB,
-                                      INVOCATION);
-        panfrost_pack_work_groups_compute(invoc, 1, 4,
-                                          1, 1, 1, 1, true, false);
+        void *dcd = pan_queue_frame_shader(pool, scoreboard, fb, hint, &job);
 
-        panfrost_add_job(desc_pool, scoreboard, MALI_JOB_TYPE_TILER,
-                         false, false, 0, 0, &job, true);
-        return job;
-}
-#endif
+        pan_preload_emit_dcd(pool, fb, zs, coords, tsd, rsd, dcd, always_write);
 
-static struct panfrost_ptr
-pan_preload_fb_part(struct pan_pool *pool,
-                    struct pan_scoreboard *scoreboard,
-                    struct pan_fb_info *fb, bool zs,
-                    mali_ptr coords, mali_ptr tsd, mali_ptr tiler)
-{
-        struct panfrost_device *dev = pool->dev;
-        mali_ptr rsd = pan_preload_get_rsd(dev, fb, zs);
-        struct panfrost_ptr job = { 0 };
-
-#if PAN_ARCH >= 6
-        pan_preload_emit_pre_frame_dcd(pool, fb, zs,
-                                       coords, rsd, tsd);
-#else
-        job = pan_preload_emit_tiler_job(pool, scoreboard,
-                                         fb, zs, coords, rsd, tsd);
-#endif
         return job;
 }
 
@@ -1349,7 +1344,7 @@ GENX(pan_blit)(struct pan_blit_context *ctx,
                                         sizeof(src_rect), 64);
 
         struct panfrost_ptr job = { 0 };
-        void *dcd = pan_blit_emit_tiler_job(pool, scoreboard, tiler, &job);
+        void *dcd = pan_blit_emit_tiler_job(pool, scoreboard, tiler, false, &job);
 
         pan_pack(dcd, DRAW, cfg) {
                 cfg.thread_storage = tsd;

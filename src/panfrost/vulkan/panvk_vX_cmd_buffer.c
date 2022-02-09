@@ -122,6 +122,14 @@ panvk_is_noop_batch(struct panvk_batch *batch, const struct pan_fb_info *fbinfo)
          return false;
    }
 
+   /* Check for frame shaders, since they are draws. A batch containing only a
+    * frame shader should still be submitted. Useful for blitting.
+    */
+   for (unsigned i = 0; i < ARRAY_SIZE(fbinfo->bifrost.pre_post.modes); i++) {
+      if (fbinfo->bifrost.pre_post.modes[i])
+         return false;
+   }
+
    return true;
 }
 

@@ -107,6 +107,24 @@ panvk_copy_fb_desc(struct panvk_cmd_buffer *cmdbuf, void *src)
 }
 #endif
 
+/* Check if a batch is empty: no draws or clears */
+static bool
+panvk_is_noop_batch(struct panvk_batch *batch, const struct pan_fb_info *fbinfo)
+{
+   if (batch->scoreboard.first_job)
+      return false;
+
+   if (fbinfo->zs.clear.z | fbinfo->zs.clear.s)
+      return false;
+
+   for (unsigned i = 0; i < fbinfo->rt_count; i++) {
+      if (fbinfo->rts[i].clear)
+         return false;
+   }
+
+   return true;
+}
+
 void
 panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
 {
@@ -124,11 +142,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
 
    assert(batch);
 
-   bool clear = fbinfo->zs.clear.z | fbinfo->zs.clear.s;
-   for (unsigned i = 0; i < fbinfo->rt_count; i++)
-      clear |= fbinfo->rts[i].clear;
-
-   if (!clear && !batch->scoreboard.first_job) {
+   if (panvk_is_noop_batch(batch, fbinfo)) {
       if (util_dynarray_num_elements(&batch->event_ops, struct panvk_event_op) == 0) {
          /* Content-less batch, let's drop it */
          vk_free(&cmdbuf->pool->vk.alloc, batch);

@@ -68,7 +68,20 @@ algebraic_late = [
     (('ushr', 'a@8', b), ('u2u8', ('u2u16', ('ushr', ('u2u32', ('u2u16', a)), b)))),
 
     # Canonical form. The scheduler will convert back if it makes sense.
-    (('fmul', a, 2.0), ('fadd', a, a))
+    (('fmul', a, 2.0), ('fadd', a, a)),
+
+    # We use 16-bit instructions in place of 8-bit ones, but this doesn't work
+    # for saturating instructions
+    (('iadd_sat', 'a@8', 'b@8'),
+     ('i2i8', ('imin', ('imax', ('iadd_sat', ('i2i16', a), ('i2i16', b)),
+                        -128), 127))),
+    (('isub_sat', 'a@8', 'b@8'),
+     ('i2i8', ('imin', ('imax', ('isub_sat', ('i2i16', a), ('i2i16', b)),
+                        -128), 127))),
+    (('uadd_sat', 'a@8', 'b@8'),
+     ('u2u8', ('umin', ('uadd_sat', ('u2u16', a), ('u2u16', b)), 255))),
+    (('usub_sat', 'a@8', 'b@8'),
+     ('u2u8', ('umin', ('usub_sat', ('u2u16', a), ('u2u16', b)), 255))),
 ]
 
 # Size conversion is redundant to Midgard but needed for NIR, and writing this

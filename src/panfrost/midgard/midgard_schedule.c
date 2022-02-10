@@ -903,6 +903,10 @@ mir_comparison_mobile(
                 if (GET_CHANNEL_COUNT(alu_opcode_props[instructions[i]->op].props))
                         return ~0;
 
+                /* We can't use SMUL for 64-bit ops */
+                if (max_bitsize_for_alu(instructions[i]) > 32)
+                        return ~0;
+
                 /* Ensure it will fit with constants */
 
                 if (!mir_adjust_constants(instructions[i], predicate, false))

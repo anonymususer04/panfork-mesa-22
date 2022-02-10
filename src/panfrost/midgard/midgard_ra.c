@@ -522,13 +522,13 @@ allocate_registers(compiler_context *ctx, bool *spilled)
 
                 unsigned size = nir_alu_type_get_type_size(ins->dest_type);
 
-                if (ins->is_pack)
-                        size = 32;
-
                 /* 0 for x, 1 for xy, 2 for xyz, 3 for xyzw */
                 int comps1 = util_logbase2(ins->mask);
 
                 int bytes = (comps1 + 1) * (size / 8);
+
+                if (ins->is_pack)
+                       size = 32;
 
                 /* Use the largest class if there's ambiguity, this
                  * handles partial writes */
@@ -538,10 +538,10 @@ allocate_registers(compiler_context *ctx, bool *spilled)
 
                 min_alignment[dest] =
                         MAX2(min_alignment[dest],
-                             (size == 16) ? 1 : /* (1 << 1) = 2-byte */
+                             (size <= 16) ? 1 : /* (1 << 1) = 2-byte */
                              (size == 32) ? 2 : /* (1 << 2) = 4-byte */
                              (size == 64) ? 3 : /* (1 << 3) = 8-byte */
-                             3); /* 8-bit todo */
+                             3);
 
                 /* We can't cross xy/zw boundaries. TODO: vec8 can */
                 if (size == 16)

@@ -1260,17 +1260,21 @@ emit_global(
         unsigned seg)
 {
         midgard_instruction ins;
+        unsigned type;
 
         nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
         if (is_read) {
-                unsigned bitsize = nir_dest_bit_size(intr->dest) *
-                        nir_dest_num_components(intr->dest);
+                type = nir_dest_bit_size(intr->dest);
+                unsigned bitsize = type * nir_dest_num_components(intr->dest);
 
                 switch (bitsize) {
                 case 8: ins = m_ld_u8(srcdest, 0); break;
                 case 16: ins = m_ld_u16(srcdest, 0); break;
+                case 24: ins = m_ld_32(srcdest, 0); break;
                 case 32: ins = m_ld_32(srcdest, 0); break;
+                case 48: ins = m_ld_64(srcdest, 0); break;
                 case 64: ins = m_ld_64(srcdest, 0); break;
+                case 96: ins = m_ld_128(srcdest, 0); break;
                 case 128: ins = m_ld_128(srcdest, 0); break;
                 default: unreachable("Invalid global read size");
                 }
@@ -1279,7 +1283,7 @@ emit_global(
 
                 /* For anything not aligned on 32bit, make sure we write full
                  * 32 bits registers. */
-                if (bitsize & 31) {
+                if (bitsize < 32) {
                         unsigned comps_per_32b = 32 / nir_dest_bit_size(intr->dest);
 
                         for (unsigned c = 0; c < 4 * comps_per_32b; c += comps_per_32b) {
@@ -1307,8 +1311,8 @@ emit_global(
 
                 }
         } else {
-                unsigned bitsize = nir_src_bit_size(intr->src[0]) *
-                        nir_src_num_components(intr->src[0]);
+                type = nir_src_bit_size(intr->src[0]);
+                unsigned bitsize = type * nir_src_num_components(intr->src[0]);
 
                 if (bitsize == 8)
                         ins = m_st_u8(srcdest, 0);
@@ -1332,8 +1336,10 @@ emit_global(
         assert(ins.mask);
         unsigned first_component = __builtin_ffs(ins.mask) - 1;
 
+        unsigned shr = (type == 64) ? 1 : 0;
+
         for (unsigned i = 0; i < ARRAY_SIZE(ins.swizzle[0]); ++i) {
-                if (!(ins.mask & (1 << i)))
+                if (!(ins.mask & (1 << (i >> shr))))
                         ins.swizzle[0][i] = first_component;
         }
 

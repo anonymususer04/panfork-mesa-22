@@ -149,9 +149,9 @@ mir_print_constant_component(FILE *fp, const midgard_constants *consts, unsigned
                 if (mod)
                         fprintf(fp, " /* %u */", mod);
 
-                assert(!half); /* No 4-bit */
-
                 break;
+        default:
+                unreachable("Invalid reg mode");
         }
 }
 

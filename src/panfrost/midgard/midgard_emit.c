@@ -271,17 +271,20 @@ mir_pack_swizzle(unsigned mask, unsigned *swizzle,
                  * been lowered. TODO: 8-bit packing. TODO: vec8 */
 
                 unsigned first = mask ? ffs(mask) - 1 : 0;
-                bool upper = swizzle[first] > 3;
+                bool upper = swizzle[first] >= (sz == 8 ? 8 : 4);
+                /* Upper 32-bits of each 64-bit half? (for 8-bit sources) */
+                bool upper_32 = (swizzle[first] % 8) >= 4;
 
                 if (upper && mask)
                         assert(sz <= 16);
 
-                bool dest_up = !op_channeled && (first >= 4);
+                unsigned swz_start = op_channeled ? 0 : (first & ~3);
+                bool dest_upper_32 = !op_channeled && ((first % 8) >= 4);
 
-                for (unsigned c = (dest_up ? 4 : 0); c < (dest_up ? 8 : 4); ++c) {
+                for (unsigned c = swz_start; c < swz_start + 4; ++c) {
                         unsigned v = swizzle[c];
 
-                        ASSERTED bool t_upper = v > (sz == 8 ? 7 : 3);
+                        ASSERTED bool t_upper = v >= (sz == 8 ? 8 : 4);
 
                         /* Ensure we're doing something sane */
 
@@ -304,12 +307,12 @@ mir_pack_swizzle(unsigned mask, unsigned *swizzle,
                         *expand_mode = upper ? midgard_src_rep_high :
                                                midgard_src_rep_low;
                 } else if (reg_mode == midgard_reg_mode_16 && sz == 8) {
-                        if (base_size == 16) {
-                                *expand_mode = upper ? midgard_src_expand_high :
-                                                       midgard_src_expand_low;
-                        } else if (upper) {
-                                *expand_mode = midgard_src_swap;
-                        }
+                        *expand_mode = upper ? midgard_src_expand_high :
+                                               midgard_src_expand_low;
+
+                        /* Use a 'swap' mode if we need to */
+                        if (dest_upper_32 != upper_32)
+                                *expand_mode += 2;
                 } else if (reg_mode == midgard_reg_mode_32 && sz == 16) {
                         *expand_mode = upper ? midgard_src_expand_high :
                                                midgard_src_expand_low;

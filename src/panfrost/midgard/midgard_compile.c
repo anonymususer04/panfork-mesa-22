@@ -664,6 +664,9 @@ mir_copy_src(midgard_instruction *ins, nir_alu_instr *instr, unsigned i, unsigne
         ins->src_types[to] = nir_op_infos[instr->op].input_types[i] | bits;
 
         for (unsigned c = 0; c < NIR_MAX_VEC_COMPONENTS; ++c) {
+                if (!nir_alu_instr_channel_used(instr, i, c))
+                        continue;
+
                 ins->swizzle[to][c] = src.swizzle[
                         (!bcast_count || c < bcast_count) ? c :
                                 (bcast_count - 1)];
@@ -1007,7 +1010,7 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
 
                         ins.src_types[1] = nir_type_uint32;
                         /* TODO: Is this correct? */
-                        for (unsigned c = 0; c < NIR_MAX_VEC_COMPONENTS; ++c) {
+                        for (unsigned c = 0; c < nr_components; ++c) {
                                 ins.swizzle[1][c] *= 2;
                         }
                 }

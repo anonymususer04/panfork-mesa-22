@@ -288,6 +288,10 @@ mdg_should_scalarize(const nir_instr *instr, const void *_unused)
         if (nir_dest_bit_size(alu->dest.dest) == 64)
                 return true;
 
+        unsigned num_components = alu->dest.dest.ssa.num_components;
+        if (num_components > 4)
+                return true;
+
         switch (alu->op) {
         case nir_op_fdot2:
         case nir_op_umul_high:
@@ -317,7 +321,7 @@ midgard_vectorize_filter(const nir_instr *instr, void *data)
                         return false;
         }
 
-        return true;
+        return num_components <= 2;
 }
 
 static void

@@ -80,7 +80,7 @@ mir_pack_mod(midgard_instruction *ins, unsigned i, bool scalar)
         bool integer = midgard_is_integer_op(ins->op);
         unsigned base_size = max_bitsize_for_alu(ins);
         unsigned sz = nir_alu_type_get_type_size(ins->src_types[i]);
-        bool half = (sz == (base_size >> 1));
+        bool half = (sz == MAX2(base_size >> 1, 8));
 
         return integer ?
                 mir_get_imod(ins->src_shift[i], ins->src_types[i], half, scalar) :

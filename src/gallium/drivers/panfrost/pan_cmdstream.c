@@ -4060,7 +4060,7 @@ batch_get_polygon_list(struct panfrost_batch *batch)
                                 batch->tiler_ctx.midgard.polygon_list->ptr.cpu +
                                 MALI_MIDGARD_TILER_MINIMUM_HEADER_SIZE;
 
-                        /* Magic for Mali T720 */
+                        /* Reset the high bits of the draw struct pointer? */
                         polygon_list_body[0] = 0xa0000000;
                 }
 

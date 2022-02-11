@@ -4081,6 +4081,55 @@ init_polygon_list(struct panfrost_batch *batch)
 #endif
 }
 
+
+static void
+pan_call_compute_kernel(struct panfrost_batch *batch,
+                        const struct pan_kernel_template *tmpl,
+                        struct pipe_grid_info *info,
+                        uint64_t *args, unsigned num_args)
+{
+        struct panfrost_context *ctx = batch->ctx;
+        struct pipe_context *pipe = &ctx->base;
+        struct panfrost_device *dev = pan_device(pipe->screen);
+
+        struct panfrost_kernel *kernel = panfrost_get_kernel(batch->ctx, tmpl);
+
+        ctx->printf_info_count = kernel->base.printf_info_count;
+        ctx->printf_info = kernel->base.printf_info;
+
+        void *old_compute = ctx->shader[PIPE_SHADER_COMPUTE];
+        struct panfrost_constant_buffer old_cbuf =
+                ctx->constant_buffer[PIPE_SHADER_COMPUTE];
+
+        pipe->bind_compute_state(pipe, kernel->cso);
+
+        uint8_t *args_packed = calloc(kernel->base.args_size, sizeof(uint8_t));
+
+        assert(num_args == kernel->base.num_args);
+        for (unsigned i = 0; i < num_args; ++i) {
+                struct pan_kernel_arg_desc desc = kernel->base.args[i];
+                uint64_t value = args[i];
+
+                if (desc.size != 8)
+                        assert(value >> (desc.size * 8) == 0);
+
+                /* Assumes little-endian */
+                memcpy(args_packed + desc.offset, &value, desc.size);
+
+                if (dev->debug & PAN_DBG_PRINTF)
+                        printf("%s %s arg %i: 0x%"PRIx64"\n",
+                               kernel->base.name, kernel->base.entrypoint,
+                               i, value);
+        }
+
+        info->input = args_packed;
+        panfrost_do_launch_grid(pipe, info, batch, false);
+        free(args_packed);
+
+        ctx->shader[PIPE_SHADER_COMPUTE] = old_compute;
+        ctx->constant_buffer[PIPE_SHADER_COMPUTE] = old_cbuf;
+}
+
 void
 GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
 {

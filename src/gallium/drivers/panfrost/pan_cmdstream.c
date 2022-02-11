@@ -48,6 +48,8 @@
 #include "pan_indirect_dispatch.h"
 #include "pan_blitter.h"
 
+#include "panfrost/util/magic_function.h"
+
 #define PAN_GPU_INDIRECTS (PAN_ARCH == 7)
 
 struct panfrost_rasterizer {
@@ -4130,6 +4132,56 @@ pan_call_compute_kernel(struct panfrost_batch *batch,
         ctx->constant_buffer[PIPE_SHADER_COMPUTE] = old_cbuf;
 }
 
+static void
+pan_magic_function_count(struct panfrost_batch *batch,
+                         mali_ptr sizes, mali_ptr offsets,
+                         mali_ptr headers,
+                         unsigned literal_size,
+                         unsigned num_threads,
+                         unsigned total_size)
+{
+        uint64_t args[] = {
+                sizes, offsets, headers, literal_size,
+                DIV_ROUND_UP(total_size, num_threads),
+                num_threads, total_size,
+        };
+
+        struct pipe_grid_info info = {
+                .work_dim = 1,
+                .block = { num_threads, 1, 1 },
+                .grid = { 1, 1, 1 },
+        };
+
+        pan_call_compute_kernel(batch, &pan_kernel_magic_function_count,
+                                &info, args, ARRAY_SIZE(args));
+
+}
+
+static void
+pan_magic_function_copy(struct panfrost_batch *batch,
+                        mali_ptr dest, mali_ptr src,
+                        mali_ptr sizes, mali_ptr offsets,
+                        unsigned afbc_header_blocks,
+                        unsigned num_threads,
+                        unsigned total_size)
+{
+        uint64_t args[] = {
+                dest, src, sizes, offsets,
+                afbc_header_blocks,
+                DIV_ROUND_UP(total_size, num_threads),
+                num_threads, total_size,
+        };
+
+        struct pipe_grid_info info = {
+                .work_dim = 1,
+                .block = { num_threads, 1, 1 },
+                .grid = { 1, 1, 1 },
+        };
+
+        pan_call_compute_kernel(batch, &pan_kernel_magic_function_copy,
+                                &info, args, ARRAY_SIZE(args));
+}
+
 void
 GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
 {
@@ -4147,6 +4199,8 @@ GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
         screen->vtbl.init_polygon_list = init_polygon_list;
         screen->vtbl.get_compiler_options = GENX(pan_shader_get_compiler_options);
         screen->vtbl.compile_shader = GENX(pan_shader_compile);
+        screen->vtbl.magic_function_count = pan_magic_function_count;
+        screen->vtbl.magic_function_copy = pan_magic_function_copy;
 
         GENX(pan_blitter_init)(dev, &screen->blitter.bin_pool.base,
                                &screen->blitter.desc_pool.base);

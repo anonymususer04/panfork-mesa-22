@@ -94,6 +94,20 @@ struct panfrost_vtable {
                                struct panfrost_compile_inputs *inputs,
                                struct util_dynarray *binary,
                                struct pan_shader_info *info);
+
+        void (*magic_function_count)(struct panfrost_batch *batch,
+                                     mali_ptr sizes, mali_ptr offsets,
+                                     mali_ptr headers,
+                                     unsigned literal_size,
+                                     unsigned num_threads,
+                                     unsigned total_size);
+
+        void (*magic_function_copy)(struct panfrost_batch *batch,
+                                    mali_ptr dest, mali_ptr src,
+                                    mali_ptr sizes, mali_ptr offsets,
+                                    unsigned afbc_header_blocks,
+                                    unsigned num_threads,
+                                    unsigned total_size);
 };
 
 struct panfrost_screen {

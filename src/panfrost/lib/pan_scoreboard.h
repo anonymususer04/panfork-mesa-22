@@ -34,6 +34,9 @@ struct pan_scoreboard {
         /* The first job in the batch */
         mali_ptr first_job;
 
+        /* The first fragment job in the (secondary) batch */
+        mali_ptr fragment_job;
+
         /* The number of jobs in the primary batch, essentially */
         unsigned job_index;
 

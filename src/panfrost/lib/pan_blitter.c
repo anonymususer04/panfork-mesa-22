@@ -1360,6 +1360,125 @@ GENX(pan_blit)(struct pan_blit_context *ctx,
         return job;
 }
 
+#if PAN_ARCH >= 6
+struct pan_scoreboard
+GENX(pan_mipmap)(struct panfrost_device *dev,
+                 struct pan_pool *pool,
+                 struct panfrost_ptr fbd,
+                 struct panfrost_ptr tls,
+                 const struct pan_image *img,
+                 enum pipe_format format,
+                 unsigned base_level,
+                 unsigned last_level,
+                 unsigned layer)
+{
+        struct pan_scoreboard scoreboard = { 0 };
+        struct mali_job_header_packed *prev_frag = NULL;
+
+        pan_pack(tls.cpu, LOCAL_STORAGE, cfg) {
+                cfg.wls_instances = MALI_LOCAL_STORAGE_NO_WORKGROUP_MEM;
+        }
+
+        for (unsigned level = base_level; level < last_level; ++level) {
+                unsigned swidth  = u_minify(img->layout.width, level);
+                unsigned sheight = u_minify(img->layout.height, level);
+                unsigned dwidth  = u_minify(swidth, 1);
+                unsigned dheight = u_minify(sheight, 1);
+
+                float src_rect[] = {
+                        0.0, 0.0, 0.0, 1.0,
+                        swidth, 0.0, 0.0, 1.0,
+                        0.0, sheight, 0.0, 1.0,
+                        swidth, sheight, 0.0, 1.0,
+                };
+
+                mali_ptr src_coords =
+                        pan_pool_upload_aligned(pool, src_rect,
+                                                sizeof(src_rect), 64);
+
+                const struct pan_image_view sviews[2] = {{
+                        .format = format,
+                        .dim = MALI_TEXTURE_DIMENSION_2D,
+                        .first_level = level,
+                        .last_level = level,
+                        .first_layer = layer,
+                        .last_layer = layer,
+                        .swizzle[0] = MALI_CHANNEL_R,
+                        .swizzle[1] = MALI_CHANNEL_G,
+                        .swizzle[2] = MALI_CHANNEL_B,
+                        .swizzle[3] = MALI_CHANNEL_A,
+                        .image = img,
+                        .nr_samples = img->layout.nr_samples
+                }};
+
+                struct pan_image_view dview = sviews[0];
+                dview.first_level = dview.last_level = level + 1;
+
+                const struct pan_image_view *sview_ptr = &sviews[0];
+
+                bool crc_valid = false;
+
+                struct pan_fb_info fb = {
+                        .width = dwidth,
+                        .height = dheight,
+                        .extent.maxx = dwidth - 1,
+                        .extent.maxy = dheight - 1,
+                        .nr_samples = 1, // TODO
+                        .rt_count = 1,
+                        .rts[0] = {
+                                .view = &dview,
+                                .crc_valid = &crc_valid,
+                        }
+                };
+
+                struct panfrost_ptr job = { 0 };
+                //void *dcd = pan_blit_emit_tiler_job(pool, &scoreboard, tiler, false, &job);
+                void *dcd = pan_queue_frame_shader(pool, &scoreboard, &fb, 0, &job);
+
+                pan_pack(dcd, DRAW, cfg) {
+                        cfg.thread_storage = tls.gpu;
+                        cfg.state = pan_blit_get_rsd(dev, sviews, &dview);
+
+                        cfg.position = src_coords;
+                        pan_blitter_emit_varying(pool, src_coords, &cfg);
+                        cfg.viewport = pan_blitter_emit_viewport(pool, 0, 0, dwidth, dheight);
+                        cfg.textures = pan_blitter_emit_textures(pool, 1, &sview_ptr);
+                        cfg.samplers = pan_blitter_emit_sampler(pool, false);
+                }
+
+                struct panfrost_ptr tiler_heap = pan_pool_alloc_desc(pool, TILER_HEAP);
+                GENX(pan_emit_tiler_heap)(dev, tiler_heap.cpu);
+
+                struct panfrost_ptr t = pan_pool_alloc_desc(pool, TILER_CONTEXT);
+                GENX(pan_emit_tiler_ctx)(dev, dwidth, dheight, 1 /* XXX samples */,
+                                         tiler_heap.gpu, t.cpu);
+
+                struct pan_tiler_context tiler_ctx = {
+                        .bifrost = t.gpu
+                };
+
+                fbd = pan_pool_alloc_aligned(pool, 4096, 4096); //TODO
+                fbd.gpu |= GENX(pan_emit_fbd)(dev, &fb, NULL, &tiler_ctx, fbd.cpu);
+
+                unsigned i = level - base_level + 1;
+                struct panfrost_ptr frag = pan_pool_alloc_desc(pool, FRAGMENT_JOB);
+                GENX(pan_emit_chainable_fragment_job)(&fb, fbd.gpu, i, i - 1, frag.cpu);
+
+                if (!scoreboard.fragment_job)
+                        scoreboard.fragment_job = frag.gpu;
+
+                if (prev_frag) {
+                        prev_frag->opaque[6] = frag.gpu;
+                        prev_frag->opaque[7] = frag.gpu >> 32;
+                }
+
+                prev_frag = (struct mali_job_header_packed *) frag.cpu;
+        }
+
+        return scoreboard;
+}
+#endif
+
 static uint32_t pan_blit_shader_key_hash(const void *key)
 {
         return _mesa_hash_data(key, sizeof(struct pan_blit_shader_key));

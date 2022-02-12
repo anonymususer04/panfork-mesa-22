@@ -136,6 +136,14 @@ struct panfrost_batch {
 
 /* Functions for managing the above */
 
+int
+panfrost_batch_submit_jobs(struct panfrost_batch *batch,
+                           uint32_t in_sync, uint32_t out_sync);
+
+struct panfrost_batch *
+panfrost_get_batch(struct panfrost_context *ctx,
+                   const struct pipe_framebuffer_state *key);
+
 struct panfrost_batch *
 panfrost_get_batch_for_fbo(struct panfrost_context *ctx);
 

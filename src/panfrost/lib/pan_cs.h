@@ -179,6 +179,14 @@ GENX(pan_emit_tiler_ctx)(const struct panfrost_device *dev,
                          void *out);
 #endif
 
+
+void
+GENX(pan_emit_chainable_fragment_job)(const struct pan_fb_info *fb,
+                                      mali_ptr fbd,
+                                      unsigned job_index,
+                                      unsigned dep,
+                                      void *out);
+
 void
 GENX(pan_emit_fragment_job)(const struct pan_fb_info *fb,
                             mali_ptr fbd,

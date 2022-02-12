@@ -126,4 +126,17 @@ GENX(pan_blit)(struct pan_blit_context *ctx,
                struct pan_scoreboard *scoreboard,
                mali_ptr tsd, mali_ptr tiler);
 
+#if PAN_ARCH >= 6
+struct pan_scoreboard
+GENX(pan_mipmap)(struct panfrost_device *dev,
+                 struct pan_pool *pool,
+                 struct panfrost_ptr fbd,
+                 struct panfrost_ptr tls,
+                 const struct pan_image *img,
+                 enum pipe_format format,
+                 unsigned base_level,
+                 unsigned last_level,
+                 unsigned layer);
+#endif
+
 #endif

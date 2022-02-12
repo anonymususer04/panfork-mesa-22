@@ -862,13 +862,16 @@ GENX(pan_emit_tiler_ctx)(const struct panfrost_device *dev,
 #endif
 
 void
-GENX(pan_emit_fragment_job)(const struct pan_fb_info *fb,
-                            mali_ptr fbd,
-                            void *out)
+GENX(pan_emit_chainable_fragment_job)(const struct pan_fb_info *fb,
+                                      mali_ptr fbd,
+                                      unsigned job_index,
+                                      unsigned dep,
+                                      void *out)
 {
         pan_section_pack(out, FRAGMENT_JOB, HEADER, header) {
                 header.type = MALI_JOB_TYPE_FRAGMENT;
-                header.index = 1;
+                header.index = job_index;
+                header.dependency_1 = dep;
         }
 
         pan_section_pack(out, FRAGMENT_JOB, PAYLOAD, payload) {
@@ -886,4 +889,12 @@ GENX(pan_emit_fragment_job)(const struct pan_fb_info *fb,
                 }
 #endif
         }
+}
+
+void
+GENX(pan_emit_fragment_job)(const struct pan_fb_info *fb,
+                            mali_ptr fbd,
+                            void *out)
+{
+        GENX(pan_emit_chainable_fragment_job)(fb, fbd, 1, 0, out);
 }

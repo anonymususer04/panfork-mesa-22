@@ -153,7 +153,7 @@ panfrost_batch_submit(struct panfrost_context *ctx,
                       struct panfrost_batch *batch,
                       uint32_t in_sync, uint32_t out_sync);
 
-static struct panfrost_batch *
+struct panfrost_batch *
 panfrost_get_batch(struct panfrost_context *ctx,
                    const struct pipe_framebuffer_state *key)
 {
@@ -656,17 +656,15 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
  * outsync corresponding to the later of the two (since there will be an
  * implicit dep between them) */
 
-static int
+int
 panfrost_batch_submit_jobs(struct panfrost_batch *batch,
-                           const struct pan_fb_info *fb,
                            uint32_t in_sync, uint32_t out_sync)
 {
         struct pipe_screen *pscreen = batch->ctx->base.screen;
-        struct panfrost_screen *screen = pan_screen(pscreen);
         struct panfrost_device *dev = pan_device(pscreen);
         bool has_draws = batch->scoreboard.first_job;
         bool has_tiler = batch->scoreboard.first_tiler;
-        bool has_frag = has_tiler || batch->clear;
+        bool has_frag = batch->scoreboard.fragment_job;
         int ret = 0;
 
         /* Take the submit lock to make sure no tiler jobs from other context
@@ -685,8 +683,7 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
         }
 
         if (has_frag) {
-                mali_ptr fragjob = screen->vtbl.emit_fragment_job(batch, fb);
-                ret = panfrost_batch_submit_ioctl(batch, fragjob,
+                ret = panfrost_batch_submit_ioctl(batch, batch->scoreboard.fragment_job,
                                                   PANFROST_JD_REQ_FS, 0,
                                                   out_sync);
                 if (ret)
@@ -746,10 +743,12 @@ panfrost_batch_submit(struct panfrost_context *ctx,
         screen->vtbl.emit_tls(batch);
         panfrost_emit_tile_map(batch, &fb);
 
-        if (batch->scoreboard.first_tiler || batch->clear)
+        if (batch->scoreboard.first_tiler || batch->clear) {
                 screen->vtbl.emit_fbd(batch, &fb);
+                batch->scoreboard.fragment_job = screen->vtbl.emit_fragment_job(batch, &fb);
+        }
 
-        ret = panfrost_batch_submit_jobs(batch, &fb, in_sync, out_sync);
+        ret = panfrost_batch_submit_jobs(batch, in_sync, out_sync);
 
         if (ret)
                 fprintf(stderr, "panfrost_batch_submit failed: %d\n", ret);

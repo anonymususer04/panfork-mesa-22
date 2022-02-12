@@ -29,6 +29,7 @@
 #include "util/u_helpers.h"
 #include "util/u_draw.h"
 #include "util/u_memory.h"
+#include "util/u_gen_mipmap.h"
 #include "pipe/p_defines.h"
 #include "pipe/p_state.h"
 #include "gallium/auxiliary/util/u_blend.h"
@@ -3697,11 +3698,75 @@ panfrost_sampler_view_destroy(
         ralloc_free(view);
 }
 
+static bool
+panfrost_generate_mipmap(
+        struct pipe_context *pctx,
+        struct pipe_resource *prsrc,
+        enum pipe_format format,
+        unsigned base_level,
+        unsigned last_level,
+        unsigned first_layer,
+        unsigned last_layer)
+{
+        struct panfrost_resource *rsrc = pan_resource(prsrc);
+
+#if PAN_ARCH >= 6
+        struct panfrost_device *dev = pan_device(pctx->screen);
+        struct panfrost_context *ctx = pan_context(pctx);
+        struct pipe_surface dst_templ;
+
+        memset(&dst_templ, 0, sizeof(dst_templ));
+        dst_templ.format = format;
+        dst_templ.u.tex.level = base_level;
+        dst_templ.u.tex.first_layer = first_layer;
+        dst_templ.u.tex.last_layer = last_layer;
+
+        struct pipe_surface *surf = pctx->create_surface(pctx, prsrc, &dst_templ);
+
+        const struct pipe_framebuffer_state key = {
+                .nr_cbufs = 1,
+                .cbufs[0] = surf
+        };
+
+        struct panfrost_batch *batch = panfrost_get_batch(ctx, &key);
+
+        assert(first_layer == last_layer);
+        batch->scoreboard = GENX(pan_mipmap)(dev, &batch->pool.base, batch->framebuffer, batch->tls, &rsrc->image, format, base_level, last_level, first_layer);
+
+        panfrost_batch_submit_jobs(batch, ctx->syncobj, ctx->syncobj);
+
+        /* All levels are now valid */
+        for (unsigned l = base_level + 1; l <= last_level; ++l)
+                BITSET_SET(rsrc->valid.data, l);
+
+        return true;
+#else
+        /* Generating a mipmap invalidates the written levels, so make that
+         * explicit so we don't try to wallpaper them back and end up with
+         * u_blitter recursion */
+
+        assert(rsrc->image.data.bo);
+        for (unsigned l = base_level + 1; l <= last_level; ++l)
+                BITSET_CLEAR(rsrc->valid.data, l);
+
+        /* Beyond that, we just delegate the hard stuff. */
+
+        bool blit_res = util_gen_mipmap(
+                                pctx, prsrc, format,
+                                base_level, last_level,
+                                first_layer, last_layer,
+                                PIPE_TEX_FILTER_LINEAR);
+
+        return blit_res;
+#endif
+}
+
 static void
 context_init(struct pipe_context *pipe)
 {
         pipe->draw_vbo           = panfrost_draw_vbo;
         pipe->launch_grid        = panfrost_launch_grid;
+        pipe->generate_mipmap    = panfrost_generate_mipmap;
 
         pipe->create_vertex_elements_state = panfrost_create_vertex_elements_state;
         pipe->create_rasterizer_state = panfrost_create_rasterizer_state;

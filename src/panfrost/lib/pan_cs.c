@@ -393,12 +393,10 @@ pan_prepare_rt(const struct pan_fb_info *fb, unsigned idx,
 {
         cfg->clean_pixel_write_enable = fb->rts[idx].clear;
         cfg->internal_buffer_offset = cbuf_offset;
-        if (fb->rts[idx].clear) {
-                cfg->clear.color_0 = fb->rts[idx].clear_value[0];
-                cfg->clear.color_1 = fb->rts[idx].clear_value[1];
-                cfg->clear.color_2 = fb->rts[idx].clear_value[2];
-                cfg->clear.color_3 = fb->rts[idx].clear_value[3];
-        }
+        cfg->clear.color_0 = fb->rts[idx].clear_value[0];
+        cfg->clear.color_1 = fb->rts[idx].clear_value[1];
+        cfg->clear.color_2 = fb->rts[idx].clear_value[2];
+        cfg->clear.color_3 = fb->rts[idx].clear_value[3];
 
         const struct pan_image_view *rt = fb->rts[idx].view;
         if (!rt || fb->rts[idx].discard) {
@@ -736,18 +734,12 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
                 cfg.dithering_enable = true;
                 cfg.clean_pixel_write_enable = true;
                 cfg.tie_break_rule = MALI_TIE_BREAK_RULE_MINUS_180_IN_0_OUT;
-                if (fb->rts[0].clear) {
-                        cfg.clear_color_0 = fb->rts[0].clear_value[0];
-                        cfg.clear_color_1 = fb->rts[0].clear_value[1];
-                        cfg.clear_color_2 = fb->rts[0].clear_value[2];
-                        cfg.clear_color_3 = fb->rts[0].clear_value[3];
-                }
-
-                if (fb->zs.clear.z)
-                        cfg.z_clear = fb->zs.clear_value.depth;
-
-                if (fb->zs.clear.s)
-                        cfg.s_clear = fb->zs.clear_value.stencil;
+                cfg.clear_color_0 = fb->rts[0].clear_value[0];
+                cfg.clear_color_1 = fb->rts[0].clear_value[1];
+                cfg.clear_color_2 = fb->rts[0].clear_value[2];
+                cfg.clear_color_3 = fb->rts[0].clear_value[3];
+                cfg.z_clear = fb->zs.clear_value.depth;
+                cfg.s_clear = fb->zs.clear_value.stencil;
 
                 if (fb->rt_count && fb->rts[0].view) {
                         const struct pan_image_view *rt = fb->rts[0].view;

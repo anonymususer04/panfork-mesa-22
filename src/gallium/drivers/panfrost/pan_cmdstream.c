@@ -3710,7 +3710,7 @@ panfrost_generate_mipmap(
 {
         struct panfrost_resource *rsrc = pan_resource(prsrc);
 
-#if PAN_ARCH >= 6
+#if PAN_ARCH >= 5
         struct panfrost_device *dev = pan_device(pctx->screen);
         struct panfrost_context *ctx = pan_context(pctx);
         struct pipe_surface dst_templ;

@@ -48,6 +48,10 @@ panfrost_choose_hierarchy_mask(
         unsigned width, unsigned height,
         unsigned vertex_count, bool hierarchy);
 
+/* Returns number of bytes written. draw_addr points to a DRAW struct */
+unsigned
+pan_software_tiler_tristrip(void *addr, unsigned size, mali_ptr draw_addr);
+
 #if defined(PAN_ARCH) && PAN_ARCH <= 5
 static inline unsigned
 panfrost_tiler_get_polygon_list_size(const struct panfrost_device *dev,

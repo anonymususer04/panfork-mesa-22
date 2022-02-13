@@ -372,3 +372,79 @@ panfrost_choose_hierarchy_mask(
 
         return 0xFF;
 }
+
+/* TODO: Use GenXML? */
+
+enum pan_tiler_op {
+        PAN_TILER_DO_DRAW = 0,
+        PAN_TILER_OFFSET = 1,
+        PAN_TILER_DRAW_STRUCT = 2,
+        PAN_TILER_DRAW_STRUCT_HIGH = 3,
+};
+
+__attribute__((packed))
+struct pan_tiler_instr_draw_struct {
+        unsigned addr      : 26;/* Shifted right six bits */
+        unsigned draw_type : 2; /* Number of vertices per primitive */
+        unsigned reset     : 1; /* Reset vertex offset? */
+        unsigned unk       : 1;
+        unsigned op        : 2;
+};
+
+#define PAN_TILER_SUBTILES_ALL 0xf
+
+__attribute__((packed))
+struct pan_tiler_instr_do_draw {
+        signed c           : 7; /* Relative to vretex 'a' */
+        signed b           : 7; /* Relative to vertex 'a' */
+        signed offset      : 8; /* Vertex 'a' offset compared to last draw */
+        unsigned layer     : 4;
+        unsigned subtiles  : 4; /* Bitmask of subtiles to enable */
+        unsigned op        : 2;
+};
+
+__attribute__((packed))
+struct pan_tiler_simple_payload {
+        struct pan_tiler_instr_draw_struct set_draw_high;
+        struct pan_tiler_instr_draw_struct set_draw;
+        struct pan_tiler_instr_do_draw tri1;
+        struct pan_tiler_instr_do_draw tri2;
+};
+
+unsigned
+pan_software_tiler_tristrip(void *addr, unsigned size, mali_ptr draw_addr)
+{
+        /* As if GL_TRIANGLE_STRIP with last provoking vertex */
+        struct pan_tiler_simple_payload payload = {
+                .set_draw_high = {
+                        .addr = draw_addr >> 32,
+                        .op = PAN_TILER_DRAW_STRUCT_HIGH,
+                },
+                .set_draw = {
+                        .addr = draw_addr >> 6,
+                        .draw_type = 3,
+                        .reset = true,
+                        .op = PAN_TILER_DRAW_STRUCT,
+                },
+                .tri1 = {
+                        .offset = 2,
+                        .b = -2,
+                        .c = -1,
+                        .subtiles = PAN_TILER_SUBTILES_ALL,
+                        .op = PAN_TILER_DO_DRAW,
+                },
+                .tri2 = {
+                        .offset = 1,
+                        .b = -1,
+                        .c = -2,
+                        .subtiles = PAN_TILER_SUBTILES_ALL,
+                        .op = PAN_TILER_DO_DRAW,
+                },
+        };
+
+        unsigned copy_size = sizeof(payload);
+
+        assert(size >= copy_size);
+        memcpy(addr, &payload, copy_size);
+        return copy_size;
+}

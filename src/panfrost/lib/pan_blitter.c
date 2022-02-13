@@ -1361,6 +1361,38 @@ GENX(pan_blit)(struct pan_blit_context *ctx,
         return job;
 }
 
+#if PAN_ARCH == 5
+static void
+pan_emit_software_tiler(struct pan_pool *pool,
+                        struct pan_tiler_context *ctx,
+                        mali_ptr draw)
+{
+        unsigned header_size = MALI_MIDGARD_TILER_MINIMUM_HEADER_SIZE;
+        unsigned body_size = 16;
+        struct panfrost_ptr plist =
+                pan_pool_alloc_aligned(pool, header_size + body_size, 512);
+
+        body_size = pan_software_tiler_tristrip(
+                plist.cpu + header_size, body_size, draw);
+
+        /* Clear the prologue */
+        memset(plist.cpu, 0, 64);
+
+        mali_ptr body_end = plist.gpu + header_size + body_size - 4;
+        ((uint64_t *)plist.cpu)[8] = body_end;
+
+        ctx->midgard.explicit = true;
+
+        pan_pack(&ctx->midgard.packed, TILER_CONTEXT, cfg) {
+                cfg.hierarchy_mask = MALI_MIDGARD_TILER_DISABLED;
+
+                cfg.polygon_list = plist.gpu;
+                cfg.polygon_list_body = plist.gpu + header_size;
+                cfg.polygon_list_size = header_size + body_size;
+        };
+}
+#endif
+
 #if PAN_ARCH >= 6
 struct pan_scoreboard
 GENX(pan_mipmap)(struct panfrost_device *dev,

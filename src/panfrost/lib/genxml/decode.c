@@ -1425,6 +1425,9 @@ GENX(pandecode_abort_on_fault)(mali_ptr jc_gpu_va)
                 /* Ensure the job is marked COMPLETE */
                 if (h.exception_status != 0x1) {
                         fprintf(stderr, "Incomplete job or timeout\n");
+
+                        pandecode_dump_mappings();
+                        fflush(NULL);
                         abort();
                 }
         } while ((jc_gpu_va = next_job));

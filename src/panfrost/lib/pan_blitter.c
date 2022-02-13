@@ -1436,17 +1436,6 @@ GENX(pan_mipmap)(struct panfrost_device *dev,
                 //void *dcd = pan_blit_emit_tiler_job(pool, &scoreboard, tiler, false, &job);
                 void *dcd = pan_queue_frame_shader(pool, &scoreboard, &fb, 0, &job);
 
-                pan_pack(dcd, DRAW, cfg) {
-                        cfg.thread_storage = tls.gpu;
-                        cfg.state = pan_blit_get_rsd(dev, sviews, &dview);
-
-                        cfg.position = src_coords;
-                        pan_blitter_emit_varying(pool, src_coords, &cfg);
-                        cfg.viewport = pan_blitter_emit_viewport(pool, 0, 0, dwidth, dheight);
-                        cfg.textures = pan_blitter_emit_textures(pool, 1, &sview_ptr);
-                        cfg.samplers = pan_blitter_emit_sampler(pool, false);
-                }
-
                 struct panfrost_ptr tiler_heap = pan_pool_alloc_desc(pool, TILER_HEAP);
                 GENX(pan_emit_tiler_heap)(dev, tiler_heap.cpu);
 
@@ -1460,6 +1449,17 @@ GENX(pan_mipmap)(struct panfrost_device *dev,
 
                 fbd = pan_pool_alloc_aligned(pool, 4096, 4096); //TODO
                 fbd.gpu |= GENX(pan_emit_fbd)(dev, &fb, NULL, &tiler_ctx, fbd.cpu);
+
+                pan_pack(dcd, DRAW, cfg) {
+                        cfg.thread_storage = tls.gpu;
+                        cfg.state = pan_blit_get_rsd(dev, sviews, &dview);
+
+                        cfg.position = src_coords;
+                        pan_blitter_emit_varying(pool, src_coords, &cfg);
+                        cfg.viewport = pan_blitter_emit_viewport(pool, 0, 0, dwidth, dheight);
+                        cfg.textures = pan_blitter_emit_textures(pool, 1, &sview_ptr);
+                        cfg.samplers = pan_blitter_emit_sampler(pool, false);
+                }
 
                 unsigned i = level - base_level + 1;
                 struct panfrost_ptr frag = pan_pool_alloc_desc(pool, FRAGMENT_JOB);

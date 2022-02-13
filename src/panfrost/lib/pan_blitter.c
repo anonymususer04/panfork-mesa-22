@@ -1393,7 +1393,7 @@ pan_emit_software_tiler(struct pan_pool *pool,
 }
 #endif
 
-#if PAN_ARCH >= 6
+#if PAN_ARCH >= 5
 struct pan_scoreboard
 GENX(pan_mipmap)(struct panfrost_device *dev,
                  struct pan_pool *pool,
@@ -1418,16 +1418,32 @@ GENX(pan_mipmap)(struct panfrost_device *dev,
                 unsigned dwidth  = u_minify(swidth, 1);
                 unsigned dheight = u_minify(sheight, 1);
 
-                float src_rect[] = {
+                float src_pos[] = {
                         0.0, 0.0, 0.0, 1.0,
                         swidth, 0.0, 0.0, 1.0,
                         0.0, sheight, 0.0, 1.0,
                         swidth, sheight, 0.0, 1.0,
                 };
 
+                mali_ptr src_position =
+                        pan_pool_upload_aligned(pool, src_pos,
+                                                sizeof(src_pos), 64);
+
+#if PAN_ARCH >= 6
+                /* TODO: Is this really correct? */
+                mali_ptr src_coords = src_position;
+#else
+                float src_rect[] = {
+                        0.0, 0.0, 0.0, 1.0,
+                        swidth * 2, 0.0, 0.0, 1.0,
+                        0.0, sheight * 2, 0.0, 1.0,
+                        swidth * 2, sheight * 2, 0.0, 1.0,
+                };
+
                 mali_ptr src_coords =
                         pan_pool_upload_aligned(pool, src_rect,
                                                 sizeof(src_rect), 64);
+#endif
 
                 const struct pan_image_view sviews[2] = {{
                         .format = format,
@@ -1464,6 +1480,7 @@ GENX(pan_mipmap)(struct panfrost_device *dev,
                         }
                 };
 
+#if PAN_ARCH >= 6
                 struct panfrost_ptr job = { 0 };
                 //void *dcd = pan_blit_emit_tiler_job(pool, &scoreboard, tiler, false, &job);
                 void *dcd = pan_queue_frame_shader(pool, &scoreboard, &fb, 0, &job);
@@ -1478,15 +1495,24 @@ GENX(pan_mipmap)(struct panfrost_device *dev,
                 struct pan_tiler_context tiler_ctx = {
                         .bifrost = t.gpu
                 };
+#else
+                struct panfrost_ptr dcd_ptr = pan_pool_alloc_desc(pool, DRAW);
+                void *dcd = dcd_ptr.cpu;
+
+                struct pan_tiler_context tiler_ctx = { 0 };
+                pan_emit_software_tiler(pool, &tiler_ctx, dcd_ptr.gpu);
+#endif
+
+                struct pan_tls_info tls_info = {0};
 
                 fbd = pan_pool_alloc_aligned(pool, 4096, 4096); //TODO
-                fbd.gpu |= GENX(pan_emit_fbd)(dev, &fb, NULL, &tiler_ctx, fbd.cpu);
+                fbd.gpu |= GENX(pan_emit_fbd)(dev, &fb, &tls_info, &tiler_ctx, fbd.cpu);
 
                 pan_pack(dcd, DRAW, cfg) {
-                        cfg.thread_storage = tls.gpu;
+                        cfg.thread_storage = (PAN_ARCH >= 6) ? tls.gpu : fbd.gpu;
                         cfg.state = pan_blit_get_rsd(dev, sviews, &dview);
 
-                        cfg.position = src_coords;
+                        cfg.position = src_position;
                         pan_blitter_emit_varying(pool, src_coords, &cfg);
                         cfg.viewport = pan_blitter_emit_viewport(pool, 0, 0, dwidth, dheight);
                         cfg.textures = pan_blitter_emit_textures(pool, 1, &sview_ptr);

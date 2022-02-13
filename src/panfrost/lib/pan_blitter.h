@@ -126,7 +126,7 @@ GENX(pan_blit)(struct pan_blit_context *ctx,
                struct pan_scoreboard *scoreboard,
                mali_ptr tsd, mali_ptr tiler);
 
-#if PAN_ARCH >= 6
+#if PAN_ARCH >= 5
 struct pan_scoreboard
 GENX(pan_mipmap)(struct panfrost_device *dev,
                  struct pan_pool *pool,

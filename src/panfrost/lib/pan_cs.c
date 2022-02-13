@@ -497,6 +497,14 @@ pan_emit_midgard_tiler(const struct panfrost_device *dev,
 {
         bool hierarchy = !dev->model->quirks.no_hierarchical_tiling;
 
+        STATIC_ASSERT(sizeof(tiler_ctx->midgard.packed) ==
+                      MALI_TILER_CONTEXT_LENGTH);
+
+        if (tiler_ctx->midgard.explicit) {
+                memcpy(out, tiler_ctx->midgard.packed, MALI_TILER_CONTEXT_LENGTH);
+                return;
+        }
+
         assert(tiler_ctx->midgard.polygon_list->ptr.gpu);
 
         pan_pack(out, TILER_CONTEXT, cfg) {

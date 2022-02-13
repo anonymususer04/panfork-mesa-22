@@ -73,7 +73,12 @@ struct pan_tiler_context {
                 mali_ptr bifrost;
                 struct {
                         bool disable;
-                        struct panfrost_bo *polygon_list;
+                        bool explicit;
+                        union {
+                                struct panfrost_bo *polygon_list;
+                                /* mali_tiler_context_packed */
+                                uint32_t packed[10];
+                        };
                 } midgard;
         };
 };

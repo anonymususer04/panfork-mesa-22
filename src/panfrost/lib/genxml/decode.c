@@ -818,11 +818,11 @@ pandecode_dcd(const struct MALI_DRAW *p,
                 pandecode_local_storage(p->thread_storage & ~1, job_no);
 	} else {
                 assert(p->fbd & MALI_FBD_TAG_IS_MFBD);
-                fbd_info = pandecode_mfbd_bfr((u64) ((uintptr_t) p->fbd) & ~MALI_FBD_TAG_MASK,
+                fbd_info = pandecode_mfbd_bfr(p->fbd & ~MALI_FBD_TAG_MASK,
                                               job_no, false, gpu_id);
         }
 #else
-        pandecode_sfbd((u64) (uintptr_t) p->fbd, job_no, false, gpu_id);
+        pandecode_sfbd(p->fbd, job_no, false, gpu_id);
 #endif
 
         int varying_count = 0, attribute_count = 0, uniform_count = 0, uniform_buffer_count = 0;

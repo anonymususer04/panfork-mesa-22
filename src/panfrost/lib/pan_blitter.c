@@ -240,6 +240,7 @@ pan_blitter_emit_rsd(const struct panfrost_device *dev,
                         panfrost_last_nonnull(blend_shaders, rt_count) : 0;
 
                 cfg.stencil_mask_misc.alpha_test_compare_function = MALI_FUNC_ALWAYS;
+                cfg.properties.work_register_count = 4;
 
                 /* Set even on v5 for erratum workaround */
 #if PAN_ARCH == 5

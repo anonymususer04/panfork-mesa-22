@@ -138,6 +138,7 @@ pandecode_inject_mmap(uint64_t gpu_va, void *cpu, unsigned sz, const char *name)
         mapped_mem->length = sz;
         mapped_mem->addr = cpu;
         pandecode_add_name(mapped_mem, gpu_va, name);
+        rb_tree_init(&mapped_mem->annotations);
 
         /* Add it to the tree */
         rb_tree_insert(&mmap_tree, &mapped_mem->node, pandecode_cmp);
@@ -146,6 +147,12 @@ pandecode_inject_mmap(uint64_t gpu_va, void *cpu, unsigned sz, const char *name)
 static void
 pandecode_free_mem(struct pandecode_mapped_memory *mem)
 {
+        rb_tree_foreach_safe(struct pandecode_annotation, it, &mem->annotations, node) {
+                rb_tree_remove(&mem->annotations, &it->node);
+                free(it->text);
+                free(it);
+        }
+
         rb_tree_remove(&mmap_tree, &mem->node);
         free(mem);
 }
@@ -305,4 +312,81 @@ pandecode_jc(mali_ptr jc_gpu_va, unsigned gpu_id)
         case 9: pandecode_jc_v9(jc_gpu_va, gpu_id); return;
         default: unreachable("Unsupported architecture");
         }
+}
+
+#define to_annotation(x) \
+	rb_node_data(struct pandecode_annotation, x, node)
+
+static int
+pandecode_annotation_cmp_key(const struct rb_node *lhs, const void *key)
+{
+        struct pandecode_annotation *ann = to_annotation(lhs);
+        uint64_t *gpu_va = (uint64_t *) key;
+
+        /* TODO: What should this be? */
+        if (ann->gpu_va <= *gpu_va && *gpu_va < (ann->gpu_va + 4))
+                return 0;
+        else
+                return CLAMP((int64_t)(ann->gpu_va - *gpu_va), -1, 1);
+}
+
+static int
+pandecode_annotation_compare(const struct rb_node *a, const struct rb_node *b)
+{
+        struct pandecode_annotation *aa = to_annotation(a);
+        struct pandecode_annotation *bb = to_annotation(b);
+        int64_t diff = aa->gpu_va - bb->gpu_va;
+        if (diff)
+                return CLAMP(diff, -1, 1);
+        return strcmp(aa->text, bb->text);
+}
+
+void
+pandecode_annotate_memory(mali_ptr gpu_va, const char *format, ...)
+{
+        struct pandecode_mapped_memory *mem =
+                pandecode_find_mapped_gpu_mem_containing_rw(gpu_va);
+
+        if (!mem)
+                return;
+
+        char *str;
+
+        va_list ap;
+
+        va_start(ap, format);
+        int ret = vasprintf(&str, format, ap);
+        va_end(ap);
+
+        if (ret == -1)
+                return;
+
+        /* TODO: Check for duplicate entries? */
+        struct pandecode_annotation *ann = NULL;
+
+        /* TODO: Store the BO offset rather than the VA? */
+        ann = calloc(1, sizeof(*ann));
+        ann->gpu_va = gpu_va;
+        ann->text = str;
+
+        rb_tree_insert(&mem->annotations, &ann->node,
+                       pandecode_annotation_compare);
+}
+
+const char *
+pandecode_get_annotation(struct pandecode_mapped_memory *mem, mali_ptr gpu_va)
+{
+        if (!mem)
+                mem = pandecode_find_mapped_gpu_mem_containing_rw(gpu_va);
+
+        if (!mem)
+                return NULL;
+
+        struct rb_node *node = rb_tree_search(&mem->annotations, &gpu_va,
+                                              pandecode_annotation_cmp_key);
+
+        if (!node)
+                return NULL;
+
+        return to_annotation(node)->text;
 }

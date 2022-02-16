@@ -35,6 +35,13 @@ extern FILE *pandecode_dump_stream;
 
 void pandecode_dump_file_open(void);
 
+/* TODO: Support annotations covering memory ranges? */
+struct pandecode_annotation {
+        struct rb_node node;
+        uint64_t gpu_va;
+        char *text;
+};
+
 struct pandecode_mapped_memory {
         struct rb_node node;
         size_t length;
@@ -42,6 +49,7 @@ struct pandecode_mapped_memory {
         uint64_t gpu_va;
         bool ro;
         char name[32];
+        struct rb_tree annotations;
 };
 
 char *pointer_as_memory_reference(uint64_t ptr);
@@ -90,6 +98,20 @@ __pandecode_fetch_gpu_mem(const struct pandecode_mapped_memory *mem,
 #ifdef PAN_ARCH
 void GENX(pandecode_jc)(mali_ptr jc_gpu_va, unsigned gpu_id);
 void GENX(pandecode_abort_on_fault)(mali_ptr jc_gpu_va);
+#endif
+
+/* TODO: Allow fetching multiple annotations */
+const char *
+pandecode_get_annotation(struct pandecode_mapped_memory *mem,
+                         mali_ptr gpu_va);
+
+void PRINTFLIKE(2, 3)
+pandecode_annotate_memory(mali_ptr gpu_va, const char *format, ...);
+
+#ifdef NDEBUG
+#define pan_annotate(va, ...) while (0) { printf(__VA_ARGS__); }
+#else
+#define pan_annotate(va, ...) pandecode_annotate_memory(va, __VA_ARGS__);
 #endif
 
 static inline void

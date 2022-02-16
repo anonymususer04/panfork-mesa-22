@@ -143,6 +143,13 @@ pandecode_inject_mmap(uint64_t gpu_va, void *cpu, unsigned sz, const char *name)
         rb_tree_insert(&mmap_tree, &mapped_mem->node, pandecode_cmp);
 }
 
+static void
+pandecode_free_mem(struct pandecode_mapped_memory *mem)
+{
+        rb_tree_remove(&mmap_tree, &mem->node);
+        free(mem);
+}
+
 void
 pandecode_inject_free(uint64_t gpu_va, unsigned sz)
 {
@@ -155,8 +162,7 @@ pandecode_inject_free(uint64_t gpu_va, unsigned sz)
         assert(mem->gpu_va == gpu_va);
         assert(mem->length == sz);
 
-        rb_tree_remove(&mmap_tree, &mem->node);
-        free(mem);
+        pandecode_free_mem(mem);
 }
 
 char *
@@ -239,7 +245,7 @@ void
 pandecode_close(void)
 {
         rb_tree_foreach_safe(struct pandecode_mapped_memory, it, &mmap_tree, node) {
-                free(it);
+                pandecode_free_mem(it);
         }
 
         util_dynarray_fini(&ro_mappings);

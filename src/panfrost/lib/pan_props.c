@@ -254,7 +254,7 @@ panfrost_query_afbc(int fd, unsigned arch)
 }
 
 void
-panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
+panfrost_open_device_struct(void *memctx, int fd, struct panfrost_device *dev)
 {
         dev->fd = fd;
         dev->memctx = memctx;
@@ -287,14 +287,20 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
         if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC))
                 pandecode_initialize(!(dev->debug & PAN_DBG_TRACE));
 
+        pthread_mutex_init(&dev->submit_lock, NULL);
+}
+
+void
+panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
+{
+        panfrost_open_device_struct(memctx, fd, dev);
+
         /* Tiler heap is internally required by the tiler, which can only be
          * active for a single job chain at once, so a single heap can be
          * shared across batches/contextes */
 
         dev->tiler_heap = panfrost_bo_create(dev, 64 * 1024 * 1024,
                         PAN_BO_INVISIBLE | PAN_BO_GROWABLE, "Tiler heap");
-
-        pthread_mutex_init(&dev->submit_lock, NULL);
 
         /* Done once on init */
         panfrost_upload_sample_positions(dev);

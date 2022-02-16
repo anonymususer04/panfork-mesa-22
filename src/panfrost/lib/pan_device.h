@@ -257,6 +257,10 @@ struct panfrost_device {
 void
 panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev);
 
+/* Does not initialise anything that requires BO allocation */
+void
+panfrost_open_device_struct(void *memctx, int fd, struct panfrost_device *dev);
+
 void
 panfrost_close_device(struct panfrost_device *dev);
 

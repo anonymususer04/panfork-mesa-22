@@ -540,10 +540,10 @@ pandecode_uniform_buffers(mali_ptr pubufs, int ubufs_count, int job_no)
 static void
 pandecode_uniforms(mali_ptr uniforms, unsigned uniform_count)
 {
-        pandecode_validate_buffer(uniforms, uniform_count * 16);
+        pandecode_validate_buffer(uniforms, uniform_count * 4);
 
         char *ptr = pointer_as_memory_reference(uniforms);
-        pandecode_log("vec4 uniforms[%u] = %s;\n", uniform_count, ptr);
+        pandecode_log("uint32_t uniforms[%u] = %s;\n", uniform_count, ptr);
         free(ptr);
         pandecode_log("\n");
 }
@@ -854,9 +854,9 @@ pandecode_dcd(const struct MALI_DRAW *p,
                 uniform_buffer_count = state.properties.uniform_buffer_count;
 
 #if PAN_ARCH >= 6
-                uniform_count = state.preload.uniform_count;
+                uniform_count = state.preload.uniform_count * 2;
 #else
-                uniform_count = state.properties.uniform_count;
+                uniform_count = state.properties.uniform_count * 4;
 #endif
 
 #if PAN_ARCH == 4

@@ -742,6 +742,7 @@ panfrost_upload_viewport_scale_sysval(struct panfrost_batch *batch,
         uniform->f[0] = vp->scale[0];
         uniform->f[1] = vp->scale[1];
         uniform->f[2] = vp->scale[2];
+        uniform->f[3] = 0;
 }
 
 static void
@@ -754,6 +755,7 @@ panfrost_upload_viewport_offset_sysval(struct panfrost_batch *batch,
         uniform->f[0] = vp->translate[0];
         uniform->f[1] = vp->translate[1];
         uniform->f[2] = vp->translate[2];
+        uniform->f[3] = 0;
 }
 
 static void panfrost_upload_txs_sysval(struct panfrost_batch *batch,
@@ -772,6 +774,7 @@ static void panfrost_upload_txs_sysval(struct panfrost_batch *batch,
         if (tex->target == PIPE_BUFFER) {
                 uniform->i[0] =
                         tex->u.buf.size / util_format_get_blocksize(tex->format);
+                memset(&uniform->i[1], 0, sizeof(uint32_t) * 3);
                 return;
         }
 
@@ -780,11 +783,16 @@ static void panfrost_upload_txs_sysval(struct panfrost_batch *batch,
         if (dim > 1)
                 uniform->i[1] = u_minify(tex->texture->height0,
                                          tex->u.tex.first_level);
+        else
+                uniform->i[1] = 0;
 
         if (dim > 2)
                 uniform->i[2] = u_minify(tex->texture->depth0,
                                          tex->u.tex.first_level);
+        else
+                uniform->i[2] = 0;
 
+        uniform->i[3] = 0;
         if (is_array)
                 uniform->i[dim] = tex->texture->array_size;
 }
@@ -806,6 +814,7 @@ static void panfrost_upload_image_size_sysval(struct panfrost_batch *batch,
         if (image->resource->target == PIPE_BUFFER) {
                 unsigned blocksize = util_format_get_blocksize(image->format);
                 uniform->i[0] = image->resource->width0 / blocksize;
+                memset(&uniform->i[1], 0, sizeof(uint32_t) * 3);
                 return;
         }
 
@@ -815,11 +824,16 @@ static void panfrost_upload_image_size_sysval(struct panfrost_batch *batch,
         if (dim > 1)
                 uniform->i[1] = u_minify(image->resource->height0,
                                          image->u.tex.level);
+        else
+                uniform->i[1] = 0;
 
         if (dim > 2)
                 uniform->i[2] = u_minify(image->resource->depth0,
                                          image->u.tex.level);
+        else
+                uniform->i[2] = 0;
 
+        uniform->i[3] = 0;
         if (is_array)
                 uniform->i[dim] = image->resource->array_size;
 }
@@ -847,6 +861,7 @@ panfrost_upload_ssbo_sysval(struct panfrost_batch *batch,
         /* Upload address and size as sysval */
         uniform->du[0] = bo->ptr.gpu + sb.buffer_offset;
         uniform->u[2] = sb.buffer_size;
+        uniform->u[3] = 0;
 }
 
 static void
@@ -861,6 +876,7 @@ panfrost_upload_sampler_sysval(struct panfrost_batch *batch,
         uniform->f[0] = sampl->min_lod;
         uniform->f[1] = sampl->max_lod;
         uniform->f[2] = sampl->lod_bias;
+        uniform->f[3] = 0;
 
         /* Even without any errata, Midgard represents "no mipmapping" as
          * fixing the LOD with the clamps; keep behaviour consistent. c.f.
@@ -880,6 +896,7 @@ panfrost_upload_num_work_groups_sysval(struct panfrost_batch *batch,
         uniform->u[0] = ctx->compute_grid->grid[0];
         uniform->u[1] = ctx->compute_grid->grid[1];
         uniform->u[2] = ctx->compute_grid->grid[2];
+        uniform->u[3] = 0;
 }
 
 static void
@@ -891,6 +908,7 @@ panfrost_upload_local_group_size_sysval(struct panfrost_batch *batch,
         uniform->u[0] = ctx->compute_grid->block[0];
         uniform->u[1] = ctx->compute_grid->block[1];
         uniform->u[2] = ctx->compute_grid->block[2];
+        uniform->u[3] = 0;
 }
 
 static void
@@ -900,6 +918,7 @@ panfrost_upload_work_dim_sysval(struct panfrost_batch *batch,
         struct panfrost_context *ctx = batch->ctx;
 
         uniform->u[0] = ctx->compute_grid->work_dim;
+        memset(&uniform->u[1], 0, sizeof(uint32_t) * 3);
 }
 
 /* Sample positions are pushed in a Bifrost specific format on Bifrost. On
@@ -915,6 +934,7 @@ panfrost_upload_sample_positions_sysval(struct panfrost_batch *batch,
 
         unsigned samples = util_framebuffer_get_num_samples(&batch->key);
         uniform->du[0] = panfrost_sample_positions(dev, panfrost_sample_pattern(samples));
+        uniform->du[1] = 0;
 }
 
 static void
@@ -923,6 +943,7 @@ panfrost_upload_multisampled_sysval(struct panfrost_batch *batch,
 {
         unsigned samples = util_framebuffer_get_num_samples(&batch->key);
         uniform->u[0] = samples > 1;
+        memset(&uniform->u[1], 0, sizeof(uint32_t) * 3);
 }
 
 #if PAN_ARCH >= 6
@@ -943,6 +964,7 @@ panfrost_upload_rt_conversion_sysval(struct panfrost_batch *batch,
                 pan_pack(&uniform->u[0], INTERNAL_CONVERSION, cfg)
                         cfg.memory_format = dev->formats[PIPE_FORMAT_NONE].hw;
         }
+        memset(&uniform->u[1], 0, sizeof(uint32_t) * 3);
 }
 #endif
 
@@ -968,6 +990,7 @@ panfrost_upload_printf_buffer_sysval(struct panfrost_batch *batch,
         util_dynarray_append(&batch->printf_buffers, struct panfrost_printf_buffer, buf);
 
         uniform->du[0] = bo->ptr.gpu;
+        uniform->du[1] = 0;
 }
 
 static void
@@ -1051,10 +1074,12 @@ panfrost_upload_sysval(struct panfrost_batch *batch,
                 uniform->u[0] = batch->ctx->offset_start;
                 uniform->u[1] = batch->ctx->base_vertex;
                 uniform->u[2] = batch->ctx->base_instance;
+                uniform->u[3] = 0;
                 break;
         case PAN_SYSVAL_DRAWID:
                 pan_annotate(gpu, "Draw ID");
                 uniform->u[0] = batch->ctx->drawid;
+                memset(&uniform->u[1], 0, sizeof(uint32_t) * 3);
                 break;
         case PAN_SYSVAL_PRINTF_BUFFER:
                 pan_annotate(gpu, "Printf Buffer");
@@ -1165,11 +1190,13 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
                 }
         }
 
+        unsigned push_align = (PAN_ARCH >= 6) ? 8 : 16;
+
         /* Copy push constants required by the shader */
         struct panfrost_ptr push_transfer = {0};
         if (ss->info.push.count)
                 push_transfer = pan_pool_alloc_aligned(&batch->pool.base,
-                                        ss->info.push.count * 4, 16);
+                        ALIGN_POT(ss->info.push.count * 4, push_align), 16);
 
         uint32_t *push_cpu = (uint32_t *) push_transfer.cpu;
         *push_constants = push_transfer.gpu;
@@ -1205,6 +1232,12 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
 
                 push_cpu += src.size;
         }
+
+        unsigned extra_size = (push_align == 8) ?
+                ((uintptr_t)push_cpu & 4) : (16 - ((uintptr_t)push_cpu & 0xc));
+
+        if (extra_size)
+                memset(push_cpu, 0, extra_size);
 
         return ubos.gpu;
 }

@@ -37,6 +37,7 @@
 #include "gallium/auxiliary/util/u_blend.h"
 
 #include "genxml/gen_macros.h"
+#include "decode.h"
 
 #include "pan_pool.h"
 #include "pan_bo.h"
@@ -978,56 +979,69 @@ panfrost_upload_sysval(struct panfrost_batch *batch,
 {
         switch (PAN_SYSVAL_TYPE(sysval)) {
         case PAN_SYSVAL_VIEWPORT_SCALE:
+                pan_annotate(gpu, "Viewport Scale");
                 panfrost_upload_viewport_scale_sysval(batch, uniform);
                 break;
         case PAN_SYSVAL_VIEWPORT_OFFSET:
+                pan_annotate(gpu, "Viewport Offset");
                 panfrost_upload_viewport_offset_sysval(batch, uniform);
                 break;
         case PAN_SYSVAL_TEXTURE_SIZE:
+                pan_annotate(gpu, "Texture Size %i", PAN_SYSVAL_ID(sysval));
                 panfrost_upload_txs_sysval(batch, st,
                                            PAN_SYSVAL_ID(sysval),
                                            uniform);
                 break;
         case PAN_SYSVAL_SSBO:
+                pan_annotate(gpu, "SSBO %i", PAN_SYSVAL_ID(sysval));
                 panfrost_upload_ssbo_sysval(batch, st,
                                             PAN_SYSVAL_ID(sysval),
                                             uniform);
                 break;
         case PAN_SYSVAL_NUM_WORK_GROUPS:
+                pan_annotate(gpu, "Num Work Groups");
                 for (unsigned j = 0; j < 3; j++)
                         batch->num_wg_sysval[j] = gpu + (j * 4);
                 panfrost_upload_num_work_groups_sysval(batch, uniform);
                 break;
         case PAN_SYSVAL_LOCAL_GROUP_SIZE:
+                pan_annotate(gpu, "Local Group Size");
                 panfrost_upload_local_group_size_sysval(batch, uniform);
                 break;
         case PAN_SYSVAL_WORK_DIM:
+                pan_annotate(gpu, "Work Dimension");
                 panfrost_upload_work_dim_sysval(batch, uniform);
                 break;
         case PAN_SYSVAL_SAMPLER:
+                pan_annotate(gpu, "Sampler %i", PAN_SYSVAL_ID(sysval));
                 panfrost_upload_sampler_sysval(batch, st,
                                                PAN_SYSVAL_ID(sysval),
                                                uniform);
                 break;
         case PAN_SYSVAL_IMAGE_SIZE:
+                pan_annotate(gpu, "Image Size %i", PAN_SYSVAL_ID(sysval));
                 panfrost_upload_image_size_sysval(batch, st,
                                                   PAN_SYSVAL_ID(sysval),
                                                   uniform);
                 break;
         case PAN_SYSVAL_SAMPLE_POSITIONS:
+                pan_annotate(gpu, "Sample Positions");
                 panfrost_upload_sample_positions_sysval(batch, uniform);
                 break;
         case PAN_SYSVAL_MULTISAMPLED:
+                pan_annotate(gpu, "Multisampled");
                 panfrost_upload_multisampled_sysval(batch, uniform);
                 break;
 #if PAN_ARCH >= 6
         case PAN_SYSVAL_RT_CONVERSION:
+                pan_annotate(gpu, "RT Conversion %i", PAN_SYSVAL_ID(sysval));
                 panfrost_upload_rt_conversion_sysval(batch,
                                                      PAN_SYSVAL_ID(sysval),
                                                      uniform);
                 break;
 #endif
         case PAN_SYSVAL_VERTEX_INSTANCE_OFFSETS:
+                pan_annotate(gpu, "Vertex Instance Offsets");
                 batch->ctx->first_vertex_sysval_ptr = gpu;
                 batch->ctx->base_vertex_sysval_ptr =
                         batch->ctx->first_vertex_sysval_ptr + 4;
@@ -1039,9 +1053,11 @@ panfrost_upload_sysval(struct panfrost_batch *batch,
                 uniform->u[2] = batch->ctx->base_instance;
                 break;
         case PAN_SYSVAL_DRAWID:
+                pan_annotate(gpu, "Draw ID");
                 uniform->u[0] = batch->ctx->drawid;
                 break;
         case PAN_SYSVAL_PRINTF_BUFFER:
+                pan_annotate(gpu, "Printf Buffer");
                 panfrost_upload_printf_buffer_sysval(batch, st, uniform);
                 break;
         default:

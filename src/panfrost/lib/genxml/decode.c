@@ -540,12 +540,28 @@ pandecode_uniform_buffers(mali_ptr pubufs, int ubufs_count, int job_no)
 static void
 pandecode_uniforms(mali_ptr uniforms, unsigned uniform_count)
 {
+        struct pandecode_mapped_memory *mem = pandecode_find_mapped_gpu_mem_containing(uniforms);
+
         pandecode_validate_buffer(uniforms, uniform_count * 4);
 
         char *ptr = pointer_as_memory_reference(uniforms);
         pandecode_log("uint32_t uniforms[%u] = %s;\n", uniform_count, ptr);
         free(ptr);
-        pandecode_log("\n");
+
+        uint32_t *uniform_data = pandecode_fetch_gpu_mem(mem, uniforms,
+                                                         sizeof(uint32_t) * uniform_count);
+        for (unsigned i = 0; i < uniform_count; ++i) {
+                if (i % 4 == 0)
+                        pandecode_log("\n");
+
+                float f;
+                uint32_t data = uniform_data[i];
+                memcpy(&f, &data, 4);
+                const char *ann = pandecode_get_annotation(mem, uniforms + sizeof(uint32_t) * i);
+                pandecode_log(" %s%s%x (%f)", ann ?: "", ann ? ": " : "",
+                              data, f);
+        }
+        pandecode_log("\n\n");
 }
 #endif
 

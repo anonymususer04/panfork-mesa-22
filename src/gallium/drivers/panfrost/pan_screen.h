@@ -144,6 +144,8 @@ struct panfrost_screen {
         struct hash_table *compute_kernels;
 
         unsigned compaction_size_saved;
+
+        FILE *crc_dump_file;
 };
 
 static inline struct panfrost_screen *

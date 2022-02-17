@@ -891,6 +891,10 @@ panfrost_create_screen(int fd, struct renderonly *ro)
         dev->debug = debug_get_flags_option("PAN_MESA_DEBUG", panfrost_debug_options, 0);
         panfrost_open_device(screen, fd, dev);
 
+        char *crc_dump = getenv("PAN_CRC_DUMP");
+        if (crc_dump)
+                screen->crc_dump_file = fopen(crc_dump, "w");
+
         if (dev->debug & PAN_DBG_NO_AFBC)
                 dev->has_afbc = false;
 

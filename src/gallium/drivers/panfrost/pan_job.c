@@ -628,6 +628,48 @@ panfrost_batch_handle_printf(struct panfrost_batch *batch)
         }
 }
 
+// TODO: Share with compute_checksum_size
+#define CHECKSUM_TILE_WIDTH 16
+#define CHECKSUM_TILE_HEIGHT 16
+#define CHECKSUM_BYTES_PER_TILE 8
+
+/* TODO: Move someplace else? */
+/* TODO: Why not just take the surface as an argument? */
+static void
+panfrost_dump_crc(struct panfrost_context *ctx, FILE *fp,
+                struct panfrost_resource *rsrc)
+{
+        unsigned width = rsrc->base.width0;
+        unsigned height = rsrc->base.height0;
+
+        /* TODO: Support OOB CRC if we decide to still support that */
+        fprintf(fp, "%i %ix%i crc %s\n", ctx->frame_count,
+                        width, height,
+                        rsrc->image.layout.crc_mode == PAN_IMAGE_CRC_INBAND ?
+                        (rsrc->valid.crc ? "valid" : "invalid") : "none");
+        if (rsrc->image.layout.crc_mode != PAN_IMAGE_CRC_INBAND
+                        || !rsrc->valid.crc)
+                return;
+
+        const struct pan_image_slice_layout *slice =
+                &rsrc->image.layout.slices[0];
+
+        panfrost_bo_mmap(rsrc->image.data.bo);
+
+        uint64_t *crc_base = (uint64_t *)(rsrc->image.data.bo->ptr.cpu +
+                        rsrc->image.data.offset + slice->crc.offset);
+        unsigned crc_row_stride = slice->crc.stride;
+
+        for (unsigned y = 0; y < DIV_ROUND_UP(width, CHECKSUM_TILE_WIDTH); ++y) {
+                for (unsigned x = 0; x < DIV_ROUND_UP(height, CHECKSUM_TILE_HEIGHT); ++x) {
+                        fprintf(fp, " %02x", (int)crc_base[x] & 0xff);
+                }
+                fprintf(fp, "\n");
+                // todo
+                crc_base += crc_row_stride / 8;
+        }
+}
+
 static int
 panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                             mali_ptr first_job_desc,
@@ -639,6 +681,7 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
 {
         struct panfrost_context *ctx = batch->ctx;
         struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = pan_screen(gallium->screen);
         struct panfrost_device *dev = pan_device(gallium->screen);
         struct drm_panfrost_submit submit = {0};
         int ret;
@@ -649,8 +692,9 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
          * syncobj */
 
         /* TODO: Allow printf from fragment shaders? */
-        bool wait_job = (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC)) ||
-                (!reqs && batch->printf_buffers.size);
+        bool wait_job = (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC))
+                || (!reqs && batch->printf_buffers.size)
+                || screen->crc_dump_file;
 
         if (!out_sync && wait_job)
                 out_sync = ctx->syncobj;
@@ -682,6 +726,18 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
 
                 if (!reqs && batch->printf_buffers.size)
                         panfrost_batch_handle_printf(batch);
+
+                if (screen->crc_dump_file) {
+                        /* TODO: Take note of pan_select_crc_rt */
+                        struct pipe_surface *surf = batch->key.cbufs[0];
+                        if (surf && surf->texture) {
+                                struct panfrost_resource *prsc =
+                                        pan_resource(surf->texture);
+
+                                panfrost_dump_crc(ctx, screen->crc_dump_file, prsc);
+                                fflush(screen->crc_dump_file);
+                        }
+                }
 
                 if (dev->debug & PAN_DBG_TRACE)
                         pandecode_jc(submit.jc, dev->gpu_id);

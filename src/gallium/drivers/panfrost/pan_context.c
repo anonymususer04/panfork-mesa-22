@@ -110,6 +110,7 @@ panfrost_flush(
                 *fence = f;
         }
 
+        ++ctx->frame_count;
         if (dev->debug & PAN_DBG_TRACE)
                 pandecode_next_frame();
 }

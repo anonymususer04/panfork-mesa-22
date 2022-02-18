@@ -39,6 +39,196 @@
 #include "pan_util.h"
 #include "decode.h"
 
+// TODO: Share with compute_checksum_size
+#define CHECKSUM_TILE_WIDTH 16
+#define CHECKSUM_TILE_HEIGHT 16
+#define CHECKSUM_BYTES_PER_TILE 8
+
+static uint64_t
+panfrost_calculate_crc(uint64_t state, const uint8_t *data, unsigned num_bytes)
+{
+        for (unsigned i = 0; i < num_bytes; ++i) {
+                uint8_t byte = data[i];
+                for (unsigned j = 0; j < 8; ++j) {
+                        bool bit_set = byte & (1 << j);
+                        bool do_xor = (state & 1) ^ bit_set;
+
+                        state >>= 1;
+                        if (do_xor)
+                                state ^= 0xc96c5795d7870f42;
+                }
+        }
+
+        return state;
+}
+
+static uint8_t afbc_tiling[16] = {
+         5,  4,  0,  1,
+         2,  3,  7,  6,
+        10, 11, 15, 14,
+        13, 12,  8,  9,
+};
+
+static uint8_t afbc_subtile[16] = {
+         0,  1,  4,  5,
+         2,  3,  6,  7,
+         8,  9, 12, 13,
+        10, 11, 14, 15,
+};
+
+static uint64_t
+panfrost_crc_block(const uint8_t *data, unsigned stride,
+                   unsigned width, unsigned height,
+                   uint64_t modifier, unsigned bytes_per_pixel)
+{
+        uint64_t state = 0xffffffffffffffffULL;
+
+        if (drm_is_afbc(modifier)) {
+                for (unsigned m = 0; m < ARRAY_SIZE(afbc_tiling); ++m) {
+                        unsigned xx = (afbc_tiling[m] & 3) * 4;
+                        unsigned yy = afbc_tiling[m] & 0xc;
+
+                        for (unsigned s = 0; s < ARRAY_SIZE(afbc_subtile); ++s) {
+                                unsigned x = xx + (afbc_subtile[s] & 3);
+                                unsigned y = yy + (afbc_subtile[s] >> 2);
+
+                                /* TODO: This seems to either use clear colour
+                                 * or opaque black, don't skip */
+                                if (x >= width || y >= height)
+                                        continue;
+
+                                state = panfrost_calculate_crc(state,
+                                        data + y * stride + x * bytes_per_pixel,
+                                        bytes_per_pixel);
+                        }
+                }
+        } else {
+                /* TODO: Does this handle partially covered tiled blocks
+                 * properly? Linear, even? */
+                for (unsigned y = 0; y < height; ++y) {
+                        state = panfrost_calculate_crc(state,
+                                data + y * stride,
+                                bytes_per_pixel * width);
+                }
+        }
+
+        return state;
+}
+
+
+/* TODO: Move someplace else? */
+/* TODO: Why not just take the surface as an argument? */
+static void
+panfrost_dump_or_check_crc(struct panfrost_context *ctx,
+                           struct panfrost_resource *rsrc,
+                           FILE *fp, bool check)
+{
+        unsigned width = rsrc->base.width0;
+        unsigned height = rsrc->base.height0;
+
+        /* TODO: Support OOB CRC if we decide to still support that */
+        if (rsrc->image.layout.crc_mode != PAN_IMAGE_CRC_INBAND
+            || !rsrc->valid.crc)
+                return;
+
+        const struct pan_image_slice_layout *slice =
+                &rsrc->image.layout.slices[0];
+
+        panfrost_bo_mmap(rsrc->image.data.bo);
+
+        uint64_t *crc_base = (uint64_t *)(rsrc->image.data.bo->ptr.cpu +
+                        rsrc->image.data.offset + slice->crc.offset);
+        unsigned crc_row_stride = slice->crc.stride;
+
+        struct panfrost_resource *tmp_rsrc = rsrc;
+        bool used_blit = false;
+
+        // TODO: Convert RGB to RGBA
+        enum pipe_format crc_format = rsrc->image.layout.format;
+
+        // TODO: Also check format
+        if (drm_is_afbc(tmp_rsrc->image.layout.modifier)) {
+                /* TODO: Don't CRC check the result of this blit */
+                tmp_rsrc = pan_resource_create_blit(ctx, rsrc,
+                                                    DRM_FORMAT_MOD_LINEAR,
+                                                    crc_format);
+
+                used_blit = true;
+
+                panfrost_flush_writer(ctx, tmp_rsrc, "Tiling check staging blit");
+                panfrost_bo_wait(tmp_rsrc->image.data.bo, INT64_MAX, false);
+                panfrost_bo_mmap(tmp_rsrc->image.data.bo);
+        }
+
+        bool is_tiling = tmp_rsrc->image.layout.modifier == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
+
+        panfrost_bo_wait(rsrc->image.data.bo, INT64_MAX, false);
+
+        const struct pan_image_slice_layout *tiled_slice =
+                &tmp_rsrc->image.layout.slices[0];
+
+        uint8_t *tiled_data = tmp_rsrc->image.data.bo->ptr.cpu +
+                tmp_rsrc->image.data.offset + tiled_slice->offset;
+        unsigned tiled_stride = tiled_slice->row_stride;
+        unsigned bytes_per_pixel = util_format_get_blocksize(tmp_rsrc->image.layout.format);
+
+        unsigned num_tile_y = DIV_ROUND_UP(height, CHECKSUM_TILE_HEIGHT);
+        unsigned num_tile_x = DIV_ROUND_UP(width, CHECKSUM_TILE_WIDTH);
+
+        for (unsigned y = 0; y < num_tile_y; ++y) {
+                for (unsigned x = 0; x < num_tile_x; ++x) {
+
+                        if (fp)
+                                fprintf(fp, " %02x", (int)crc_base[x] & 0xff);
+
+                        if (!check)
+                                continue;
+
+                        unsigned covered_x = 16;
+                        unsigned covered_y = 16;
+                        if (x + 1 == num_tile_x && width % 16)
+                                covered_x = width % 16;
+                        if (y + 1 == num_tile_y && height % 16)
+                                covered_y = height % 16;
+
+                        uint8_t *ptr = tiled_data;
+                        unsigned stride = tiled_stride;
+
+                        if (is_tiling) {
+                                ptr += x * bytes_per_pixel * 256;
+                                stride = bytes_per_pixel * 16;
+                        } else {
+                                ptr += x * bytes_per_pixel * 16;
+                        }
+
+                        uint64_t calc =
+                                panfrost_crc_block(ptr, stride,
+                                                   covered_x, covered_y,
+                                                   rsrc->image.layout.modifier,
+                                                   bytes_per_pixel);
+
+                        if (calc != crc_base[x]) {
+                                FILE *err = fp ?: stderr;
+
+                                fprintf(err, "CRC mismatch at tile %i,%i: Buffer stores %"PRIx64
+                                        ", calculated %"PRIx64"!\n", y, x, crc_base[x], calc);
+                        }
+                }
+                if (fp)
+                        fprintf(fp, "\n");
+
+                crc_base += crc_row_stride / 8;
+                if (is_tiling)
+                        tiled_data += tiled_stride;
+                else
+                        tiled_data += tiled_stride * 16;
+        }
+
+        if (used_blit) {
+                ctx->base.screen->resource_destroy(ctx->base.screen, &tmp_rsrc->base);
+        }
+}
+
 #define foreach_batch(ctx, idx) \
         BITSET_FOREACH_SET(idx, ctx->batches.active, PAN_MAX_BATCHES)
 
@@ -104,6 +294,7 @@ panfrost_batch_init(struct panfrost_context *ctx,
 static void
 panfrost_batch_cleanup(struct panfrost_context *ctx, struct panfrost_batch *batch)
 {
+        struct panfrost_screen *screen = pan_screen(ctx->base.screen);
         struct panfrost_device *dev = pan_device(ctx->base.screen);
 
         assert(batch->seqnum);
@@ -140,12 +331,47 @@ panfrost_batch_cleanup(struct panfrost_context *ctx, struct panfrost_batch *batc
         panfrost_pool_cleanup(&batch->pool);
         panfrost_pool_cleanup(&batch->invisible_pool);
 
+        struct pipe_resource *crc_rsrc = NULL;
+        if (screen->crc_dump_file) {
+                /* TODO: Take note of pan_select_crc_rt */
+                struct pipe_surface *surf = batch->key.cbufs[0];
+                if (surf && surf->texture) {
+                        struct panfrost_resource *rsrc =
+                                pan_resource(surf->texture);
+
+                        unsigned width = rsrc->base.width0;
+                        unsigned height = rsrc->base.height0;
+
+                        bool has_crc = rsrc->image.layout.crc_mode == PAN_IMAGE_CRC_INBAND;
+                        bool valid = rsrc->valid.crc;
+
+                        fprintf(screen->crc_dump_file, "%i %ix%i crc %s\n",
+                                ctx->frame_count, width, height,
+                                has_crc ? (valid ? "valid" : "invalid") : "none");
+
+                        if (has_crc && valid)
+                                pipe_resource_reference(&crc_rsrc, &rsrc->base);
+                }
+        }
+
         util_unreference_framebuffer_state(&batch->key);
 
         util_sparse_array_finish(&batch->bos);
 
         memset(batch, 0, sizeof(*batch));
         BITSET_CLEAR(ctx->batches.active, batch_idx);
+
+        /* We have to do this after destroying the batch because otherwise the
+         * blit to get a tiled resource may case an infinitely recursive blit.
+         * TODO: Just detect (and avoid) the problem? */
+        /* TODO: Would it be simpler to copy the framebuffer state and unref
+         * it after marking the batch as inactive? */
+        if (crc_rsrc) {
+                panfrost_dump_or_check_crc(ctx, pan_resource(crc_rsrc),
+                                           screen->crc_dump_file, true);
+                fflush(screen->crc_dump_file);
+                pipe_resource_reference(&crc_rsrc, NULL);
+        }
 }
 
 static void
@@ -628,48 +854,6 @@ panfrost_batch_handle_printf(struct panfrost_batch *batch)
         }
 }
 
-// TODO: Share with compute_checksum_size
-#define CHECKSUM_TILE_WIDTH 16
-#define CHECKSUM_TILE_HEIGHT 16
-#define CHECKSUM_BYTES_PER_TILE 8
-
-/* TODO: Move someplace else? */
-/* TODO: Why not just take the surface as an argument? */
-static void
-panfrost_dump_crc(struct panfrost_context *ctx, FILE *fp,
-                struct panfrost_resource *rsrc)
-{
-        unsigned width = rsrc->base.width0;
-        unsigned height = rsrc->base.height0;
-
-        /* TODO: Support OOB CRC if we decide to still support that */
-        fprintf(fp, "%i %ix%i crc %s\n", ctx->frame_count,
-                        width, height,
-                        rsrc->image.layout.crc_mode == PAN_IMAGE_CRC_INBAND ?
-                        (rsrc->valid.crc ? "valid" : "invalid") : "none");
-        if (rsrc->image.layout.crc_mode != PAN_IMAGE_CRC_INBAND
-                        || !rsrc->valid.crc)
-                return;
-
-        const struct pan_image_slice_layout *slice =
-                &rsrc->image.layout.slices[0];
-
-        panfrost_bo_mmap(rsrc->image.data.bo);
-
-        uint64_t *crc_base = (uint64_t *)(rsrc->image.data.bo->ptr.cpu +
-                        rsrc->image.data.offset + slice->crc.offset);
-        unsigned crc_row_stride = slice->crc.stride;
-
-        for (unsigned y = 0; y < DIV_ROUND_UP(width, CHECKSUM_TILE_WIDTH); ++y) {
-                for (unsigned x = 0; x < DIV_ROUND_UP(height, CHECKSUM_TILE_HEIGHT); ++x) {
-                        fprintf(fp, " %02x", (int)crc_base[x] & 0xff);
-                }
-                fprintf(fp, "\n");
-                // todo
-                crc_base += crc_row_stride / 8;
-        }
-}
-
 static int
 panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                             mali_ptr first_job_desc,
@@ -681,7 +865,6 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
 {
         struct panfrost_context *ctx = batch->ctx;
         struct pipe_context *gallium = (struct pipe_context *) ctx;
-        struct panfrost_screen *screen = pan_screen(gallium->screen);
         struct panfrost_device *dev = pan_device(gallium->screen);
         struct drm_panfrost_submit submit = {0};
         int ret;
@@ -693,8 +876,7 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
 
         /* TODO: Allow printf from fragment shaders? */
         bool wait_job = (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC))
-                || (!reqs && batch->printf_buffers.size)
-                || screen->crc_dump_file;
+                || (!reqs && batch->printf_buffers.size);
 
         if (!out_sync && wait_job)
                 out_sync = ctx->syncobj;
@@ -726,18 +908,6 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
 
                 if (!reqs && batch->printf_buffers.size)
                         panfrost_batch_handle_printf(batch);
-
-                if (screen->crc_dump_file) {
-                        /* TODO: Take note of pan_select_crc_rt */
-                        struct pipe_surface *surf = batch->key.cbufs[0];
-                        if (surf && surf->texture) {
-                                struct panfrost_resource *prsc =
-                                        pan_resource(surf->texture);
-
-                                panfrost_dump_crc(ctx, screen->crc_dump_file, prsc);
-                                fflush(screen->crc_dump_file);
-                        }
-                }
 
                 if (dev->debug & PAN_DBG_TRACE)
                         pandecode_jc(submit.jc, dev->gpu_id);

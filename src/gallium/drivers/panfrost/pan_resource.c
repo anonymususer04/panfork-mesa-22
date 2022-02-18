@@ -889,6 +889,7 @@ pan_alloc_staging(struct panfrost_context *ctx, struct panfrost_resource *rsc,
         return pan_resource(pstaging);
 }
 
+// TODO: Just use ->image.layout.format instead!
 static enum pipe_format
 pan_blit_format(enum pipe_format fmt)
 {
@@ -1146,28 +1147,16 @@ panfrost_ptr_map(struct pipe_context *pctx,
         }
 }
 
-void
-pan_resource_modifier_convert(struct panfrost_context *ctx,
-                              struct panfrost_resource *rsrc,
-                              uint64_t modifier, const char *reason)
+struct panfrost_resource *
+pan_resource_create_blit(struct panfrost_context *ctx,
+                         struct panfrost_resource *rsrc,
+                         uint64_t modifier, enum pipe_format format)
 {
-        struct panfrost_screen *screen = pan_screen(ctx->base.screen);
-
-        assert(!rsrc->modifier_constant);
-
-        perf_debug_ctx(ctx, "Converting modifier with a blit. Reason: %s", reason);
-
-        if (rsrc->compact_saved) {
-                p_atomic_add_return(&screen->compaction_size_saved,
-                                    0 - rsrc->compact_saved);
-                rsrc->compact_saved = 0;
-        }
-
         struct pipe_resource *tmp_prsrc =
                 panfrost_resource_create_with_modifier(
                         ctx->base.screen, &rsrc->base, modifier);
         struct panfrost_resource *tmp_rsrc = pan_resource(tmp_prsrc);
-        enum pipe_format blit_fmt = pan_blit_format(tmp_rsrc->base.format);
+        enum pipe_format blit_fmt = format;
 
         unsigned depth = rsrc->base.target == PIPE_TEXTURE_3D ?
                 rsrc->base.depth0 : rsrc->base.array_size;
@@ -1193,6 +1182,31 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
                 }
         }
 
+        return tmp_rsrc;
+}
+
+void
+pan_resource_modifier_convert(struct panfrost_context *ctx,
+                              struct panfrost_resource *rsrc,
+                              uint64_t modifier, const char *reason)
+{
+        struct panfrost_screen *screen = pan_screen(ctx->base.screen);
+
+        assert(!rsrc->modifier_constant);
+
+        perf_debug_ctx(ctx, "Converting modifier with a blit. Reason: %s", reason);
+
+        if (rsrc->compact_saved) {
+                p_atomic_add_return(&screen->compaction_size_saved,
+                                    0 - rsrc->compact_saved);
+                rsrc->compact_saved = 0;
+        }
+
+        enum pipe_format new_format = pan_blit_format(rsrc->base.format);
+
+        struct panfrost_resource *tmp_rsrc =
+                pan_resource_create_blit(ctx, rsrc, modifier, new_format);
+
         panfrost_flush_batches_accessing_rsrc(ctx, rsrc, "Modifier conversion flush");
 
         panfrost_bo_unreference(rsrc->image.data.bo);
@@ -1202,8 +1216,10 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
         rsrc->image.data.bo = tmp_rsrc->image.data.bo;
         panfrost_bo_reference(rsrc->image.data.bo);
 
-        panfrost_resource_setup(pan_device(ctx->base.screen), rsrc, modifier,
-                                blit.dst.format);
+        panfrost_resource_setup(pan_device(ctx->base.screen), rsrc,
+                                modifier, new_format);
+
+        struct pipe_resource *tmp_prsrc = &tmp_rsrc->base;
         pipe_resource_reference(&tmp_prsrc, NULL);
 }
 

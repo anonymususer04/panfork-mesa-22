@@ -167,6 +167,21 @@ panfrost_translate_texture_dimension(enum pipe_texture_target t) {
         }
 }
 
+/* TODO: pan_legalize_afbc_format is documented in the .c file, should we move
+ * the comments here or for the aforementioned function to keep things
+ * consistent? */
+
+/* Create a new resource with the specified format and modifier, and blit to
+ * it from rsrc, returning the new resource. */
+
+struct panfrost_resource *
+pan_resource_create_blit(struct panfrost_context *ctx,
+                         struct panfrost_resource *rsrc,
+                         uint64_t modifier, enum pipe_format format);
+
+/* Change the modifier of a resource in-place, by first blitting to a new
+ * resource and then updating the storage of the old resource. */
+
 void
 pan_resource_modifier_convert(struct panfrost_context *ctx,
                               struct panfrost_resource *rsrc,

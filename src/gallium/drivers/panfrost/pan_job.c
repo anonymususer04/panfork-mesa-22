@@ -83,6 +83,8 @@ panfrost_crc_block(const uint8_t *data, unsigned stride,
 {
         uint64_t state = 0xffffffffffffffffULL;
 
+        uint8_t zeroes[4 * 4] = {0};
+
         if (drm_is_afbc(modifier)) {
                 for (unsigned m = 0; m < ARRAY_SIZE(afbc_tiling); ++m) {
                         unsigned xx = (afbc_tiling[m] & 3) * 4;
@@ -92,10 +94,11 @@ panfrost_crc_block(const uint8_t *data, unsigned stride,
                                 unsigned x = xx + (afbc_subtile[s] & 3);
                                 unsigned y = yy + (afbc_subtile[s] >> 2);
 
-                                /* TODO: This seems to either use clear colour
-                                 * or opaque black, don't skip */
-                                if (x >= width || y >= height)
+                                if (x >= width || y >= height) {
+                                        state = panfrost_calculate_crc(state,
+                                                zeroes, bytes_per_pixel);
                                         continue;
+                                }
 
                                 state = panfrost_calculate_crc(state,
                                         data + y * stride + x * bytes_per_pixel,
@@ -103,12 +106,17 @@ panfrost_crc_block(const uint8_t *data, unsigned stride,
                         }
                 }
         } else {
-                /* TODO: Does this handle partially covered tiled blocks
-                 * properly? Linear, even? */
+                /* TODO: Properly handling tiled blocks requires
+                 * re-implementing the tiling algorithm, to know which pixels
+                 * to skip. */
                 for (unsigned y = 0; y < height; ++y) {
                         state = panfrost_calculate_crc(state,
                                 data + y * stride,
                                 bytes_per_pixel * width);
+
+                        if (width & 1)
+                                state = panfrost_calculate_crc(state,
+                                        zeroes, bytes_per_pixel);
                 }
         }
 

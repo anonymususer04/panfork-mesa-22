@@ -134,6 +134,9 @@ panfrost_dump_or_check_crc(struct panfrost_context *ctx,
         unsigned width = rsrc->base.width0;
         unsigned height = rsrc->base.height0;
 
+        if (ctx->is_blit)
+                check = false;
+
         /* TODO: Support OOB CRC if we decide to still support that */
         if (rsrc->image.layout.crc_mode != PAN_IMAGE_CRC_INBAND
             || !rsrc->valid.crc)
@@ -155,7 +158,7 @@ panfrost_dump_or_check_crc(struct panfrost_context *ctx,
         enum pipe_format crc_format = rsrc->image.layout.format;
 
         // TODO: Also check format
-        if (drm_is_afbc(tmp_rsrc->image.layout.modifier)) {
+        if (check && drm_is_afbc(tmp_rsrc->image.layout.modifier)) {
                 /* TODO: Don't CRC check the result of this blit */
                 tmp_rsrc = pan_resource_create_blit(ctx, rsrc,
                                                     DRM_FORMAT_MOD_LINEAR,

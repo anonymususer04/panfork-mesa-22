@@ -633,13 +633,14 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                             mali_ptr first_job_desc,
                             uint32_t reqs,
                             uint32_t in_sync,
-                            uint32_t out_sync)
+                            uint32_t out_sync,
+                            uint32_t *bo_handles,
+                            unsigned num_bos)
 {
         struct panfrost_context *ctx = batch->ctx;
         struct pipe_context *gallium = (struct pipe_context *) ctx;
         struct panfrost_device *dev = pan_device(gallium->screen);
-        struct drm_panfrost_submit submit = {0,};
-        uint32_t *bo_handles;
+        struct drm_panfrost_submit submit = {0};
         int ret;
 
         /* If we trace, we always need a syncobj, so make one of our own if we
@@ -662,54 +663,13 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                 submit.in_sync_count = 1;
         }
 
-        bo_handles = calloc(panfrost_pool_num_bos(&batch->pool) +
-                            panfrost_pool_num_bos(&batch->invisible_pool) +
-                            batch->num_bos + 2,
-                            sizeof(*bo_handles));
-        assert(bo_handles);
-
-        for (int i = batch->first_bo; i <= batch->last_bo; i++) {
-                uint32_t *flags = util_sparse_array_get(&batch->bos, i);
-
-                if (!*flags)
-                        continue;
-
-                assert(submit.bo_handle_count < batch->num_bos);
-                bo_handles[submit.bo_handle_count++] = i;
-
-                /* Update the BO access flags so that panfrost_bo_wait() knows
-                 * about all pending accesses.
-                 * We only keep the READ/WRITE info since this is all the BO
-                 * wait logic cares about.
-                 * We also preserve existing flags as this batch might not
-                 * be the first one to access the BO.
-                 */
-                struct panfrost_bo *bo = pan_lookup_bo(dev, i);
-
-                bo->gpu_access |= *flags & (PAN_BO_ACCESS_RW);
-        }
-
-        panfrost_pool_get_bo_handles(&batch->pool, bo_handles + submit.bo_handle_count);
-        submit.bo_handle_count += panfrost_pool_num_bos(&batch->pool);
-        panfrost_pool_get_bo_handles(&batch->invisible_pool, bo_handles + submit.bo_handle_count);
-        submit.bo_handle_count += panfrost_pool_num_bos(&batch->invisible_pool);
-
-        /* Add the tiler heap to the list of accessed BOs if the batch has at
-         * least one tiler job. Tiler heap is written by tiler jobs and read
-         * by fragment jobs (the polygon list is coming from this heap).
-         */
-        if (batch->scoreboard.first_tiler)
-                bo_handles[submit.bo_handle_count++] = dev->tiler_heap->gem_handle;
-
-        /* Always used on Bifrost, occassionally used on Midgard */
-        bo_handles[submit.bo_handle_count++] = dev->sample_positions->gem_handle;
-
         submit.bo_handles = (u64) (uintptr_t) bo_handles;
+        submit.bo_handle_count = num_bos;
+
         if (ctx->is_noop)
                 ret = 0;
         else
                 ret = drmIoctl(dev->fd, DRM_IOCTL_PANFROST_SUBMIT, &submit);
-        free(bo_handles);
 
         if (ret)
                 return errno;
@@ -754,6 +714,50 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
         mali_ptr fragjob = has_frag ?
                 screen->vtbl.emit_fragment_job(batch, fb) : 0;
 
+        uint32_t *bo_handles = calloc(
+                panfrost_pool_num_bos(&batch->pool) +
+                panfrost_pool_num_bos(&batch->invisible_pool) +
+                batch->num_bos + 2,
+                sizeof(*bo_handles));
+        unsigned num_bos = 0;
+
+        for (int i = batch->first_bo; i <= batch->last_bo; i++) {
+                uint32_t *flags = util_sparse_array_get(&batch->bos, i);
+
+                if (!*flags)
+                        continue;
+
+                assert(num_bos < batch->num_bos);
+                bo_handles[num_bos++] = i;
+
+                /* Update the BO access flags so that panfrost_bo_wait() knows
+                 * about all pending accesses.
+                 * We only keep the READ/WRITE info since this is all the BO
+                 * wait logic cares about.
+                 * We also preserve existing flags as this batch might not
+                 * be the first one to access the BO.
+                 */
+                struct panfrost_bo *bo = pan_lookup_bo(dev, i);
+
+                bo->gpu_access |= *flags & (PAN_BO_ACCESS_RW);
+        }
+
+        panfrost_pool_get_bo_handles(&batch->pool, bo_handles + num_bos);
+        num_bos += panfrost_pool_num_bos(&batch->pool);
+        panfrost_pool_get_bo_handles(&batch->invisible_pool,
+                                     bo_handles + num_bos);
+        num_bos += panfrost_pool_num_bos(&batch->invisible_pool);
+
+        /* Add the tiler heap to the list of accessed BOs if the batch has at
+         * least one tiler job. Tiler heap is written by tiler jobs and read
+         * by fragment jobs (the polygon list is coming from this heap).
+         */
+        if (batch->scoreboard.first_tiler)
+                bo_handles[num_bos++] = dev->tiler_heap->gem_handle;
+
+        /* Always used on Bifrost, occassionally used on Midgard */
+        bo_handles[num_bos++] = dev->sample_positions->gem_handle;
+
         /* Take the submit lock to make sure no tiler jobs from other context
          * are inserted between our tiler and fragment jobs, failing to do that
          * might result in tiler heap corruption.
@@ -763,7 +767,8 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
 
         if (has_draws) {
                 ret = panfrost_batch_submit_ioctl(batch, batch->scoreboard.first_job,
-                                                  0, in_sync, has_frag ? 0 : out_sync);
+                                                  0, in_sync, has_frag ? 0 : out_sync,
+                                                  bo_handles, num_bos);
 
                 if (ret)
                         goto done;
@@ -772,7 +777,8 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
         if (has_frag) {
                 ret = panfrost_batch_submit_ioctl(batch, fragjob,
                                                   PANFROST_JD_REQ_FS, 0,
-                                                  out_sync);
+                                                  out_sync,
+                                                  bo_handles, num_bos);
                 if (ret)
                         goto done;
         }
@@ -780,6 +786,8 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
 done:
         if (has_tiler)
                 pthread_mutex_unlock(&dev->submit_lock);
+
+        free(bo_handles);
 
         return ret;
 }

@@ -754,6 +754,9 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
         bool has_frag = has_tiler || batch->clear;
         int ret = 0;
 
+        mali_ptr fragjob = has_frag ?
+                screen->vtbl.emit_fragment_job(batch, fb) : 0;
+
         /* Take the submit lock to make sure no tiler jobs from other context
          * are inserted between our tiler and fragment jobs, failing to do that
          * might result in tiler heap corruption.
@@ -770,7 +773,6 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
         }
 
         if (has_frag) {
-                mali_ptr fragjob = screen->vtbl.emit_fragment_job(batch, fb);
                 ret = panfrost_batch_submit_ioctl(batch, fragjob,
                                                   PANFROST_JD_REQ_FS, 0,
                                                   out_sync);

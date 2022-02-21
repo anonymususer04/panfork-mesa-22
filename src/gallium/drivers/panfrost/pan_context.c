@@ -214,6 +214,8 @@ panfrost_get_blend(struct panfrost_batch *batch, unsigned rti, struct panfrost_b
         unsigned offset = *shader_offset;
         assert((offset + shader->binary.size) < 4096);
         memcpy((*bo)->ptr.cpu + offset, shader->binary.data, shader->binary.size);
+        pan_annotate((*bo)->ptr.gpu + offset, "%s", shader->name);
+
         *shader_offset += shader->binary.size;
         pthread_mutex_unlock(&dev->blend_shaders.lock);
 

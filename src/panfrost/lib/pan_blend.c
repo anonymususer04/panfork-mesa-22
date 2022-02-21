@@ -811,6 +811,7 @@ GENX(pan_blend_get_shader_locked)(const struct panfrost_device *dev,
                 list_del(&variant->node);
                 list_add(&variant->node, &shader->variants);
                 util_dynarray_clear(&variant->binary);
+                free(variant->name);
         }
 
         nir_shader *nir =
@@ -839,6 +840,8 @@ GENX(pan_blend_get_shader_locked)(const struct panfrost_device *dev,
 #if PAN_ARCH <= 5
         variant->first_tag = info.midgard.first_tag;
 #endif
+
+        variant->name = strdup(nir->info.name);
 
         ralloc_free(nir);
 

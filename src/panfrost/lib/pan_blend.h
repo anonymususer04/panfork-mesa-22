@@ -88,6 +88,7 @@ struct pan_blend_shader_variant {
         struct util_dynarray binary;
         unsigned first_tag;
         unsigned work_reg_count;
+        char *name;
 };
 
 #define PAN_BLEND_SHADER_MAX_VARIANTS 16

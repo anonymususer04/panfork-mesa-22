@@ -115,6 +115,15 @@ pandecode_log_cont(const char *format, ...)
         va_end(ap);
 }
 
+static void
+pandecode_log_annotation(struct pandecode_mapped_memory *mem,
+                         mali_ptr addr)
+{
+        const char *ann = pandecode_get_annotation(mem, addr);
+        if (ann)
+                pandecode_log("%s\n", ann);
+}
+
 /* To check for memory safety issues, validates that the given pointer in GPU
  * memory is valid, containing at least sz bytes. The goal is to eliminate
  * GPU-side memory bugs (NULL pointer dereferences, buffer overflows, or buffer
@@ -595,6 +604,7 @@ pandecode_shader_disassemble(mali_ptr shader_ptr, int shader_no, int type,
          * obey indentation rules), and actually do the disassembly! */
 
         pandecode_log_cont("\n\n");
+        pandecode_log_annotation(mem, shader_ptr);
 
         struct midgard_disasm_stats stats = { 0 };
 

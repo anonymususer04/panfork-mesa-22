@@ -3707,6 +3707,10 @@ bi_opt_post_ra(bi_context *ctx)
         }
 }
 
+/* If the shader packs multiple varyings into the same location with different
+ * location_frac, we'll need to lower to a single varying store that collects
+ * all of the channels together. */
+
 static bool
 bifrost_nir_lower_store_component(struct nir_builder *b,
                 nir_instr *instr, void *data)
@@ -3750,7 +3754,7 @@ bifrost_nir_lower_store_component(struct nir_builder *b,
         }
 
         intr->num_components = util_last_bit(mask);
-        nir_instr_rewrite_src_ssa(instr, &intr->src[0], 
+        nir_instr_rewrite_src_ssa(instr, &intr->src[0],
                         nir_vec(b, channels, intr->num_components));
 
         nir_intrinsic_set_component(intr, 0);

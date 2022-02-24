@@ -28,6 +28,7 @@
 
 #include "genxml/gen_macros.h"
 #include "util/rb_tree.h"
+#include "panfrost-job.h"
 
 #include "wrap.h"
 

@@ -58,4 +58,17 @@ void pandecode_jc(uint64_t jc_gpu_va, unsigned gpu_id);
 void
 pandecode_abort_on_fault(uint64_t jc_gpu_va, unsigned gpu_id);
 
+/* Functions for wrapping the blob with panfrost.ko */
+
+struct panfrost_device;
+
+struct panfrost_device *panblob_create_device(void);
+
+mali_ptr panblob_create_bo(struct panfrost_device *dev, uint32_t size,
+                           uint32_t flags);
+
+void *panblob_cpu_addr(struct panfrost_device *dev, mali_ptr gpu);
+
+bool panblob_submit(struct panfrost_device *dev, mali_ptr jc, uint32_t reqs);
+
 #endif /* __MMAP_TRACE_H__ */

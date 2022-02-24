@@ -381,7 +381,7 @@ panfrost_batch_cleanup(struct panfrost_context *ctx, struct panfrost_batch *batc
          * it after marking the batch as inactive? */
         if (crc_rsrc) {
                 panfrost_dump_or_check_crc(ctx, pan_resource(crc_rsrc),
-                                           screen->crc_dump_file, true);
+                                           screen->crc_dump_file, false);
                 fflush(screen->crc_dump_file);
                 pipe_resource_reference(&crc_rsrc, NULL);
         }

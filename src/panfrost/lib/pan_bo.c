@@ -31,6 +31,7 @@
 #include "drm-uapi/panfrost_drm.h"
 
 #include "pan_bo.h"
+#include "pan_core.h"
 #include "pan_device.h"
 #include "pan_util.h"
 #include "wrap.h"
@@ -553,3 +554,29 @@ panfrost_bo_export(struct panfrost_bo *bo)
         return args.fd;
 }
 
+struct pan_core *
+panfrost_do_bo_dump(struct panfrost_device *dev, int dump_fd)
+{
+        struct pan_core *core = panfrost_core_create(dump_fd);
+
+        // TODO: Create a utility function for doing this in sparse_array.c
+
+        struct util_sparse_array *arr = &dev->bo_map;
+
+        const unsigned node_size_log2 = arr->node_size_log2;
+        uintptr_t root = p_atomic_read(&arr->root);
+
+        unsigned root_level = (root & 63);
+        unsigned shift = (root_level + 1) * node_size_log2;
+
+        for (unsigned idx = 0; idx < 1 << shift; ++idx) {
+                struct panfrost_bo *bo = util_sparse_array_get(arr, idx);
+
+                if (bo->size) {
+                        panfrost_core_add(core, bo->ptr.gpu, bo->size,
+                                          bo->ptr.cpu, bo->label, bo->flags);
+                }
+        }
+
+        return core;
+}

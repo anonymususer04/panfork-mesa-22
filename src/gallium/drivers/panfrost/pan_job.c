@@ -25,6 +25,7 @@
  */
 
 #include <assert.h>
+#include <fcntl.h>
 
 #include "drm-uapi/panfrost_drm.h"
 
@@ -37,6 +38,7 @@
 #include "util/rounding.h"
 #include "util/u_framebuffer.h"
 #include "pan_util.h"
+#include "pan_core.h"
 #include "decode.h"
 
 // TODO: Share with compute_checksum_size
@@ -931,6 +933,18 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
         return 0;
 }
 
+/* TODO: Move somewhere else */
+static void
+pan_core_add_instr(struct pan_core_cmdlist *c, uint64_t instr)
+{
+        struct pan_core_cmd cmd = {
+                .type = PAN_CORE_INSTR,
+                .instr = instr,
+        };
+        util_dynarray_append(&c->cmds, struct pan_core_cmd, cmd);
+        ++c->num_instr;
+}
+
 /* Submit both vertex/tiler and fragment jobs for a batch, possibly with an
  * outsync corresponding to the later of the two (since there will be an
  * implicit dep between them) */
@@ -995,6 +1009,41 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
         /* Always used on Bifrost, occassionally used on Midgard */
         bo_handles[num_bos++] = dev->sample_positions->gem_handle;
 
+        static int dump_num = 0;
+        ++dump_num;
+
+        if (dev->debug & (PAN_DBG_SYNC | PAN_DBG_TRACE) &&
+            getenv("BO_DUMP")) {
+                char *name;
+                asprintf(&name, "/tmp/bo_dump.%i.b.core", dump_num);
+                int dump = creat(name, 0666);
+                free(name);
+
+                struct pan_core *core =
+                        panfrost_do_bo_dump(dev, dump);
+
+                struct pan_core_cmdlist cmd = {0};
+
+                /* TODO: A better API for doing all this? */
+                pan_core_add_instr(&cmd, 1 + ((4 + num_bos) << 16));
+
+                pan_core_add_instr(&cmd, batch->scoreboard.first_job);
+                pan_core_add_instr(&cmd, fragjob);
+                pan_core_add_instr(&cmd, num_bos);
+
+                for (unsigned i = 0; i < num_bos; ++i) {
+                        /* The GEM handles are not stored in the dump, so
+                         * instead use the GPU VA of the BO. */
+                        struct panfrost_bo *bo = pan_lookup_bo(dev,
+                                                               bo_handles[i]);
+                        pan_core_add_instr(&cmd, bo->ptr.gpu);
+                }
+
+                panfrost_core_add_cmdlist(core, &cmd);
+                panfrost_core_finish(core);
+                close(dump);
+        }
+
         /* Take the submit lock to make sure no tiler jobs from other context
          * are inserted between our tiler and fragment jobs, failing to do that
          * might result in tiler heap corruption.
@@ -1031,6 +1080,20 @@ done:
                 pthread_mutex_unlock(&dev->submit_lock);
 
         free(bo_handles);
+
+        // TODO: Enable again. Also create three dumps.. one for after the
+        // vertex job.
+        /*
+        if (dev->debug & (PAN_DBG_SYNC | PAN_DBG_TRACE) &&
+            getenv("BO_DUMP")) {
+                char *name;
+                asprintf(&name, "/tmp/bo_dump.%i.r.core", dump_num);
+                int dump = creat(name, 0666);
+                panfrost_do_bo_dump(dev, dump, NULL);
+                free(name);
+                close(dump);
+        }
+        */
 
         return ret;
 }

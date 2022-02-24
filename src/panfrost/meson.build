@@ -83,6 +83,18 @@ if with_clc
   )
 endif
 
+# TODO: Create a directory for tool sources (also with pan_clc and bifrost_compiler)
+if libdw.found()
+  prog_pan_replay = executable(
+    'pan_replay',
+    'lib/pan_replay.c',
+    include_directories : [inc_include, inc_src, inc_panfrost],
+    c_args : [pre_args, no_override_init_args],
+    dependencies : [dep_libdrm, libpanfrost_dep],
+    build_by_default : with_tools.contains('panfrost'),
+  )
+endif
+
 if with_panfrost_vk
   subdir('vulkan')
 endif

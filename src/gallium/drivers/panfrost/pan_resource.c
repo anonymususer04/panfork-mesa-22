@@ -1249,9 +1249,25 @@ pan_legalize_afbc_format(struct panfrost_context *ctx,
 }
 
 static bool
+panfrost_covers_entire_resource(struct panfrost_resource *prsrc,
+                                struct pipe_box *box, unsigned level)
+{
+        unsigned width = u_minify(prsrc->base.width0, level);
+        unsigned height = u_minify(prsrc->base.height0, level);
+
+        unsigned depth = prsrc->base.target == PIPE_TEXTURE_3D ?
+                u_minify(prsrc->base.depth0, level) : prsrc->base.array_size;
+
+        return box->width == width && box->x == 0 &&
+                box->height == height && box->y == 0 &&
+                box->depth == depth && box->z == 0;
+}
+
+static bool
 panfrost_should_linear_convert(struct panfrost_context *ctx,
                                struct panfrost_resource *prsrc,
-                               struct pipe_transfer *transfer)
+                               struct pipe_transfer *transfer,
+                               bool entire)
 {
         if (prsrc->modifier_constant)
                 return false;
@@ -1264,18 +1280,7 @@ panfrost_should_linear_convert(struct panfrost_context *ctx,
          * overwrites to keep things simple, but we could do better.
          */
 
-        unsigned depth = prsrc->base.target == PIPE_TEXTURE_3D ?
-                         prsrc->base.depth0 : prsrc->base.array_size;
-        bool entire_overwrite =
-                prsrc->base.last_level == 0 &&
-                transfer->box.width == prsrc->base.width0 &&
-                transfer->box.height == prsrc->base.height0 &&
-                transfer->box.depth == depth &&
-                transfer->box.x == 0 &&
-                transfer->box.y == 0 &&
-                transfer->box.z == 0;
-
-        if (entire_overwrite)
+        if (prsrc->base.last_level == 0 && entire)
                 ++prsrc->modifier_updates;
 
         if (prsrc->modifier_updates >= LAYOUT_CONVERT_THRESHOLD) {
@@ -1495,7 +1500,10 @@ panfrost_ptr_unmap(struct pipe_context *pctx,
 
         if (trans->staging.rsrc) {
                 if (transfer->usage & PIPE_MAP_WRITE) {
-                        if (panfrost_should_linear_convert(ctx, prsrc, transfer)) {
+                        bool entire = panfrost_covers_entire_resource(prsrc,
+                                              &transfer->box, transfer->level);
+
+                        if (panfrost_should_linear_convert(ctx, prsrc, transfer, entire)) {
 
                                 panfrost_bo_unreference(prsrc->image.data.bo);
                                 if (prsrc->image.crc.bo)
@@ -1530,8 +1538,10 @@ panfrost_ptr_unmap(struct pipe_context *pctx,
 
                         if (prsrc->image.layout.modifier == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED) {
                                 assert(transfer->box.depth == 1);
+                                bool entire = panfrost_covers_entire_resource(prsrc,
+                                                      &transfer->box, transfer->level);
 
-                                if (panfrost_should_linear_convert(ctx, prsrc, transfer)) {
+                                if (panfrost_should_linear_convert(ctx, prsrc, transfer, entire)) {
                                         panfrost_resource_setup(dev, prsrc, DRM_FORMAT_MOD_LINEAR,
                                                                 prsrc->image.layout.format);
                                         if (prsrc->image.layout.data_size > bo->size) {

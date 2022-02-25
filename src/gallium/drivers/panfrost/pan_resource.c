@@ -803,7 +803,8 @@ panfrost_clear_render_target(struct pipe_context *pipe,
 
         /* TODO: dstx, etc. */
 
-        struct pipe_framebuffer_state tmp = ctx->pipe_framebuffer;
+        struct pipe_framebuffer_state tmp = {0};
+        util_copy_framebuffer_state(&tmp, &ctx->pipe_framebuffer);
 
         struct pipe_framebuffer_state fb = {
                 .width = dst->width,
@@ -819,6 +820,7 @@ panfrost_clear_render_target(struct pipe_context *pipe,
         panfrost_batch_clear(batch, PIPE_CLEAR_COLOR0, color, 0, 0);
 
         pipe->set_framebuffer_state(pipe, &tmp);
+        util_unreference_framebuffer_state(&tmp);
 }
 
 static void
@@ -834,7 +836,8 @@ panfrost_clear_depth_stencil(struct pipe_context *pipe,
 
         /* TODO: dstx, etc. */
 
-        struct pipe_framebuffer_state tmp = ctx->pipe_framebuffer;
+        struct pipe_framebuffer_state tmp;
+        util_copy_framebuffer_state(&tmp, &ctx->pipe_framebuffer);
 
         struct pipe_framebuffer_state fb = {
                 .width = dst->width,
@@ -850,6 +853,7 @@ panfrost_clear_depth_stencil(struct pipe_context *pipe,
         panfrost_batch_clear(batch, clear_flags, NULL, depth, stencil);
 
         pipe->set_framebuffer_state(pipe, &tmp);
+        util_unreference_framebuffer_state(&tmp);
 }
 
 /* Most of the time we can do CPU-side transfers, but sometimes we need to use

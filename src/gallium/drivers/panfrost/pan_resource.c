@@ -1421,8 +1421,7 @@ panfrost_compact_afbc(struct panfrost_context *ctx,
 
         unsigned saved = p_atomic_add_return(&screen->compaction_size_saved,
                                              rsrc->compact_saved);
-        if (dev->debug & PAN_DBG_PERF)
-                printf("%i%%: %i KB -> %i KB (total %i MB saved)\n",
+        perf_debug_ctx(ctx, "%i%%: %i KB -> %i KB (total %i MB saved)\n",
                        100 * bo_size / old_size,
                        old_size / 1024, bo_size / 1024,
                        saved / 1024 / 1024);

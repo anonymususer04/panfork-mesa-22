@@ -226,6 +226,8 @@ struct panfrost_context {
         /* Used for printf from driver-internal compute kernels */
         unsigned printf_info_count;
         nir_printf_info *printf_info;
+
+        struct pipe_debug_callback debug;
 };
 
 /* Corresponds to the CSO */

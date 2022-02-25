@@ -1049,6 +1049,18 @@ panfrost_set_stream_output_targets(struct pipe_context *pctx,
         so->num_targets = num_targets;
 }
 
+static void
+panfrost_set_debug_callback(struct pipe_context *pctx,
+                            const struct pipe_debug_callback *cb)
+{
+        struct panfrost_context *ctx = pan_context(pctx);
+
+        if (cb)
+                ctx->debug = *cb;
+        else
+                memset(&ctx->debug, 0, sizeof(ctx->debug));
+}
+
 struct pipe_context *
 panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 {
@@ -1058,6 +1070,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
         gallium->screen = screen;
 
+        gallium->set_debug_callback = panfrost_set_debug_callback;
         gallium->destroy = panfrost_destroy;
 
         gallium->set_framebuffer_state = panfrost_set_framebuffer_state;

@@ -1233,8 +1233,16 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
                 push_cpu += src.size;
         }
 
-        unsigned extra_size = (push_align == 8) ?
-                ((uintptr_t)push_cpu & 4) : (16 - ((uintptr_t)push_cpu & 0xc));
+        unsigned extra_size;
+        if (push_align == 8) {
+                extra_size = (uintptr_t)push_cpu & 4;
+        } else {
+                /*     0  4  8 12
+                 * =>  4  0 12  8
+                 * =>  0 -4  8  4
+                 * =>  0 12  8  4 */
+                extra_size = (((uintptr_t)push_cpu ^ 4) - 4) & 0xc;
+        }
 
         if (extra_size)
                 memset(push_cpu, 0, extra_size);

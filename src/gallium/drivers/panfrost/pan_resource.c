@@ -1520,7 +1520,7 @@ panfrost_ptr_unmap(struct pipe_context *pctx,
                                                 "AFBC write staging blit");
                                 panfrost_update_afbc_data_size(ctx, prsrc, transfer->level);
 
-                                if (transfer->level == prsrc->base.last_level)
+                                if (entire && transfer->level == prsrc->base.last_level)
                                         panfrost_compact_afbc(ctx, prsrc);
                         }
                 }

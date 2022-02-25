@@ -158,8 +158,11 @@ void panfrost_cmdstream_screen_init_v7(struct panfrost_screen *screen);
                         mesa_logw(__VA_ARGS__); \
         } while(0)
 
-#define perf_debug_ctx(ctx, ...) \
-        perf_debug(pan_device((ctx)->base.screen), __VA_ARGS__);
+#define perf_debug_ctx(ctx, ...) do {                                   \
+        perf_debug(pan_device((ctx)->base.screen), __VA_ARGS__);        \
+        if (unlikely(ctx->debug.debug_message))                         \
+                util_debug_message(&ctx->debug, PERF_INFO, __VA_ARGS__); \
+        } while (0)
 
 struct panfrost_kernel {
         struct pan_kernel base;

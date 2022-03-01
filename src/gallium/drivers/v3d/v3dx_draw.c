@@ -222,6 +222,9 @@ v3d_predraw_check_stage_inputs(struct pipe_context *pctx,
                 u_foreach_bit(i, v3d->vertexbuf.enabled_mask) {
                         struct pipe_vertex_buffer *vb = &v3d->vertexbuf.vb[i];
 
+                        if (!vb->buffer.resource)
+                                continue;
+
                         v3d_flush_jobs_writing_resource(v3d, vb->buffer.resource,
                                                         V3D_FLUSH_DEFAULT,
                                                         false);

@@ -1,23 +1,20 @@
 extern crate mesa_rust;
 extern crate rusticl_opencl_gen;
 
+use crate::api::icd::*;
 use crate::core::context::*;
 use crate::core::device::*;
-
-use crate::decl_cl_type;
-use crate::init_cl_type;
+use crate::impl_cl_type_trait;
 
 use self::mesa_rust::compiler::clc::*;
 use self::rusticl_opencl_gen::*;
 
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::ptr;
+use std::sync::Arc;
 use std::sync::Mutex;
 
-decl_cl_type!(_cl_program, CLProgram, CLProgramRef, CL_INVALID_PROGRAM);
-
-struct CLProgramBuild {
+struct ProgramBuild {
     spirv: Option<spirv::SPIRVBin>,
     status: cl_build_status,
     options: String,
@@ -39,23 +36,26 @@ fn prepare_options(options: &String) -> Vec<CString> {
         .collect()
 }
 
-pub struct CLProgram {
-    pub cl: cl_program,
+#[repr(C)]
+pub struct Program {
+    pub base: CLObjectBase<CL_INVALID_PROGRAM>,
     pub context: CLContextRef,
     pub devs: Vec<CLDeviceRef>,
     pub src: CString,
     pub kernels: Vec<String>,
-    builds: HashMap<CLDeviceRef, Mutex<CLProgramBuild>>,
+    builds: HashMap<CLDeviceRef, Mutex<ProgramBuild>>,
 }
 
-impl CLProgram {
-    pub fn new(context: &CLContextRef, devs: &Vec<CLDeviceRef>, src: CString) -> CLProgramRef {
+impl_cl_type_trait!(cl_program, Program, CL_INVALID_PROGRAM);
+
+impl Program {
+    pub fn new(context: &CLContextRef, devs: &Vec<CLDeviceRef>, src: CString) -> Arc<Program> {
         let builds = devs
             .iter()
             .map(|d| {
                 (
                     d.clone(),
-                    Mutex::new(CLProgramBuild {
+                    Mutex::new(ProgramBuild {
                         spirv: None,
                         status: CL_BUILD_NONE,
                         log: String::from(""),
@@ -65,16 +65,14 @@ impl CLProgram {
             })
             .collect();
 
-        let c = Self {
-            cl: ptr::null_mut(),
+        Arc::new(Self {
+            base: CLObjectBase::new(),
             context: context.clone(),
             devs: devs.clone(),
             src: src,
             kernels: Vec::new(),
             builds: builds,
-        };
-
-        init_cl_type!(c, _cl_program)
+        })
     }
 
     pub fn status(&self, dev: &CLDeviceRef) -> cl_build_status {
@@ -122,15 +120,15 @@ impl CLProgram {
     pub fn link(
         context: &CLContextRef,
         devs: &Vec<&CLDeviceRef>,
-        progs: Vec<&mut CLProgramRef>,
-    ) -> CLProgramRef {
+        progs: &Vec<Arc<Program>>,
+    ) -> Arc<Program> {
         let devs: Vec<CLDeviceRef> = devs.iter().map(|d| (*d).clone()).collect();
         let mut builds = HashMap::new();
         let mut kernels = Vec::new();
 
         for d in &devs {
             let mut locks = Vec::new();
-            for p in &progs {
+            for p in progs {
                 locks.push(p.builds.get(d).unwrap().lock())
             }
 
@@ -149,7 +147,7 @@ impl CLProgram {
 
             builds.insert(
                 d.clone(),
-                Mutex::new(CLProgramBuild {
+                Mutex::new(ProgramBuild {
                     spirv: spirv,
                     status: status,
                     log: log,
@@ -159,15 +157,13 @@ impl CLProgram {
         }
 
         kernels.dedup();
-        let c = Self {
-            cl: ptr::null_mut(),
+        Arc::new(Self {
+            base: CLObjectBase::new(),
             context: context.clone(),
             devs: devs,
             src: CString::new("").unwrap(),
             kernels: kernels,
             builds: builds,
-        };
-
-        init_cl_type!(c, _cl_program)
+        })
     }
 }

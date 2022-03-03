@@ -1,6 +1,6 @@
 extern crate rusticl_opencl_gen;
 
-use crate::api::util::*;
+use crate::api::icd::*;
 
 use self::rusticl_opencl_gen::*;
 
@@ -8,7 +8,7 @@ pub fn create_kernel(
     program: cl_program,
     kernel_name: *const ::std::os::raw::c_char,
 ) -> Result<cl_kernel, cl_int> {
-    let _p = program.check()?;
+    let _p = program.get_ref()?;
 
     // CL_INVALID_VALUE if kernel_name is NULL.
     if kernel_name.is_null() {

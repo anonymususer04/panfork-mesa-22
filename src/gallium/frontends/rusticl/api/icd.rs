@@ -702,11 +702,11 @@ extern "C" fn cl_create_program_with_source(
 }
 
 extern "C" fn cl_retain_program(program: cl_program) -> cl_int {
-    checked_call!(program.retain())
+    match_err!(program.retain())
 }
 
 extern "C" fn cl_release_program(program: cl_program) -> cl_int {
-    checked_call!(program.release())
+    match_err!(program.release())
 }
 
 extern "C" fn cl_build_program(
@@ -734,12 +734,12 @@ extern "C" fn cl_get_program_info(
     param_value: *mut ::std::os::raw::c_void,
     param_value_size_ret: *mut usize,
 ) -> cl_int {
-    checked_call!(program.get_info(
+    match_err!(program.get_info(
         param_name,
         param_value_size,
         param_value,
         param_value_size_ret,
-    )?)
+    ))
 }
 
 extern "C" fn cl_get_program_build_info(
@@ -750,13 +750,13 @@ extern "C" fn cl_get_program_build_info(
     param_value: *mut ::std::os::raw::c_void,
     param_value_size_ret: *mut usize,
 ) -> cl_int {
-    checked_call!(program.get_info_obj(
+    match_err!(program.get_info_obj(
         device,
         param_name,
         param_value_size,
         param_value,
         param_value_size_ret,
-    )?)
+    ))
 }
 
 extern "C" fn cl_create_kernel(

@@ -2,6 +2,7 @@ extern crate mesa_rust;
 extern crate mesa_rust_util;
 extern crate rusticl_opencl_gen;
 
+use crate::api::icd::*;
 use crate::api::types::*;
 use crate::api::util::*;
 use crate::core::device::*;
@@ -17,30 +18,32 @@ use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
 
-impl CLInfo<cl_program_info> for crate::core::program::_cl_program {
+impl CLInfo<cl_program_info> for cl_program {
     fn query(&self, q: cl_program_info) -> Result<Vec<u8>, cl_int> {
+        let prog = self.get_ref()?;
         Ok(match q {
-            CL_PROGRAM_CONTEXT => cl_prop::<cl_context>(self.context.cl),
+            CL_PROGRAM_CONTEXT => cl_prop::<cl_context>(prog.context.cl),
             CL_PROGRAM_DEVICES => {
-                cl_prop::<&Vec<cl_device_id>>(&self.devs.iter().map(|d| d.cl).collect())
+                cl_prop::<&Vec<cl_device_id>>(&prog.devs.iter().map(|d| d.cl).collect())
             }
-            CL_PROGRAM_NUM_DEVICES => cl_prop::<cl_uint>(self.devs.len() as cl_uint),
-            CL_PROGRAM_NUM_KERNELS => cl_prop::<usize>(self.kernels.len()),
-            CL_PROGRAM_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refs()),
-            CL_PROGRAM_SOURCE => cl_prop::<&CStr>(self.src.as_c_str()),
+            CL_PROGRAM_NUM_DEVICES => cl_prop::<cl_uint>(prog.devs.len() as cl_uint),
+            CL_PROGRAM_NUM_KERNELS => cl_prop::<usize>(prog.kernels.len()),
+            CL_PROGRAM_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
+            CL_PROGRAM_SOURCE => cl_prop::<&CStr>(prog.src.as_c_str()),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => Err(CL_INVALID_VALUE)?,
         })
     }
 }
 
-impl CLInfoObj<cl_program_build_info, cl_device_id> for crate::core::program::_cl_program {
+impl CLInfoObj<cl_program_build_info, cl_device_id> for cl_program {
     fn query(&self, d: cl_device_id, q: cl_program_build_info) -> Result<Vec<u8>, cl_int> {
+        let prog = self.get_ref()?;
         let dev = d.check()?;
         Ok(match q {
-            CL_PROGRAM_BUILD_LOG => cl_prop::<String>(self.log(dev)),
-            CL_PROGRAM_BUILD_OPTIONS => cl_prop::<String>(self.options(dev)),
-            CL_PROGRAM_BUILD_STATUS => cl_prop::<cl_build_status>(self.status(dev)),
+            CL_PROGRAM_BUILD_LOG => cl_prop::<String>(prog.log(dev)),
+            CL_PROGRAM_BUILD_OPTIONS => cl_prop::<String>(prog.options(dev)),
+            CL_PROGRAM_BUILD_STATUS => cl_prop::<cl_build_status>(prog.status(dev)),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => Err(CL_INVALID_VALUE)?,
         })
@@ -107,12 +110,11 @@ pub fn create_program_with_source(
         }
     }
 
-    Ok(CLProgram::new(
+    Ok(cl_program::from_arc(Program::new(
         c,
         &c.devs,
         CString::new(source).map_err(|_| CL_INVALID_VALUE)?,
-    )
-    .cl)
+    )))
 }
 
 pub fn build_program(
@@ -124,7 +126,7 @@ pub fn build_program(
     user_data: *mut ::std::os::raw::c_void,
 ) -> Result<(), cl_int> {
     let mut res = true;
-    let p = program.check()?;
+    let p = program.get_ref()?;
     let devs = validate_devices(device_list, num_devices, &p.devs)?;
 
     check_cb(&pfn_notify, user_data)?;
@@ -164,7 +166,7 @@ pub fn compile_program(
     user_data: *mut ::std::os::raw::c_void,
 ) -> Result<(), cl_int> {
     let mut res = true;
-    let p = program.check()?;
+    let p = program.get_ref()?;
     let devs = validate_devices(device_list, num_devices, &p.devs)?;
 
     check_cb(&pfn_notify, user_data)?;
@@ -183,7 +185,7 @@ pub fn compile_program(
         unsafe {
             headers.push(spirv::CLCHeader {
                 name: CStr::from_ptr(*header_include_names.add(h)).to_owned(),
-                source: &(*input_headers.add(h)).check()?.src,
+                source: &(*input_headers.add(h)).get_ref()?.src,
             });
         }
     }
@@ -220,7 +222,7 @@ pub fn link_program(
 ) -> Result<(cl_program, cl_int), cl_int> {
     let c = context.check()?;
     let devs = validate_devices(device_list, num_devices, &c.devs)?;
-    let progs = check_cl_objs_mut(input_programs, num_input_programs)?;
+    let progs = cl_program::get_arc_vec_from_arr(input_programs, num_input_programs)?;
 
     check_cb(&pfn_notify, user_data)?;
 
@@ -249,7 +251,7 @@ pub fn link_program(
     }
 
     // CL_LINK_PROGRAM_FAILURE if there is a failure to link the compiled binaries and/or libraries.
-    let res = CLProgram::link(c, &devs, progs);
+    let res = Program::link(c, &devs, &progs);
     let code = if devs
         .iter()
         .map(|d| res.status(d))
@@ -260,9 +262,10 @@ pub fn link_program(
         CL_LINK_PROGRAM_FAILURE
     };
 
-    call_cb(pfn_notify, res.cl, user_data);
+    let res = cl_program::from_arc(res);
 
-    Ok((res.cl, code))
+    call_cb(pfn_notify, res, user_data);
+    Ok((res, code))
 
     //• CL_INVALID_LINKER_OPTIONS if the linker options specified by options are invalid.
     //• CL_INVALID_OPERATION if the rules for devices containing compiled binaries or libraries as described in input_programs argument above are not followed.

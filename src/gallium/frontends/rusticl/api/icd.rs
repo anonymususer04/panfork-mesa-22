@@ -19,6 +19,7 @@ use self::rusticl_opencl_gen::*;
 
 use std::ffi::CStr;
 use std::ptr;
+use std::sync::Arc;
 
 pub static DISPATCH: cl_icd_dispatch = cl_icd_dispatch {
     clGetPlatformIDs: Some(cl_get_platform_ids),
@@ -171,6 +172,148 @@ pub static DISPATCH: cl_icd_dispatch = cl_icd_dispatch {
     clCreateImageWithProperties: None,
     clSetContextDestructorCallback: None,
 };
+
+#[repr(C)]
+pub struct CLObjectBase<const ERR: i32> {
+    dispatch: &'static cl_icd_dispatch,
+    type_err: i32,
+}
+
+impl<const ERR: i32> CLObjectBase<ERR> {
+    pub fn new() -> Self {
+        Self {
+            dispatch: &DISPATCH,
+            type_err: ERR,
+        }
+    }
+
+    pub fn check_ptr(ptr: *const Self) -> Result<(), i32> {
+        if ptr.is_null() {
+            return Err(ERR);
+        }
+
+        unsafe {
+            if !::std::ptr::eq((*ptr).dispatch, &DISPATCH) {
+                return Err(ERR);
+            }
+
+            if (*ptr).type_err != ERR {
+                return Err(ERR);
+            }
+
+            Ok(())
+        }
+    }
+}
+
+pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
+    fn get_ptr(&self) -> Result<*const T, i32>;
+
+    // TODO:  I can't find a trait that would let me say T: pointer so that
+    // I can do the cast in the main trait implementation.  So we need to
+    // implement that as part of the macro where we know the real type.
+    fn from_ptr(ptr: *const T) -> Self;
+
+    fn get_ref(&self) -> Result<&'static T, i32> {
+        unsafe { Ok(self.get_ptr()?.as_ref().unwrap()) }
+    }
+
+    fn get_arc(&self) -> Result<Arc<T>, i32> {
+        unsafe {
+            let ptr = self.get_ptr()?;
+            Arc::increment_strong_count(ptr);
+            Ok(Arc::from_raw(ptr))
+        }
+    }
+
+    fn from_arc(arc: Arc<T>) -> Self
+    where
+        Self: Sized,
+    {
+        Self::from_ptr(Arc::into_raw(arc))
+    }
+
+    fn get_arc_vec_from_arr(objs: *const Self, count: u32) -> Result<Vec<Arc<T>>, i32>
+    where
+        Self: Sized,
+    {
+        // CL spec requires validation for obj arrays, both values have to make sense
+        if objs.is_null() && count > 0 || !objs.is_null() && count == 0 {
+            return Err(CL_INVALID_VALUE);
+        }
+
+        let mut res = Vec::new();
+        if objs.is_null() || count == 0 {
+            return Ok(res);
+        }
+
+        for i in 0..count as usize {
+            unsafe {
+                res.push((*objs.add(i)).get_arc()?);
+            }
+        }
+        Ok(res)
+    }
+
+    fn retain(&self) -> Result<(), i32> {
+        unsafe {
+            Arc::increment_strong_count(self.get_ptr()?);
+            Ok(())
+        }
+    }
+
+    fn release(&self) -> Result<Arc<T>, i32> {
+        unsafe { Ok(Arc::from_raw(self.get_ptr()?)) }
+    }
+
+    fn refcnt(&self) -> Result<u32, i32> {
+        Ok((Arc::strong_count(&self.get_arc()?) - 1) as u32)
+    }
+}
+
+#[macro_export]
+macro_rules! impl_cl_type_trait {
+    ($cl: ident, $t: ty, $err: ident) => {
+        impl crate::api::icd::ReferenceCountedAPIPointer<$t, $err> for $cl {
+            fn get_ptr(&self) -> Result<*const $t, i32> {
+                type Base = crate::api::icd::CLObjectBase<$err>;
+                Base::check_ptr(self.cast())?;
+
+                // Now that we've verified the object, it should be safe to
+                // dereference it.  As one more double check, make sure that
+                // the CLObjectBase is at the start of the object
+                let obj_ptr: *const $t = self.cast();
+                unsafe {
+                    let base_ptr = ::std::ptr::addr_of!((*obj_ptr).base);
+                    assert!((obj_ptr as usize) == (base_ptr as usize));
+                }
+
+                Ok(obj_ptr)
+            }
+
+            fn from_ptr(ptr: *const $t) -> Self {
+                ptr as Self
+            }
+        }
+
+        // there are two reason to implement those traits for all objects
+        //   1. it speeds up operations
+        //   2. we want to check for real equality more explicit to stay conformant with the API
+        //      and to not break in subtle ways e.g. using CL objects as keys in HashMaps.
+        impl std::cmp::Eq for $t {}
+        impl std::cmp::PartialEq for $t {
+            fn eq(&self, other: &Self) -> bool {
+                (self as *const Self) == (other as *const Self)
+            }
+        }
+
+        impl std::hash::Hash for $t {
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                (self as *const Self).hash(state);
+            }
+        }
+    };
+}
 
 // We need those functions exported
 

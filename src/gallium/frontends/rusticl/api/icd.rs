@@ -597,11 +597,11 @@ extern "C" fn cl_create_image_3d(
 }
 
 extern "C" fn cl_retain_mem_object(mem: cl_mem) -> cl_int {
-    checked_call!(mem.retain())
+    match_err!(mem.retain())
 }
 
 extern "C" fn cl_release_mem_object(mem: cl_mem) -> cl_int {
-    checked_call!(mem.release())
+    match_err!(mem.release())
 }
 
 extern "C" fn cl_get_supported_image_formats(
@@ -629,12 +629,12 @@ extern "C" fn cl_get_mem_object_info(
     param_value: *mut ::std::os::raw::c_void,
     param_value_size_ret: *mut usize,
 ) -> cl_int {
-    checked_call!(memobj.get_info(
+    match_err!(memobj.get_info(
         param_name,
         param_value_size,
         param_value,
         param_value_size_ret,
-    )?)
+    ))
 }
 
 extern "C" fn cl_get_image_info(
@@ -644,12 +644,12 @@ extern "C" fn cl_get_image_info(
     param_value: *mut ::std::os::raw::c_void,
     param_value_size_ret: *mut usize,
 ) -> cl_int {
-    checked_call!(image.get_info(
+    match_err!(image.get_info(
         param_name,
         param_value_size,
         param_value,
         param_value_size_ret,
-    )?)
+    ))
 }
 
 extern "C" fn cl_create_sampler(

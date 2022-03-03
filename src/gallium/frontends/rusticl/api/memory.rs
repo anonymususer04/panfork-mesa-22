@@ -17,6 +17,7 @@ use self::rusticl_opencl_gen::*;
 use std::cmp::Ordering;
 use std::os::raw::c_void;
 use std::ptr;
+use std::sync::Arc;
 
 fn validate_mem_flags(flags: cl_mem_flags, images: bool) -> Result<(), cl_int> {
     let mut valid_flags = cl_bitfield::from(
@@ -61,7 +62,7 @@ fn filter_image_access_flags(flags: cl_mem_flags) -> cl_mem_flags {
             as cl_mem_flags
 }
 
-fn inherit_mem_flags(mut flags: cl_mem_flags, mem: &CLMemRef) -> cl_mem_flags {
+fn inherit_mem_flags(mut flags: cl_mem_flags, mem: &Mem) -> cl_mem_flags {
     let read_write_mask = cl_bitfield::from(
         CL_MEM_READ_WRITE |
       CL_MEM_WRITE_ONLY |
@@ -145,10 +146,7 @@ fn validate_host_ptr(
     Ok(())
 }
 
-fn validate_matching_buffer_flags<'a>(
-    mem: &'a CLMemRef,
-    flags: cl_mem_flags,
-) -> Result<(), cl_int> {
+fn validate_matching_buffer_flags<'a>(mem: &'a Mem, flags: cl_mem_flags) -> Result<(), cl_int> {
     // CL_INVALID_VALUE if an image is being created from another memory object (buffer or image)
     // under one of the following circumstances:
     //
@@ -174,21 +172,27 @@ fn validate_matching_buffer_flags<'a>(
     Ok(())
 }
 
-impl CLInfo<cl_mem_info> for crate::core::memory::_cl_mem {
+impl CLInfo<cl_mem_info> for cl_mem {
     fn query(&self, q: cl_mem_info) -> Result<Vec<u8>, cl_int> {
+        let mem = self.get_ref()?;
         Ok(match *q {
             CL_MEM_ASSOCIATED_MEMOBJECT => {
-                cl_prop::<cl_mem>(self.parent.as_ref().map_or(ptr::null_mut(), |m| m.cl))
+                let ptr = match mem.parent.as_ref() {
+                    // Note we use as_ptr here which doesn't increase the reference count.
+                    Some(parent) => Arc::as_ptr(parent),
+                    None => ptr::null(),
+                };
+                cl_prop::<cl_mem>(cl_mem::from_ptr(ptr))
             }
-            CL_MEM_CONTEXT => cl_prop::<cl_context>(self.context.cl),
-            CL_MEM_FLAGS => cl_prop::<cl_mem_flags>(self.flags),
+            CL_MEM_CONTEXT => cl_prop::<cl_context>(mem.context.cl),
+            CL_MEM_FLAGS => cl_prop::<cl_mem_flags>(mem.flags),
             // TODO debugging feature
             CL_MEM_MAP_COUNT => cl_prop::<cl_uint>(0),
-            CL_MEM_HOST_PTR => cl_prop::<*mut c_void>(self.host_ptr),
-            CL_MEM_OFFSET => cl_prop::<usize>(self.offset),
-            CL_MEM_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refs()),
-            CL_MEM_SIZE => cl_prop::<usize>(self.size),
-            CL_MEM_TYPE => cl_prop::<cl_mem_object_type>(self.mem_type),
+            CL_MEM_HOST_PTR => cl_prop::<*mut c_void>(mem.host_ptr),
+            CL_MEM_OFFSET => cl_prop::<usize>(mem.offset),
+            CL_MEM_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
+            CL_MEM_SIZE => cl_prop::<usize>(mem.size),
+            CL_MEM_TYPE => cl_prop::<cl_mem_object_type>(mem.mem_type),
             _ => Err(CL_INVALID_VALUE)?,
         })
     }
@@ -219,7 +223,7 @@ pub fn create_buffer(
 
     validate_host_ptr(host_ptr, flags)?;
 
-    Ok(CLMem::new_buffer(c, flags, size, host_ptr)?.cl)
+    Ok(cl_mem::from_arc(Mem::new_buffer(c, flags, size, host_ptr)?))
 }
 
 pub fn create_sub_buffer(
@@ -228,16 +232,16 @@ pub fn create_sub_buffer(
     buffer_create_type: cl_buffer_create_type,
     buffer_create_info: *const ::std::os::raw::c_void,
 ) -> Result<cl_mem, cl_int> {
-    let b = buffer.check()?;
+    let b = buffer.get_arc()?;
 
     // CL_INVALID_MEM_OBJECT if buffer ... is a sub-buffer object.
     if b.parent.is_some() {
         Err(CL_INVALID_MEM_OBJECT)?
     }
 
-    validate_matching_buffer_flags(b, flags)?;
+    validate_matching_buffer_flags(&b, flags)?;
 
-    flags = inherit_mem_flags(flags, b);
+    flags = inherit_mem_flags(flags, &b);
     validate_mem_flags(flags, false)?;
 
     let (offset, size) = match buffer_create_type {
@@ -267,7 +271,9 @@ pub fn create_sub_buffer(
         _ => Err(CL_INVALID_VALUE)?,
     };
 
-    Ok(CLMem::new_sub_buffer(b, flags, offset, size).cl)
+    Ok(cl_mem::from_arc(Mem::new_sub_buffer(
+        &b, flags, offset, size,
+    )))
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if there are no devices in context associated with buffer for which the origin field of the cl_buffer_region structure passed in buffer_create_info is aligned to the CL_DEVICE_MEM_BASE_ADDR_ALIGN value.
@@ -278,7 +284,7 @@ pub fn set_mem_object_destructor_callback(
     pfn_notify: Option<MemCB>,
     user_data: *mut ::std::os::raw::c_void,
 ) -> Result<(), cl_int> {
-    let m = memobj.check()?;
+    let m = memobj.get_ref()?;
 
     // CL_INVALID_VALUE if pfn_notify is NULL.
     if pfn_notify.is_none() {
@@ -518,7 +524,7 @@ fn validate_buffer(
     // the specified memory objects data store are modified, those changes are reflected in the
     // contents of the image object and vice-versa at corresponding synchronization points.
     if !mem_object.is_null() {
-        let mem = mem_object.check()?;
+        let mem = mem_object.get_ref()?;
 
         match mem.mem_type {
             CL_MEM_OBJECT_BUFFER => {
@@ -622,20 +628,21 @@ fn validate_buffer(
     Ok(flags)
 }
 
-impl CLInfo<cl_image_info> for crate::core::memory::_cl_mem {
+impl CLInfo<cl_image_info> for cl_mem {
     fn query(&self, q: cl_image_info) -> Result<Vec<u8>, cl_int> {
+        let mem = self.get_ref()?;
         Ok(match *q {
-            CL_IMAGE_ARRAY_SIZE => cl_prop::<usize>(self.image_desc.image_array_size),
-            CL_IMAGE_BUFFER => cl_prop::<cl_mem>(unsafe { self.image_desc.anon_1.buffer }),
-            CL_IMAGE_DEPTH => cl_prop::<usize>(self.image_desc.image_depth),
-            CL_IMAGE_ELEMENT_SIZE => cl_prop::<usize>(self.image_elem_size.into()),
-            CL_IMAGE_FORMAT => cl_prop::<cl_image_format>(self.image_format),
-            CL_IMAGE_HEIGHT => cl_prop::<usize>(self.image_desc.image_height),
-            CL_IMAGE_NUM_MIP_LEVELS => cl_prop::<cl_uint>(self.image_desc.num_mip_levels),
-            CL_IMAGE_NUM_SAMPLES => cl_prop::<cl_uint>(self.image_desc.num_samples),
-            CL_IMAGE_ROW_PITCH => cl_prop::<usize>(self.image_desc.image_row_pitch),
-            CL_IMAGE_SLICE_PITCH => cl_prop::<usize>(self.image_desc.image_slice_pitch),
-            CL_IMAGE_WIDTH => cl_prop::<usize>(self.image_desc.image_width),
+            CL_IMAGE_ARRAY_SIZE => cl_prop::<usize>(mem.image_desc.image_array_size),
+            CL_IMAGE_BUFFER => cl_prop::<cl_mem>(unsafe { mem.image_desc.anon_1.buffer }),
+            CL_IMAGE_DEPTH => cl_prop::<usize>(mem.image_desc.image_depth),
+            CL_IMAGE_ELEMENT_SIZE => cl_prop::<usize>(mem.image_elem_size.into()),
+            CL_IMAGE_FORMAT => cl_prop::<cl_image_format>(mem.image_format),
+            CL_IMAGE_HEIGHT => cl_prop::<usize>(mem.image_desc.image_height),
+            CL_IMAGE_NUM_MIP_LEVELS => cl_prop::<cl_uint>(mem.image_desc.num_mip_levels),
+            CL_IMAGE_NUM_SAMPLES => cl_prop::<cl_uint>(mem.image_desc.num_samples),
+            CL_IMAGE_ROW_PITCH => cl_prop::<usize>(mem.image_desc.image_row_pitch),
+            CL_IMAGE_SLICE_PITCH => cl_prop::<usize>(mem.image_desc.image_slice_pitch),
+            CL_IMAGE_WIDTH => cl_prop::<usize>(mem.image_desc.image_width),
             _ => Err(CL_INVALID_VALUE)?,
         })
     }
@@ -679,7 +686,15 @@ pub fn create_image(
         .find(|f| *f & filtered_flags == filtered_flags)
         .ok_or(CL_IMAGE_FORMAT_NOT_SUPPORTED)?;
 
-    Ok(CLMem::new_image(c, desc.image_type, flags, format, desc, elem_size, host_ptr).cl)
+    Ok(cl_mem::from_arc(Mem::new_image(
+        c,
+        desc.image_type,
+        flags,
+        format,
+        desc,
+        elem_size,
+        host_ptr,
+    )))
 }
 
 pub fn get_supported_image_formats(
@@ -725,16 +740,13 @@ pub fn get_supported_image_formats(
 
 impl CLInfo<cl_sampler_info> for cl_sampler {
     fn query(&self, q: cl_sampler_info) -> Result<Vec<u8>, cl_int> {
-        if q == CL_SAMPLER_REFERENCE_COUNT {
-            return Ok(cl_prop::<cl_uint>(self.refcnt()?));
-        }
-
         let sampler = self.get_ref()?;
         Ok(match q {
             CL_SAMPLER_ADDRESSING_MODE => cl_prop::<cl_addressing_mode>(sampler.addressing_mode),
             CL_SAMPLER_CONTEXT => cl_prop::<cl_context>(sampler.context.cl),
             CL_SAMPLER_FILTER_MODE => cl_prop::<cl_filter_mode>(sampler.filter_mode),
             CL_SAMPLER_NORMALIZED_COORDS => cl_prop::<bool>(sampler.normalized_coords),
+            CL_SAMPLER_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => Err(CL_INVALID_VALUE)?,
         })
@@ -782,7 +794,7 @@ pub fn enqueue_write_buffer(
     event: *mut cl_event,
 ) -> Result<(), cl_int> {
     let q = command_queue.get_arc()?;
-    let b = buffer.check()?.clone();
+    let b = buffer.get_arc()?;
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
 
     // CL_INVALID_VALUE if the region being read or written specified by (offset, size) is out of
@@ -847,7 +859,7 @@ pub fn enqueue_read_buffer_rect(
 ) -> Result<(), cl_int> {
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
     let q = command_queue.get_arc()?;
-    let buf = buffer.check()?.clone();
+    let buf = buffer.get_arc()?;
     let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if clEnqueueReadBufferRect is called on buffer which has been created
@@ -974,7 +986,7 @@ pub fn enqueue_write_buffer_rect(
 ) -> Result<(), cl_int> {
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
     let q = command_queue.get_arc()?;
-    let buf = buffer.check()?.clone();
+    let buf = buffer.get_arc()?;
     let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if clEnqueueWriteBufferRect is called on buffer which has been created
@@ -1099,8 +1111,8 @@ pub fn enqueue_copy_buffer_rect(
     event: *mut cl_event,
 ) -> Result<(), cl_int> {
     let q = command_queue.get_arc()?;
-    let src = src_buffer.check()?.clone();
-    let dst = dst_buffer.check()?.clone();
+    let src = src_buffer.get_arc()?;
+    let dst = dst_buffer.get_arc()?;
     let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_VALUE if src_origin, dst_origin, or region is NULL.
@@ -1237,7 +1249,7 @@ pub fn enqueue_map_buffer(
     event: *mut cl_event,
 ) -> Result<*mut c_void, cl_int> {
     let q = command_queue.get_arc()?;
-    let b = buffer.check()?;
+    let b = buffer.get_arc()?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
 
     // CL_INVALID_VALUE if region being mapped given by (offset, size) is out of bounds or if size
@@ -1309,7 +1321,7 @@ pub fn enqueue_unmap_mem_object(
     event: *mut cl_event,
 ) -> Result<(), cl_int> {
     let q = command_queue.get_arc()?;
-    let m = memobj.check()?;
+    let m = memobj.get_ref()?;
     let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if context associated with command_queue and memobj are not the same or if

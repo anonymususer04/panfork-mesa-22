@@ -6,9 +6,7 @@ use crate::api::types::*;
 use crate::api::util::*;
 use crate::core::context::*;
 use crate::core::queue::*;
-use crate::decl_cl_type;
 use crate::impl_cl_type_trait;
-use crate::init_cl_type;
 
 use self::mesa_rust::pipe::resource::*;
 use self::mesa_rust::pipe::transfer::*;
@@ -21,12 +19,11 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-decl_cl_type!(_cl_mem, CLMem, CLMemRef, CL_INVALID_MEM_OBJECT);
-
-pub struct CLMem {
-    pub cl: cl_mem,
+#[repr(C)]
+pub struct Mem {
+    pub base: CLObjectBase<CL_INVALID_MEM_OBJECT>,
     pub context: CLContextRef,
-    pub parent: Option<CLMemRef>,
+    pub parent: Option<Arc<Mem>>,
     pub mem_type: cl_mem_object_type,
     pub flags: cl_mem_flags,
     pub size: usize,
@@ -39,6 +36,8 @@ pub struct CLMem {
     res: Option<HashMap<cl_device_id, PipeResource>>,
     maps: Mutex<HashMap<*mut c_void, PipeTransfer>>,
 }
+
+impl_cl_type_trait!(cl_mem, Mem, CL_INVALID_MEM_OBJECT);
 
 fn sw_copy(
     src: *const c_void,
@@ -64,13 +63,13 @@ fn sw_copy(
     }
 }
 
-impl CLMem {
+impl Mem {
     pub fn new_buffer(
         context: &CLContextRef,
         flags: cl_mem_flags,
         size: usize,
         host_ptr: *mut c_void,
-    ) -> Result<CLMemRef, cl_int> {
+    ) -> Result<Arc<Mem>, i32> {
         if bit_check(flags, CL_MEM_COPY_HOST_PTR | CL_MEM_ALLOC_HOST_PTR) {
             println!("host ptr semantics not implemented!");
         }
@@ -81,8 +80,8 @@ impl CLMem {
             context.create_buffer(size)
         }?;
 
-        let m = Self {
-            cl: ptr::null_mut(),
+        Ok(Arc::new(Self {
+            base: CLObjectBase::new(),
             context: context.clone(),
             parent: None,
             mem_type: CL_MEM_OBJECT_BUFFER,
@@ -96,19 +95,17 @@ impl CLMem {
             cbs: Mutex::new(Vec::new()),
             res: Some(buffer),
             maps: Mutex::new(HashMap::new()),
-        };
-
-        Ok(init_cl_type!(m, _cl_mem))
+        }))
     }
 
     pub fn new_sub_buffer(
-        parent: &CLMemRef,
+        parent: &Arc<Mem>,
         flags: cl_mem_flags,
         offset: usize,
         size: usize,
-    ) -> CLMemRef {
-        let m = Self {
-            cl: ptr::null_mut(),
+    ) -> Arc<Mem> {
+        Arc::new(Self {
+            base: CLObjectBase::new(),
             context: parent.context.clone(),
             parent: Some(parent.clone()),
             mem_type: CL_MEM_OBJECT_BUFFER,
@@ -122,9 +119,7 @@ impl CLMem {
             cbs: Mutex::new(Vec::new()),
             res: None,
             maps: Mutex::new(HashMap::new()),
-        };
-
-        init_cl_type!(m, _cl_mem)
+        })
     }
 
     pub fn new_image(
@@ -135,7 +130,7 @@ impl CLMem {
         image_desc: cl_image_desc,
         image_elem_size: u8,
         host_ptr: *mut c_void,
-    ) -> CLMemRef {
+    ) -> Arc<Mem> {
         if bit_check(
             flags,
             CL_MEM_USE_HOST_PTR | CL_MEM_COPY_HOST_PTR | CL_MEM_ALLOC_HOST_PTR,
@@ -143,8 +138,8 @@ impl CLMem {
             println!("host ptr semantics not implemented!");
         }
 
-        let m = Self {
-            cl: ptr::null_mut(),
+        Arc::new(Self {
+            base: CLObjectBase::new(),
             context: context.clone(),
             parent: None,
             mem_type: mem_type,
@@ -158,15 +153,13 @@ impl CLMem {
             cbs: Mutex::new(Vec::new()),
             res: None,
             maps: Mutex::new(HashMap::new()),
-        };
-
-        init_cl_type!(m, _cl_mem)
+        })
     }
 
     pub fn has_same_parent(&self, other: &Self) -> bool {
         let a = self.parent.as_ref().map_or(self, |p| &p);
         let b = other.parent.as_ref().map_or(other, |p| &p);
-        a == b
+        (a as *const Self) == (b as *const Self)
     }
 
     fn get_res(&self) -> &HashMap<cl_device_id, PipeResource> {
@@ -317,9 +310,9 @@ impl CLMem {
     }
 }
 
-impl Drop for CLMem {
+impl Drop for Mem {
     fn drop(&mut self) {
-        let cl = self.cl;
+        let cl = cl_mem::from_ptr(self);
         self.cbs
             .get_mut()
             .unwrap()

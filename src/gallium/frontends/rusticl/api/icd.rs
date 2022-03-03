@@ -666,11 +666,11 @@ extern "C" fn cl_create_sampler(
 }
 
 extern "C" fn cl_retain_sampler(sampler: cl_sampler) -> cl_int {
-    checked_call!(sampler.retain())
+    match_err!(sampler.retain())
 }
 
 extern "C" fn cl_release_sampler(sampler: cl_sampler) -> cl_int {
-    checked_call!(sampler.release())
+    match_err!(sampler.release())
 }
 
 extern "C" fn cl_get_sampler_info(
@@ -680,12 +680,12 @@ extern "C" fn cl_get_sampler_info(
     param_value: *mut ::std::os::raw::c_void,
     param_value_size_ret: *mut usize,
 ) -> cl_int {
-    checked_call!(sampler.get_info(
+    match_err!(sampler.get_info(
         param_name,
         param_value_size,
         param_value,
         param_value_size_ret,
-    )?)
+    ))
 }
 
 extern "C" fn cl_create_program_with_source(

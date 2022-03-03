@@ -1,11 +1,13 @@
 extern crate mesa_rust;
 extern crate rusticl_opencl_gen;
 
+use crate::api::icd::*;
 use crate::api::types::*;
 use crate::api::util::*;
 use crate::core::context::*;
 use crate::core::queue::*;
 use crate::decl_cl_type;
+use crate::impl_cl_type_trait;
 use crate::init_cl_type;
 
 use self::mesa_rust::pipe::resource::*;
@@ -20,7 +22,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 decl_cl_type!(_cl_mem, CLMem, CLMemRef, CL_INVALID_MEM_OBJECT);
-decl_cl_type!(_cl_sampler, CLSampler, CLSamplerRef, CL_INVALID_SAMPLER);
 
 pub struct CLMem {
     pub cl: cl_mem,
@@ -328,29 +329,30 @@ impl Drop for CLMem {
     }
 }
 
-pub struct CLSampler {
-    pub cl: cl_sampler,
+#[repr(C)]
+pub struct Sampler {
+    pub base: CLObjectBase<CL_INVALID_SAMPLER>,
     pub context: CLContextRef,
     pub normalized_coords: bool,
     pub addressing_mode: cl_addressing_mode,
     pub filter_mode: cl_filter_mode,
 }
 
-impl CLSampler {
+impl_cl_type_trait!(cl_sampler, Sampler, CL_INVALID_SAMPLER);
+
+impl Sampler {
     pub fn new(
         context: &CLContextRef,
         normalized_coords: bool,
         addressing_mode: cl_addressing_mode,
         filter_mode: cl_filter_mode,
-    ) -> CLSamplerRef {
-        let s = Self {
-            cl: ptr::null_mut(),
+    ) -> Arc<Sampler> {
+        Arc::new(Self {
+            base: CLObjectBase::new(),
             context: context.clone(),
             normalized_coords: normalized_coords,
             addressing_mode: addressing_mode,
             filter_mode: filter_mode,
-        };
-
-        init_cl_type!(s, _cl_sampler)
+        })
     }
 }

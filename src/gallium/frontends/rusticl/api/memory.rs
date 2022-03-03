@@ -723,14 +723,18 @@ pub fn get_supported_image_formats(
     Ok(())
 }
 
-impl CLInfo<cl_sampler_info> for crate::core::memory::_cl_sampler {
+impl CLInfo<cl_sampler_info> for cl_sampler {
     fn query(&self, q: cl_sampler_info) -> Result<Vec<u8>, cl_int> {
+        if q == CL_SAMPLER_REFERENCE_COUNT {
+            return Ok(cl_prop::<cl_uint>(self.refcnt()?));
+        }
+
+        let sampler = self.get_ref()?;
         Ok(match q {
-            CL_SAMPLER_ADDRESSING_MODE => cl_prop::<cl_addressing_mode>(self.addressing_mode),
-            CL_SAMPLER_CONTEXT => cl_prop::<cl_context>(self.context.cl),
-            CL_SAMPLER_FILTER_MODE => cl_prop::<cl_filter_mode>(self.filter_mode),
-            CL_SAMPLER_NORMALIZED_COORDS => cl_prop::<bool>(self.normalized_coords),
-            CL_SAMPLER_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refs()),
+            CL_SAMPLER_ADDRESSING_MODE => cl_prop::<cl_addressing_mode>(sampler.addressing_mode),
+            CL_SAMPLER_CONTEXT => cl_prop::<cl_context>(sampler.context.cl),
+            CL_SAMPLER_FILTER_MODE => cl_prop::<cl_filter_mode>(sampler.filter_mode),
+            CL_SAMPLER_NORMALIZED_COORDS => cl_prop::<bool>(sampler.normalized_coords),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => Err(CL_INVALID_VALUE)?,
         })
@@ -757,13 +761,13 @@ pub fn create_sampler(
     validate_addressing_mode(addressing_mode)?;
     validate_filter_mode(filter_mode)?;
 
-    Ok(CLSampler::new(
+    let sampler = Sampler::new(
         c,
         check_cl_bool(normalized_coords).ok_or(CL_INVALID_VALUE)?,
         addressing_mode,
         filter_mode,
-    )
-    .cl)
+    );
+    Ok(cl_sampler::from_arc(sampler))
 }
 
 pub fn enqueue_write_buffer(

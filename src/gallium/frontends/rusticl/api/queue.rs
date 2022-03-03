@@ -1,17 +1,19 @@
 extern crate rusticl_opencl_gen;
 
+use crate::api::icd::*;
 use crate::api::util::*;
 use crate::core::queue::*;
 
 use self::rusticl_opencl_gen::*;
 
-impl CLInfo<cl_command_queue_info> for crate::core::queue::_cl_command_queue {
-    fn query(&self, q: cl_command_queue_info) -> Result<Vec<u8>, cl_int> {
+impl CLInfo<cl_command_queue_info> for cl_command_queue {
+    fn query(&self, q: cl_command_queue_info) -> Result<Vec<u8>, i32> {
+        let queue = self.get_ref()?;
         Ok(match q {
-            CL_QUEUE_CONTEXT => cl_prop::<cl_context>(self.context.cl),
-            CL_QUEUE_DEVICE => cl_prop::<cl_device_id>(self.device.cl),
-            CL_QUEUE_PROPERTIES => cl_prop::<cl_command_queue_properties>(self.props),
-            CL_QUEUE_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refs()),
+            CL_QUEUE_CONTEXT => cl_prop::<cl_context>(queue.context.cl),
+            CL_QUEUE_DEVICE => cl_prop::<cl_device_id>(queue.device.cl),
+            CL_QUEUE_PROPERTIES => cl_prop::<cl_command_queue_properties>(queue.props),
+            CL_QUEUE_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => Err(CL_INVALID_VALUE)?,
         })
@@ -55,12 +57,11 @@ pub fn create_command_queue(
         return Err(CL_INVALID_QUEUE_PROPERTIES);
     }
 
-    Ok(CLQueue::new(c, d, properties)?.cl)
+    Ok(cl_command_queue::from_arc(Queue::new(c, d, properties)?))
 }
 
 pub fn finish_queue(command_queue: cl_command_queue) -> Result<(), cl_int> {
     // CL_INVALID_COMMAND_QUEUE if command_queue is not a valid host command-queue.
-    command_queue.check()?;
-
+    command_queue.get_ref()?;
     Ok(())
 }

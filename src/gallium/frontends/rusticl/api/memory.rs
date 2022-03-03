@@ -777,7 +777,7 @@ pub fn enqueue_write_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> Result<(), cl_int> {
-    let q = command_queue.check()?;
+    let q = command_queue.get_arc()?;
     let b = buffer.check()?.clone();
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
 
@@ -842,7 +842,7 @@ pub fn enqueue_read_buffer_rect(
     event: *mut cl_event,
 ) -> Result<(), cl_int> {
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
-    let q = command_queue.check()?;
+    let q = command_queue.get_arc()?;
     let buf = buffer.check()?.clone();
     let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;
 
@@ -969,7 +969,7 @@ pub fn enqueue_write_buffer_rect(
     event: *mut cl_event,
 ) -> Result<(), cl_int> {
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
-    let q = command_queue.check()?;
+    let q = command_queue.get_arc()?;
     let buf = buffer.check()?.clone();
     let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;
 
@@ -1094,7 +1094,7 @@ pub fn enqueue_copy_buffer_rect(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> Result<(), cl_int> {
-    let q = command_queue.check()?;
+    let q = command_queue.get_arc()?;
     let src = src_buffer.check()?.clone();
     let dst = dst_buffer.check()?.clone();
     let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;
@@ -1232,7 +1232,7 @@ pub fn enqueue_map_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> Result<*mut c_void, cl_int> {
-    let q = command_queue.check()?;
+    let q = command_queue.get_arc()?;
     let b = buffer.check()?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
 
@@ -1289,7 +1289,7 @@ pub fn enqueue_map_buffer(
         q.flush(true)?;
     }
 
-    Ok(b.map(q, offset, size))
+    Ok(b.map(&q, offset, size))
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for the device associated with queue. This error code is missing before version 1.1.
     // CL_MAP_FAILURE if there is a failure to map the requested region into the host address space. This error cannot occur for buffer objects created with CL_MEM_USE_HOST_PTR or CL_MEM_ALLOC_HOST_PTR.
@@ -1304,7 +1304,7 @@ pub fn enqueue_unmap_mem_object(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> Result<(), cl_int> {
-    let q = command_queue.check()?;
+    let q = command_queue.get_arc()?;
     let m = memobj.check()?;
     let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;
 

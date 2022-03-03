@@ -7,6 +7,7 @@ use crate::core::event::*;
 use self::rusticl_opencl_gen::*;
 
 use std::ptr;
+use std::sync::Arc;
 
 impl CLInfo<cl_event_info> for cl_event {
     fn query(&self, q: cl_event_info) -> Result<Vec<u8>, cl_int> {
@@ -15,7 +16,12 @@ impl CLInfo<cl_event_info> for cl_event {
             CL_EVENT_COMMAND_EXECUTION_STATUS => cl_prop::<cl_int>(event.status()),
             CL_EVENT_CONTEXT => cl_prop::<cl_context>(event.context.cl),
             CL_EVENT_COMMAND_QUEUE => {
-                cl_prop::<cl_command_queue>(event.queue.as_ref().map_or(ptr::null_mut(), |q| q.cl))
+                let ptr = match event.queue.as_ref() {
+                    // Note we use as_ptr here which doesn't increase the reference count.
+                    Some(queue) => Arc::as_ptr(queue),
+                    None => ptr::null_mut(),
+                };
+                cl_prop::<cl_command_queue>(cl_command_queue::from_ptr(ptr))
             }
             CL_EVENT_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
             CL_EVENT_COMMAND_TYPE => cl_prop::<cl_command_type>(event.cmd_type),

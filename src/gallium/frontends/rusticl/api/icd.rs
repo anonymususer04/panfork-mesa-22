@@ -532,11 +532,11 @@ extern "C" fn cl_create_command_queue(
 }
 
 extern "C" fn cl_retain_command_queue(command_queue: cl_command_queue) -> cl_int {
-    checked_call!(command_queue.retain())
+    match_err!(command_queue.retain())
 }
 
 extern "C" fn cl_release_command_queue(command_queue: cl_command_queue) -> cl_int {
-    checked_call!(command_queue.release())
+    match_err!(command_queue.release())
 }
 
 extern "C" fn cl_get_command_queue_info(
@@ -546,12 +546,12 @@ extern "C" fn cl_get_command_queue_info(
     param_value: *mut ::std::os::raw::c_void,
     param_value_size_ret: *mut usize,
 ) -> cl_int {
-    checked_call!(command_queue.get_info(
+    match_err!(command_queue.get_info(
         param_name,
         param_value_size,
         param_value,
         param_value_size_ret,
-    )?)
+    ))
 }
 
 extern "C" fn cl_create_buffer(

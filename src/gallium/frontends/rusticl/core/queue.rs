@@ -1,16 +1,15 @@
 extern crate mesa_rust;
 extern crate rusticl_opencl_gen;
 
+use crate::api::icd::*;
 use crate::core::context::*;
 use crate::core::device::*;
 use crate::core::event::*;
-use crate::decl_cl_type;
-use crate::init_cl_type;
+use crate::impl_cl_type_trait;
 
 use self::mesa_rust::pipe::context::*;
 use self::rusticl_opencl_gen::*;
 
-use std::ptr;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -18,15 +17,9 @@ use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
 
-decl_cl_type!(
-    _cl_command_queue,
-    CLQueue,
-    CLQueueRef,
-    CL_INVALID_COMMAND_QUEUE
-);
-
-pub struct CLQueue {
-    pub cl: cl_command_queue,
+#[repr(C)]
+pub struct Queue {
+    pub base: CLObjectBase<CL_INVALID_COMMAND_QUEUE>,
     pub context: CLContextRef,
     pub device: CLDeviceRef,
     pub props: cl_command_queue_properties,
@@ -37,16 +30,18 @@ pub struct CLQueue {
     chan_out: mpsc::Receiver<bool>,
 }
 
-impl CLQueue {
+impl_cl_type_trait!(cl_command_queue, Queue, CL_INVALID_COMMAND_QUEUE);
+
+impl Queue {
     pub fn new(
         context: &CLContextRef,
         device: &CLDeviceRef,
         props: cl_command_queue_properties,
-    ) -> Result<CLQueueRef, cl_int> {
+    ) -> Result<Arc<Queue>, i32> {
         let (tx_q, rx_t) = mpsc::channel::<Vec<Arc<Event>>>();
         let (tx_t, rx_q) = mpsc::channel::<bool>();
-        let q = Self {
-            cl: ptr::null_mut(),
+        Ok(Arc::new(Self {
+            base: CLObjectBase::new(),
             context: context.clone(),
             device: device.clone(),
             props: props,
@@ -76,9 +71,7 @@ impl CLQueue {
             ),
             chan_in: tx_q,
             chan_out: rx_q,
-        };
-
-        Ok(init_cl_type!(q, _cl_command_queue))
+        }))
     }
 
     pub fn context(&self) -> &Rc<PipeContext> {
@@ -101,7 +94,7 @@ impl CLQueue {
     }
 }
 
-impl Drop for _cl_command_queue {
+impl Drop for Queue {
     fn drop(&mut self) {
         // when deleting the application side object, we have to flush
         // From the OpenCL spec:

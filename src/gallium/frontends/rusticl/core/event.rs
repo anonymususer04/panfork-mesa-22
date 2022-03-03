@@ -18,12 +18,12 @@ use std::sync::Arc;
 pub struct Event {
     pub base: CLObjectBase<CL_INVALID_EVENT>,
     pub context: CLContextRef,
-    pub queue: Option<CLQueueRef>,
+    pub queue: Option<Arc<Queue>>,
     pub cmd_type: cl_command_type,
     pub deps: Vec<Arc<Event>>,
     // use AtomicI32 instead of cl_int so we can change it without a &mut reference
     status: AtomicI32,
-    work: Option<Box<dyn Fn(&CLQueueRef) -> Result<(), cl_int>>>,
+    work: Option<Box<dyn Fn(&Arc<Queue>) -> Result<(), cl_int>>>,
 }
 
 impl_cl_type_trait!(cl_event, Event, CL_INVALID_EVENT);
@@ -34,10 +34,10 @@ unsafe impl Sync for Event {}
 
 impl Event {
     pub fn new(
-        queue: &CLQueueRef,
+        queue: &Arc<Queue>,
         cmd_type: cl_command_type,
         deps: Vec<Arc<Event>>,
-        work: Box<dyn Fn(&CLQueueRef) -> Result<(), cl_int>>,
+        work: Box<dyn Fn(&Arc<Queue>) -> Result<(), cl_int>>,
     ) -> Arc<Event> {
         Arc::new(Self {
             base: CLObjectBase::new(),

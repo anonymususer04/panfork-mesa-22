@@ -13,6 +13,7 @@ use self::rusticl_opencl_gen::*;
 use std::ptr;
 use std::rc::Rc;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
@@ -30,9 +31,9 @@ pub struct CLQueue {
     pub device: CLDeviceRef,
     pub props: cl_command_queue_properties,
     pipe: Rc<PipeContext>,
-    pending: Mutex<Vec<CLEventRef>>,
+    pending: Mutex<Vec<Arc<Event>>>,
     _thrd: Option<JoinHandle<()>>,
-    chan_in: mpsc::Sender<Vec<CLEventRef>>,
+    chan_in: mpsc::Sender<Vec<Arc<Event>>>,
     chan_out: mpsc::Receiver<bool>,
 }
 
@@ -42,7 +43,7 @@ impl CLQueue {
         device: &CLDeviceRef,
         props: cl_command_queue_properties,
     ) -> Result<CLQueueRef, cl_int> {
-        let (tx_q, rx_t) = mpsc::channel::<Vec<CLEventRef>>();
+        let (tx_q, rx_t) = mpsc::channel::<Vec<Arc<Event>>>();
         let (tx_t, rx_q) = mpsc::channel::<bool>();
         let q = Self {
             cl: ptr::null_mut(),
@@ -84,7 +85,7 @@ impl CLQueue {
         &self.pipe
     }
 
-    pub fn queue(&self, e: &CLEventRef) {
+    pub fn queue(&self, e: &Arc<Event>) {
         self.pending.lock().unwrap().push(e.clone());
     }
 

@@ -17,6 +17,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::os::raw::c_void;
 use std::slice;
+use std::sync::Arc;
 
 pub trait CheckedCLType<CL> {
     fn check<'l>(&'l self) -> Result<&'l CL, cl_int>;
@@ -462,10 +463,10 @@ where
     Ok(res)
 }
 
-pub fn check_event_list<'a>(
+pub fn event_list_from_cl<'a>(
     num_events_in_wait_list: cl_uint,
     event_wait_list: *const cl_event,
-) -> Result<Vec<&'a CLEventRef>, cl_int> {
+) -> Result<Vec<Arc<Event>>, cl_int> {
     // CL_INVALID_EVENT_WAIT_LIST if event_wait_list is NULL and num_events_in_wait_list > 0, or
     // event_wait_list is not NULL and num_events_in_wait_list is 0, or if event objects in
     // event_wait_list are not valid events.
@@ -475,7 +476,10 @@ pub fn check_event_list<'a>(
         Err(CL_INVALID_EVENT_WAIT_LIST)?
     }
 
-    Ok(CLEvent::from_raw(event_wait_list, num_events_in_wait_list)?)
+    Ok(Event::from_cl_arr(
+        event_wait_list,
+        num_events_in_wait_list,
+    )?)
 }
 
 pub fn check_cb<T>(cb: &Option<T>, user_data: *mut c_void) -> Result<(), cl_int> {

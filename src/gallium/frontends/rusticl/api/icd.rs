@@ -789,16 +789,16 @@ extern "C" fn cl_get_event_info(
     param_value: *mut ::std::os::raw::c_void,
     param_value_size_ret: *mut usize,
 ) -> cl_int {
-    checked_call!(event.get_info(
+    match_err!(event.get_info(
         param_name,
         param_value_size,
         param_value,
         param_value_size_ret,
-    )?)
+    ))
 }
 
 extern "C" fn cl_release_event(event: cl_event) -> cl_int {
-    checked_call!(event.release())
+    match_err!(event.release())
 }
 
 extern "C" fn cl_get_event_profiling_info(

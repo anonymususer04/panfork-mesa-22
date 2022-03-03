@@ -1,79 +1,77 @@
 extern crate mesa_rust;
 extern crate rusticl_opencl_gen;
 
-use crate::api::util::*;
+use crate::api::icd::*;
 use crate::core::context::*;
 use crate::core::queue::*;
-use crate::decl_cl_type;
-use crate::init_cl_type;
+use crate::impl_cl_type_trait;
 
 use self::rusticl_opencl_gen::*;
 
 use std::convert::TryInto;
-use std::ptr;
 use std::slice;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
-decl_cl_type!(_cl_event, CLEvent, CLEventRef, CL_INVALID_EVENT);
-
-pub struct CLEvent {
-    pub cl: cl_event,
+#[repr(C)]
+pub struct Event {
+    pub base: CLObjectBase<CL_INVALID_EVENT>,
     pub context: CLContextRef,
     pub queue: Option<CLQueueRef>,
     pub cmd_type: cl_command_type,
-    pub deps: Vec<CLEventRef>,
+    pub deps: Vec<Arc<Event>>,
     // use AtomicI32 instead of cl_int so we can change it without a &mut reference
     status: AtomicI32,
     work: Option<Box<dyn Fn(&CLQueueRef) -> Result<(), cl_int>>>,
 }
 
-// TODO shouldn't be needed, but... uff C pointers are annoying
-unsafe impl Send for CLEvent {}
-unsafe impl Sync for CLEvent {}
+impl_cl_type_trait!(cl_event, Event, CL_INVALID_EVENT);
 
-impl CLEvent {
+// TODO shouldn't be needed, but... uff C pointers are annoying
+unsafe impl Send for Event {}
+unsafe impl Sync for Event {}
+
+impl Event {
     pub fn new(
         queue: &CLQueueRef,
         cmd_type: cl_command_type,
-        deps: Vec<&CLEventRef>,
+        deps: Vec<Arc<Event>>,
         work: Box<dyn Fn(&CLQueueRef) -> Result<(), cl_int>>,
-    ) -> CLEventRef {
-        let q = Self {
-            cl: ptr::null_mut(),
+    ) -> Arc<Event> {
+        Arc::new(Self {
+            base: CLObjectBase::new(),
             context: queue.context.clone(),
             queue: Some(queue.clone()),
             cmd_type: cmd_type,
-            deps: deps.into_iter().map(|e| e.clone()).collect(),
+            deps: deps,
             status: AtomicI32::new(CL_QUEUED as cl_int),
             work: Some(work),
-        };
-
-        init_cl_type!(q, _cl_event)
+        })
     }
 
-    pub fn new_user(context: &CLContextRef) -> CLEventRef {
-        let q = Self {
-            cl: ptr::null_mut(),
+    pub fn new_user(context: &CLContextRef) -> Arc<Event> {
+        Arc::new(Self {
+            base: CLObjectBase::new(),
             context: context.clone(),
             queue: None,
             cmd_type: CL_COMMAND_USER,
             deps: Vec::new(),
             status: AtomicI32::new(CL_SUBMITTED as cl_int),
             work: None,
-        };
-
-        init_cl_type!(q, _cl_event)
+        })
     }
 
-    pub fn from_raw(
-        events: *const cl_event,
-        num_events: cl_uint,
-    ) -> Result<Vec<&'static CLEventRef>, cl_int> {
+    pub fn from_cl_arr(events: *const cl_event, num_events: u32) -> Result<Vec<Arc<Event>>, i32> {
         let c = num_events.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let s = unsafe { slice::from_raw_parts(events, c) };
 
-        s.into_iter().map(cl_event::check).collect()
+        let mut v = Vec::new();
+        for e in s {
+            v.push(e.get_arc()?);
+        }
+
+        Ok(v)
     }
 
     pub fn is_error(&self) -> bool {

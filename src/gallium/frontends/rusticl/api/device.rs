@@ -2,7 +2,7 @@ extern crate mesa_rust_util;
 extern crate rusticl_opencl_gen;
 
 use crate::api::icd::*;
-use crate::api::platform::get_platform;
+use crate::api::platform::*;
 use crate::api::util::*;
 use crate::core::device::*;
 
@@ -195,7 +195,7 @@ pub fn get_device_ids(
     num_devices: *mut cl_uint,
 ) -> Result<(), cl_int> {
     // CL_INVALID_PLATFORM if platform is not a valid platform.
-    platform.check()?;
+    platform.get_ref()?;
 
     // CL_INVALID_DEVICE_TYPE if device_type is not a valid value.
     check_cl_device_type(device_type)?;

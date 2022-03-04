@@ -16,12 +16,13 @@ pub struct _cl_platform_id {
     extensions: [cl_name_version; 1],
 }
 
-impl CLInfo<cl_platform_info> for crate::api::platform::_cl_platform_id {
+impl CLInfo<cl_platform_info> for cl_platform_id {
     fn query(&self, q: cl_platform_info) -> Result<Vec<u8>, cl_int> {
+        let p = self.get_ref()?;
         Ok(match q {
             CL_PLATFORM_EXTENSIONS => cl_prop("cl_khr_icd"),
             CL_PLATFORM_EXTENSIONS_WITH_VERSION => {
-                cl_prop::<Vec<cl_name_version>>(self.extensions.to_vec())
+                cl_prop::<Vec<cl_name_version>>(p.extensions.to_vec())
             }
             CL_PLATFORM_HOST_TIMER_RESOLUTION => cl_prop::<cl_ulong>(0),
             CL_PLATFORM_ICD_SUFFIX_KHR => cl_prop("MESA"),
@@ -42,23 +43,23 @@ static PLATFORM: _cl_platform_id = _cl_platform_id {
     extensions: [mk_cl_version_ext(1, 0, 0, b"cl_khr_icd")],
 };
 
-impl CheckedCLType<_cl_platform_id> for cl_platform_id {
-    fn check<'p>(&'p self) -> Result<&'p _cl_platform_id, cl_int> {
-        let p = unsafe {
-            ((*self) as *const crate::api::platform::_cl_platform_id)
-                .as_ref()
-                .ok_or(CL_INVALID_PLATFORM)?
-        };
-        if !std::ptr::eq(p.dispatch, &DISPATCH) {
-            return Err(CL_INVALID_PLATFORM);
-        }
-        Ok(p)
-    }
-}
-
 pub fn get_platform() -> cl_platform_id {
     &PLATFORM as *const crate::api::platform::_cl_platform_id
-        as *const self::rusticl_opencl_gen::_cl_platform_id
+        as *mut self::rusticl_opencl_gen::_cl_platform_id
+}
+
+pub trait GetPlatformRef {
+    fn get_ref(&self) -> Result<&'static _cl_platform_id, i32>;
+}
+
+impl GetPlatformRef for cl_platform_id {
+    fn get_ref(&self) -> Result<&'static _cl_platform_id, i32> {
+        if !self.is_null() && *self == get_platform() {
+            Ok(&PLATFORM)
+        } else {
+            Err(CL_INVALID_PLATFORM)
+        }
+    }
 }
 
 pub fn get_platform_ids(

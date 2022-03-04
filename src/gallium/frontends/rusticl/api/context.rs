@@ -3,6 +3,7 @@ extern crate rusticl_opencl_gen;
 
 use crate::api::device::get_devs_for_type;
 use crate::api::icd::*;
+use crate::api::platform::*;
 use crate::api::types::*;
 use crate::api::util::*;
 use crate::core::context::*;
@@ -64,7 +65,7 @@ pub fn create_context(
         match p.0 as u32 {
             // CL_INVALID_PLATFORM [...] if platform value specified in properties is not a valid platform.
             CL_CONTEXT_PLATFORM => {
-                (p.1 as cl_platform_id).check()?;
+                (p.1 as cl_platform_id).get_ref()?;
             }
             CL_CONTEXT_INTEROP_USER_SYNC => {
                 check_cl_bool(p.1).ok_or(CL_INVALID_PROPERTY)?;

@@ -430,12 +430,12 @@ extern "C" fn cl_get_platform_info(
     param_value: *mut ::std::ffi::c_void,
     param_value_size_ret: *mut usize,
 ) -> cl_int {
-    checked_call!(platform.get_info(
+    match_err!(platform.get_info(
         param_name,
         param_value_size,
         param_value,
         param_value_size_ret,
-    )?)
+    ))
 }
 
 extern "C" fn cl_get_device_ids(

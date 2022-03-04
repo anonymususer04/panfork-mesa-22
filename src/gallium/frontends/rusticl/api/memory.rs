@@ -19,7 +19,7 @@ use std::os::raw::c_void;
 use std::ptr;
 use std::sync::Arc;
 
-fn validate_mem_flags(flags: cl_mem_flags, images: bool) -> Result<(), cl_int> {
+fn validate_mem_flags(flags: cl_mem_flags, images: bool) -> CLResult<()> {
     let mut valid_flags = cl_bitfield::from(
         CL_MEM_READ_WRITE | CL_MEM_WRITE_ONLY | CL_MEM_READ_ONLY | CL_MEM_KERNEL_READ_AND_WRITE,
     );
@@ -105,7 +105,7 @@ fn image_type_valid(image_type: cl_mem_object_type) -> bool {
     CL_IMAGE_TYPES.contains(&image_type)
 }
 
-fn validate_addressing_mode(addressing_mode: cl_addressing_mode) -> Result<(), cl_int> {
+fn validate_addressing_mode(addressing_mode: cl_addressing_mode) -> CLResult<()> {
     match addressing_mode {
         CL_ADDRESS_NONE
         | CL_ADDRESS_CLAMP_TO_EDGE
@@ -116,17 +116,14 @@ fn validate_addressing_mode(addressing_mode: cl_addressing_mode) -> Result<(), c
     }
 }
 
-fn validate_filter_mode(filter_mode: cl_filter_mode) -> Result<(), cl_int> {
+fn validate_filter_mode(filter_mode: cl_filter_mode) -> CLResult<()> {
     match filter_mode {
         CL_FILTER_NEAREST | CL_FILTER_LINEAR => Ok(()),
         _ => Err(CL_INVALID_VALUE),
     }
 }
 
-fn validate_host_ptr(
-    host_ptr: *mut ::std::os::raw::c_void,
-    flags: cl_mem_flags,
-) -> Result<(), cl_int> {
+fn validate_host_ptr(host_ptr: *mut ::std::os::raw::c_void, flags: cl_mem_flags) -> CLResult<()> {
     // CL_INVALID_HOST_PTR if host_ptr is NULL and CL_MEM_USE_HOST_PTR or CL_MEM_COPY_HOST_PTR are
     // set in flags
     if host_ptr.is_null()
@@ -146,7 +143,7 @@ fn validate_host_ptr(
     Ok(())
 }
 
-fn validate_matching_buffer_flags<'a>(mem: &'a Mem, flags: cl_mem_flags) -> Result<(), cl_int> {
+fn validate_matching_buffer_flags<'a>(mem: &'a Mem, flags: cl_mem_flags) -> CLResult<()> {
     // CL_INVALID_VALUE if an image is being created from another memory object (buffer or image)
     // under one of the following circumstances:
     //
@@ -173,7 +170,7 @@ fn validate_matching_buffer_flags<'a>(mem: &'a Mem, flags: cl_mem_flags) -> Resu
 }
 
 impl CLInfo<cl_mem_info> for cl_mem {
-    fn query(&self, q: cl_mem_info) -> Result<Vec<u8>, cl_int> {
+    fn query(&self, q: cl_mem_info) -> CLResult<Vec<u8>> {
         let mem = self.get_ref()?;
         Ok(match *q {
             CL_MEM_ASSOCIATED_MEMOBJECT => {
@@ -207,7 +204,7 @@ pub fn create_buffer(
     flags: cl_mem_flags,
     size: usize,
     host_ptr: *mut ::std::os::raw::c_void,
-) -> Result<cl_mem, cl_int> {
+) -> CLResult<cl_mem> {
     let c = context.get_arc()?;
 
     // CL_INVALID_VALUE if values specified in flags are not valid as defined in the Memory Flags table.
@@ -237,7 +234,7 @@ pub fn create_sub_buffer(
     mut flags: cl_mem_flags,
     buffer_create_type: cl_buffer_create_type,
     buffer_create_info: *const ::std::os::raw::c_void,
-) -> Result<cl_mem, cl_int> {
+) -> CLResult<cl_mem> {
     let b = buffer.get_arc()?;
 
     // CL_INVALID_MEM_OBJECT if buffer ... is a sub-buffer object.
@@ -289,7 +286,7 @@ pub fn set_mem_object_destructor_callback(
     memobj: cl_mem,
     pfn_notify: Option<MemCB>,
     user_data: *mut ::std::os::raw::c_void,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     let m = memobj.get_ref()?;
 
     // CL_INVALID_VALUE if pfn_notify is NULL.
@@ -306,7 +303,7 @@ pub fn set_mem_object_destructor_callback(
 
 fn validate_image_format<'a>(
     image_format: *const cl_image_format,
-) -> Result<(&'a cl_image_format, u8), cl_int> {
+) -> CLResult<(&'a cl_image_format, u8)> {
     // CL_INVALID_IMAGE_FORMAT_DESCRIPTOR ... if image_format is NULL.
     let format = unsafe { image_format.as_ref() }.ok_or(CL_INVALID_IMAGE_FORMAT_DESCRIPTOR)?;
 
@@ -372,7 +369,7 @@ fn validate_image_desc<'a>(
     host_ptr: *mut ::std::os::raw::c_void,
     elem_size: usize,
     devs: &Vec<Arc<Device>>,
-) -> Result<cl_image_desc, cl_int> {
+) -> CLResult<cl_image_desc> {
     // CL_INVALID_IMAGE_DESCRIPTOR if values specified in image_desc are not valid
     const err: cl_int = CL_INVALID_IMAGE_DESCRIPTOR;
 
@@ -518,7 +515,7 @@ fn validate_buffer(
     format: &cl_image_format,
     host_ptr: *mut ::std::os::raw::c_void,
     elem_size: usize,
-) -> Result<cl_mem_flags, cl_int> {
+) -> CLResult<cl_mem_flags> {
     // CL_INVALID_IMAGE_DESCRIPTOR if values specified in image_desc are not valid
     const err: cl_int = CL_INVALID_IMAGE_DESCRIPTOR;
     let mem_object = unsafe { desc.anon_1.mem_object };
@@ -635,7 +632,7 @@ fn validate_buffer(
 }
 
 impl CLInfo<cl_image_info> for cl_mem {
-    fn query(&self, q: cl_image_info) -> Result<Vec<u8>, cl_int> {
+    fn query(&self, q: cl_image_info) -> CLResult<Vec<u8>> {
         let mem = self.get_ref()?;
         Ok(match *q {
             CL_IMAGE_ARRAY_SIZE => cl_prop::<usize>(mem.image_desc.image_array_size),
@@ -660,7 +657,7 @@ pub fn create_image(
     image_format: *const cl_image_format,
     image_desc: *const cl_image_desc,
     host_ptr: *mut ::std::os::raw::c_void,
-) -> Result<cl_mem, cl_int> {
+) -> CLResult<cl_mem> {
     let c = context.get_arc()?;
 
     // CL_INVALID_OPERATION if there are no devices in context that support images (i.e.
@@ -710,7 +707,7 @@ pub fn get_supported_image_formats(
     num_entries: cl_uint,
     image_formats: *mut cl_image_format,
     num_image_formats: *mut cl_uint,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     let c = context.get_ref()?;
 
     // CL_INVALID_VALUE if flags
@@ -745,7 +742,7 @@ pub fn get_supported_image_formats(
 }
 
 impl CLInfo<cl_sampler_info> for cl_sampler {
-    fn query(&self, q: cl_sampler_info) -> Result<Vec<u8>, cl_int> {
+    fn query(&self, q: cl_sampler_info) -> CLResult<Vec<u8>> {
         let sampler = self.get_ref()?;
         Ok(match q {
             CL_SAMPLER_ADDRESSING_MODE => cl_prop::<cl_addressing_mode>(sampler.addressing_mode),
@@ -768,7 +765,7 @@ pub fn create_sampler(
     normalized_coords: cl_bool,
     addressing_mode: cl_addressing_mode,
     filter_mode: cl_filter_mode,
-) -> Result<cl_sampler, cl_int> {
+) -> CLResult<cl_sampler> {
     let c = context.get_arc()?;
 
     // CL_INVALID_OPERATION if images are not supported by any device associated with context (i.e.
@@ -802,7 +799,7 @@ pub fn enqueue_write_buffer(
     num_events_in_wait_list: cl_uint,
     event_wait_list: *const cl_event,
     event: *mut cl_event,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     let q = command_queue.get_arc()?;
     let b = buffer.get_arc()?;
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
@@ -866,7 +863,7 @@ pub fn enqueue_read_buffer_rect(
     num_events_in_wait_list: cl_uint,
     event_wait_list: *const cl_event,
     event: *mut cl_event,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
     let q = command_queue.get_arc()?;
     let buf = buffer.get_arc()?;
@@ -993,7 +990,7 @@ pub fn enqueue_write_buffer_rect(
     num_events_in_wait_list: cl_uint,
     event_wait_list: *const cl_event,
     event: *mut cl_event,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
     let q = command_queue.get_arc()?;
     let buf = buffer.get_arc()?;
@@ -1119,7 +1116,7 @@ pub fn enqueue_copy_buffer_rect(
     num_events_in_wait_list: cl_uint,
     event_wait_list: *const cl_event,
     event: *mut cl_event,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     let q = command_queue.get_arc()?;
     let src = src_buffer.get_arc()?;
     let dst = dst_buffer.get_arc()?;
@@ -1257,7 +1254,7 @@ pub fn enqueue_map_buffer(
     num_events_in_wait_list: cl_uint,
     event_wait_list: *const cl_event,
     event: *mut cl_event,
-) -> Result<*mut c_void, cl_int> {
+) -> CLResult<*mut c_void> {
     let q = command_queue.get_arc()?;
     let b = buffer.get_arc()?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
@@ -1329,7 +1326,7 @@ pub fn enqueue_unmap_mem_object(
     num_events_in_wait_list: cl_uint,
     event_wait_list: *const cl_event,
     event: *mut cl_event,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     let q = command_queue.get_arc()?;
     let m = memobj.get_ref()?;
     let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;

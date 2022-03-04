@@ -173,6 +173,9 @@ pub static DISPATCH: cl_icd_dispatch = cl_icd_dispatch {
     clSetContextDestructorCallback: None,
 };
 
+pub type CLError = cl_int;
+pub type CLResult<T> = Result<T, CLError>;
+
 #[repr(C)]
 pub struct CLObjectBase<const ERR: i32> {
     dispatch: &'static cl_icd_dispatch,
@@ -187,7 +190,7 @@ impl<const ERR: i32> CLObjectBase<ERR> {
         }
     }
 
-    pub fn check_ptr(ptr: *const Self) -> Result<(), i32> {
+    pub fn check_ptr(ptr: *const Self) -> CLResult<()> {
         if ptr.is_null() {
             return Err(ERR);
         }
@@ -207,18 +210,18 @@ impl<const ERR: i32> CLObjectBase<ERR> {
 }
 
 pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
-    fn get_ptr(&self) -> Result<*const T, i32>;
+    fn get_ptr(&self) -> CLResult<*const T>;
 
     // TODO:  I can't find a trait that would let me say T: pointer so that
     // I can do the cast in the main trait implementation.  So we need to
     // implement that as part of the macro where we know the real type.
     fn from_ptr(ptr: *const T) -> Self;
 
-    fn get_ref(&self) -> Result<&'static T, i32> {
+    fn get_ref(&self) -> CLResult<&'static T> {
         unsafe { Ok(self.get_ptr()?.as_ref().unwrap()) }
     }
 
-    fn get_arc(&self) -> Result<Arc<T>, i32> {
+    fn get_arc(&self) -> CLResult<Arc<T>> {
         unsafe {
             let ptr = self.get_ptr()?;
             Arc::increment_strong_count(ptr);
@@ -233,7 +236,7 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
         Self::from_ptr(Arc::into_raw(arc))
     }
 
-    fn get_arc_vec_from_arr(objs: *const Self, count: u32) -> Result<Vec<Arc<T>>, i32>
+    fn get_arc_vec_from_arr(objs: *const Self, count: u32) -> CLResult<Vec<Arc<T>>>
     where
         Self: Sized,
     {
@@ -255,18 +258,18 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
         Ok(res)
     }
 
-    fn retain(&self) -> Result<(), i32> {
+    fn retain(&self) -> CLResult<()> {
         unsafe {
             Arc::increment_strong_count(self.get_ptr()?);
             Ok(())
         }
     }
 
-    fn release(&self) -> Result<Arc<T>, i32> {
+    fn release(&self) -> CLResult<Arc<T>> {
         unsafe { Ok(Arc::from_raw(self.get_ptr()?)) }
     }
 
-    fn refcnt(&self) -> Result<u32, i32> {
+    fn refcnt(&self) -> CLResult<u32> {
         Ok((Arc::strong_count(&self.get_arc()?) - 1) as u32)
     }
 }
@@ -275,7 +278,7 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
 macro_rules! impl_cl_type_trait {
     ($cl: ident, $t: ty, $err: ident) => {
         impl crate::api::icd::ReferenceCountedAPIPointer<$t, $err> for $cl {
-            fn get_ptr(&self) -> Result<*const $t, i32> {
+            fn get_ptr(&self) -> CLResult<*const $t> {
                 type Base = crate::api::icd::CLObjectBase<$err>;
                 Base::check_ptr(self.cast())?;
 

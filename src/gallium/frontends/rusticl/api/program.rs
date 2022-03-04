@@ -20,7 +20,7 @@ use std::slice;
 use std::sync::Arc;
 
 impl CLInfo<cl_program_info> for cl_program {
-    fn query(&self, q: cl_program_info) -> Result<Vec<u8>, cl_int> {
+    fn query(&self, q: cl_program_info) -> CLResult<Vec<u8>> {
         let prog = self.get_ref()?;
         Ok(match q {
             CL_PROGRAM_CONTEXT => {
@@ -51,7 +51,7 @@ impl CLInfo<cl_program_info> for cl_program {
 }
 
 impl CLInfoObj<cl_program_build_info, cl_device_id> for cl_program {
-    fn query(&self, d: cl_device_id, q: cl_program_build_info) -> Result<Vec<u8>, cl_int> {
+    fn query(&self, d: cl_device_id, q: cl_program_build_info) -> CLResult<Vec<u8>> {
         let prog = self.get_ref()?;
         let dev = d.get_arc()?;
         Ok(match q {
@@ -68,7 +68,7 @@ fn validate_devices(
     device_list: *const cl_device_id,
     num_devices: cl_uint,
     default: &Vec<Arc<Device>>,
-) -> Result<Vec<Arc<Device>>, cl_int> {
+) -> CLResult<Vec<Arc<Device>>> {
     let mut devs = cl_device_id::get_arc_vec_from_arr(device_list, num_devices)?;
 
     // If device_list is a NULL value, the compile is performed for all devices associated with
@@ -95,7 +95,7 @@ pub fn create_program_with_source(
     count: cl_uint,
     strings: *mut *const c_char,
     lengths: *const usize,
-) -> Result<cl_program, cl_int> {
+) -> CLResult<cl_program> {
     let c = context.get_arc()?;
 
     // CL_INVALID_VALUE if count is zero or if strings ...
@@ -138,7 +138,7 @@ pub fn build_program(
     options: *const c_char,
     pfn_notify: Option<ProgramCB>,
     user_data: *mut ::std::os::raw::c_void,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     let mut res = true;
     let p = program.get_ref()?;
     let devs = validate_devices(device_list, num_devices, &p.devs)?;
@@ -178,7 +178,7 @@ pub fn compile_program(
     header_include_names: *mut *const c_char,
     pfn_notify: Option<ProgramCB>,
     user_data: *mut ::std::os::raw::c_void,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     let mut res = true;
     let p = program.get_ref()?;
     let devs = validate_devices(device_list, num_devices, &p.devs)?;
@@ -233,7 +233,7 @@ pub fn link_program(
     input_programs: *const cl_program,
     pfn_notify: Option<ProgramCB>,
     user_data: *mut ::std::os::raw::c_void,
-) -> Result<(cl_program, cl_int), cl_int> {
+) -> CLResult<(cl_program, cl_int)> {
     let c = context.get_arc()?;
     let devs = validate_devices(device_list, num_devices, &c.devs)?;
     let progs = cl_program::get_arc_vec_from_arr(input_programs, num_input_programs)?;

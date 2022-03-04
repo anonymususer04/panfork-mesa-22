@@ -1,6 +1,7 @@
 extern crate mesa_rust_util;
 extern crate rusticl_opencl_gen;
 
+use crate::api::icd::CLResult;
 use crate::api::icd::DISPATCH;
 use crate::api::util::*;
 use crate::core::version::*;
@@ -17,7 +18,7 @@ pub struct _cl_platform_id {
 }
 
 impl CLInfo<cl_platform_info> for cl_platform_id {
-    fn query(&self, q: cl_platform_info) -> Result<Vec<u8>, cl_int> {
+    fn query(&self, q: cl_platform_info) -> CLResult<Vec<u8>> {
         let p = self.get_ref()?;
         Ok(match q {
             CL_PLATFORM_EXTENSIONS => cl_prop("cl_khr_icd"),
@@ -49,11 +50,11 @@ pub fn get_platform() -> cl_platform_id {
 }
 
 pub trait GetPlatformRef {
-    fn get_ref(&self) -> Result<&'static _cl_platform_id, i32>;
+    fn get_ref(&self) -> CLResult<&'static _cl_platform_id>;
 }
 
 impl GetPlatformRef for cl_platform_id {
-    fn get_ref(&self) -> Result<&'static _cl_platform_id, i32> {
+    fn get_ref(&self) -> CLResult<&'static _cl_platform_id> {
         if !self.is_null() && *self == get_platform() {
             Ok(&PLATFORM)
         } else {
@@ -66,7 +67,7 @@ pub fn get_platform_ids(
     num_entries: cl_uint,
     platforms: *mut cl_platform_id,
     num_platforms: *mut cl_uint,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     // CL_INVALID_VALUE if num_entries is equal to zero and platforms is not NULL
     if num_entries == 0 && !platforms.is_null() {
         return Err(CL_INVALID_VALUE);

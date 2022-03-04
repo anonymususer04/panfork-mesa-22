@@ -7,7 +7,7 @@ use self::rusticl_opencl_gen::*;
 pub fn create_kernel(
     program: cl_program,
     kernel_name: *const ::std::os::raw::c_char,
-) -> Result<cl_kernel, cl_int> {
+) -> CLResult<cl_kernel> {
     let _p = program.get_ref()?;
 
     // CL_INVALID_VALUE if kernel_name is NULL.

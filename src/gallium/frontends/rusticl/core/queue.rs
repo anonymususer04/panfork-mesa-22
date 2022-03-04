@@ -37,7 +37,7 @@ impl Queue {
         context: &Arc<Context>,
         device: &Arc<Device>,
         props: cl_command_queue_properties,
-    ) -> Result<Arc<Queue>, i32> {
+    ) -> CLResult<Arc<Queue>> {
         let (tx_q, rx_t) = mpsc::channel::<Vec<Arc<Event>>>();
         let (tx_t, rx_q) = mpsc::channel::<bool>();
         Ok(Arc::new(Self {
@@ -83,7 +83,7 @@ impl Queue {
     }
 
     // TODO: implement non blocking flush
-    pub fn flush(&self, _wait: bool) -> Result<(), cl_int> {
+    pub fn flush(&self, _wait: bool) -> CLResult<()> {
         let mut p = self.pending.lock().unwrap();
         // This should never ever error, but if it does return an error
         self.chan_in

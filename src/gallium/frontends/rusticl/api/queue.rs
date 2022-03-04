@@ -9,7 +9,7 @@ use self::rusticl_opencl_gen::*;
 use std::sync::Arc;
 
 impl CLInfo<cl_command_queue_info> for cl_command_queue {
-    fn query(&self, q: cl_command_queue_info) -> Result<Vec<u8>, i32> {
+    fn query(&self, q: cl_command_queue_info) -> CLResult<Vec<u8>> {
         let queue = self.get_ref()?;
         Ok(match q {
             CL_QUEUE_CONTEXT => {
@@ -45,7 +45,7 @@ pub fn create_command_queue(
     context: cl_context,
     device: cl_device_id,
     properties: cl_command_queue_properties,
-) -> Result<cl_command_queue, cl_int> {
+) -> CLResult<cl_command_queue> {
     // CL_INVALID_CONTEXT if context is not a valid context.
     let c = context.get_arc()?;
 
@@ -70,7 +70,7 @@ pub fn create_command_queue(
     Ok(cl_command_queue::from_arc(Queue::new(&c, &d, properties)?))
 }
 
-pub fn finish_queue(command_queue: cl_command_queue) -> Result<(), cl_int> {
+pub fn finish_queue(command_queue: cl_command_queue) -> CLResult<()> {
     // CL_INVALID_COMMAND_QUEUE if command_queue is not a valid host command-queue.
     command_queue.get_ref()?;
     Ok(())

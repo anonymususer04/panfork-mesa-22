@@ -1,6 +1,7 @@
 extern crate mesa_rust_util;
 extern crate rusticl_opencl_gen;
 
+use crate::api::icd::CLResult;
 use crate::api::types::*;
 use crate::core::event::*;
 
@@ -18,7 +19,7 @@ use std::slice;
 use std::sync::Arc;
 
 pub trait CLInfo<I> {
-    fn query(&self, q: I) -> Result<Vec<u8>, cl_int>;
+    fn query(&self, q: I) -> CLResult<Vec<u8>>;
 
     fn get_info(
         &self,
@@ -26,7 +27,7 @@ pub trait CLInfo<I> {
         param_value_size: usize,
         param_value: *mut ::std::os::raw::c_void,
         param_value_size_ret: *mut usize,
-    ) -> Result<(), cl_int> {
+    ) -> CLResult<()> {
         let d = self.query(param_name)?;
         let size: usize = d.len();
 
@@ -51,7 +52,7 @@ pub trait CLInfo<I> {
 }
 
 pub trait CLInfoObj<I, O> {
-    fn query(&self, o: O, q: I) -> Result<Vec<u8>, cl_int>;
+    fn query(&self, o: O, q: I) -> CLResult<Vec<u8>>;
 
     fn get_info_obj(
         &self,
@@ -60,7 +61,7 @@ pub trait CLInfoObj<I, O> {
         param_value_size: usize,
         param_value: *mut ::std::os::raw::c_void,
         param_value_size_ret: *mut usize,
-    ) -> Result<(), cl_int> {
+    ) -> CLResult<()> {
         let d = self.query(obj, param_name)?;
         let size: usize = d.len();
 
@@ -198,7 +199,7 @@ const CL_DEVICE_TYPES: u32 = CL_DEVICE_TYPE_ACCELERATOR
     | CL_DEVICE_TYPE_CUSTOM
     | CL_DEVICE_TYPE_DEFAULT;
 
-pub fn check_cl_device_type(val: cl_device_type) -> Result<(), cl_int> {
+pub fn check_cl_device_type(val: cl_device_type) -> CLResult<()> {
     let v: u32 = val.try_into().or(Err(CL_INVALID_DEVICE_TYPE))?;
     if v == CL_DEVICE_TYPE_ALL || v & CL_DEVICE_TYPES == v {
         return Ok(());
@@ -236,7 +237,7 @@ pub fn check_cl_bool<T: PartialEq + TryInto<cl_uint>>(val: T) -> Option<bool> {
 pub fn event_list_from_cl<'a>(
     num_events_in_wait_list: cl_uint,
     event_wait_list: *const cl_event,
-) -> Result<Vec<Arc<Event>>, cl_int> {
+) -> CLResult<Vec<Arc<Event>>> {
     // CL_INVALID_EVENT_WAIT_LIST if event_wait_list is NULL and num_events_in_wait_list > 0, or
     // event_wait_list is not NULL and num_events_in_wait_list is 0, or if event objects in
     // event_wait_list are not valid events.
@@ -252,7 +253,7 @@ pub fn event_list_from_cl<'a>(
     )?)
 }
 
-pub fn check_cb<T>(cb: &Option<T>, user_data: *mut c_void) -> Result<(), cl_int> {
+pub fn check_cb<T>(cb: &Option<T>, user_data: *mut c_void) -> CLResult<()> {
     // CL_INVALID_VALUE if pfn_notify is NULL but user_data is not NULL.
     if cb.is_none() && !user_data.is_null() {
         Err(CL_INVALID_VALUE)?;

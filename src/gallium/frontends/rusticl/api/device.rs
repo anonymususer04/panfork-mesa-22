@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::sync::Once;
 
 impl CLInfo<cl_device_info> for cl_device_id {
-    fn query(&self, q: cl_device_info) -> Result<Vec<u8>, cl_int> {
+    fn query(&self, q: cl_device_info) -> CLResult<Vec<u8>> {
         let dev = self.get_ref()?;
         Ok(match q {
             CL_DEVICE_ADDRESS_BITS => cl_prop::<cl_uint>(dev.address_bits()),
@@ -193,7 +193,7 @@ pub fn get_device_ids(
     num_entries: cl_uint,
     devices: *mut cl_device_id,
     num_devices: *mut cl_uint,
-) -> Result<(), cl_int> {
+) -> CLResult<()> {
     // CL_INVALID_PLATFORM if platform is not a valid platform.
     platform.get_ref()?;
 

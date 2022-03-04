@@ -23,7 +23,7 @@ pub struct Event {
     pub deps: Vec<Arc<Event>>,
     // use AtomicI32 instead of cl_int so we can change it without a &mut reference
     status: AtomicI32,
-    work: Option<Box<dyn Fn(&Arc<Queue>) -> Result<(), cl_int>>>,
+    work: Option<Box<dyn Fn(&Arc<Queue>) -> CLResult<()>>>,
 }
 
 impl_cl_type_trait!(cl_event, Event, CL_INVALID_EVENT);
@@ -37,7 +37,7 @@ impl Event {
         queue: &Arc<Queue>,
         cmd_type: cl_command_type,
         deps: Vec<Arc<Event>>,
-        work: Box<dyn Fn(&Arc<Queue>) -> Result<(), cl_int>>,
+        work: Box<dyn Fn(&Arc<Queue>) -> CLResult<()>>,
     ) -> Arc<Event> {
         Arc::new(Self {
             base: CLObjectBase::new(),
@@ -62,7 +62,7 @@ impl Event {
         })
     }
 
-    pub fn from_cl_arr(events: *const cl_event, num_events: u32) -> Result<Vec<Arc<Event>>, i32> {
+    pub fn from_cl_arr(events: *const cl_event, num_events: u32) -> CLResult<Vec<Arc<Event>>> {
         let c = num_events.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let s = unsafe { slice::from_raw_parts(events, c) };
 

@@ -10,7 +10,7 @@ use std::ptr;
 use std::sync::Arc;
 
 impl CLInfo<cl_event_info> for cl_event {
-    fn query(&self, q: cl_event_info) -> Result<Vec<u8>, cl_int> {
+    fn query(&self, q: cl_event_info) -> CLResult<Vec<u8>> {
         let event = self.get_ref()?;
         Ok(match q {
             CL_EVENT_COMMAND_EXECUTION_STATUS => cl_prop::<cl_int>(event.status()),
@@ -34,7 +34,7 @@ impl CLInfo<cl_event_info> for cl_event {
     }
 }
 
-pub fn create_user_event(context: cl_context) -> Result<cl_event, cl_int> {
+pub fn create_user_event(context: cl_context) -> CLResult<cl_event> {
     let c = context.get_arc()?;
     Ok(cl_event::from_arc(Event::new_user(c)))
 }

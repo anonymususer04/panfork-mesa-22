@@ -30,10 +30,7 @@ impl Context {
         })
     }
 
-    pub fn create_buffer(
-        &self,
-        size: usize,
-    ) -> Result<HashMap<*const Device, PipeResource>, cl_int> {
+    pub fn create_buffer(&self, size: usize) -> CLResult<HashMap<*const Device, PipeResource>> {
         let adj_size: u32 = size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let mut res = HashMap::new();
         for dev in &self.devs {
@@ -50,7 +47,7 @@ impl Context {
         &self,
         size: usize,
         user_ptr: *mut c_void,
-    ) -> Result<HashMap<*const Device, PipeResource>, cl_int> {
+    ) -> CLResult<HashMap<*const Device, PipeResource>> {
         let adj_size: u32 = size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let mut res = HashMap::new();
         for dev in &self.devs {

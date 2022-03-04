@@ -17,7 +17,7 @@ use std::slice;
 use std::sync::Arc;
 
 impl CLInfo<cl_context_info> for cl_context {
-    fn query(&self, q: cl_context_info) -> Result<Vec<u8>, cl_int> {
+    fn query(&self, q: cl_context_info) -> CLResult<Vec<u8>> {
         let ctx = self.get_ref()?;
         Ok(match q {
             CL_CONTEXT_DEVICES => {
@@ -46,7 +46,7 @@ pub fn create_context(
     devices: *const cl_device_id,
     pfn_notify: Option<CreateContextCB>,
     user_data: *mut ::std::os::raw::c_void,
-) -> Result<cl_context, cl_int> {
+) -> CLResult<cl_context> {
     check_cb(&pfn_notify, user_data)?;
 
     // CL_INVALID_VALUE if devices is NULL.
@@ -91,7 +91,7 @@ pub fn create_context_from_type(
     device_type: cl_device_type,
     pfn_notify: Option<CreateContextCB>,
     user_data: *mut ::std::os::raw::c_void,
-) -> Result<cl_context, cl_int> {
+) -> CLResult<cl_context> {
     // CL_INVALID_DEVICE_TYPE if device_type is not a valid value.
     check_cl_device_type(device_type)?;
 

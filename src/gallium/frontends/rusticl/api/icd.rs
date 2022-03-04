@@ -361,28 +361,6 @@ macro_rules! match_err {
     };
 }
 
-macro_rules! checked_call {
-   ($obj: ident.$func:ident($($param:ident,)*)) =>
-   {
-      match $obj.check() {
-         Ok(o) => {
-            (o).$func($($param,)*);
-            CL_SUCCESS as cl_int
-         },
-         Err(e) => e,
-      }
-   };
-   ($obj: ident.$func:ident($($param:ident,)*)?) =>
-   {
-      match $obj.check() {
-         Ok(o) => {
-            (o).$func($($param,)*).err().unwrap_or(CL_SUCCESS as cl_int)
-         },
-         Err(e) => e,
-      }
-   };
-}
-
 macro_rules! match_obj {
     ($exp: expr, $err: ident) => {
         match $exp {

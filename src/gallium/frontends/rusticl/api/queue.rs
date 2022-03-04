@@ -6,11 +6,17 @@ use crate::core::queue::*;
 
 use self::rusticl_opencl_gen::*;
 
+use std::sync::Arc;
+
 impl CLInfo<cl_command_queue_info> for cl_command_queue {
     fn query(&self, q: cl_command_queue_info) -> Result<Vec<u8>, i32> {
         let queue = self.get_ref()?;
         Ok(match q {
-            CL_QUEUE_CONTEXT => cl_prop::<cl_context>(queue.context.cl),
+            CL_QUEUE_CONTEXT => {
+                // Note we use as_ptr here which doesn't increase the reference count.
+                let ptr = Arc::as_ptr(&queue.context);
+                cl_prop::<cl_context>(cl_context::from_ptr(ptr))
+            }
             CL_QUEUE_DEVICE => cl_prop::<cl_device_id>(queue.device.cl),
             CL_QUEUE_PROPERTIES => cl_prop::<cl_command_queue_properties>(queue.props),
             CL_QUEUE_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
@@ -37,7 +43,7 @@ pub fn create_command_queue(
     properties: cl_command_queue_properties,
 ) -> Result<cl_command_queue, cl_int> {
     // CL_INVALID_CONTEXT if context is not a valid context.
-    let c = context.check()?;
+    let c = context.get_arc()?;
 
     // CL_INVALID_DEVICE if device is not a valid device
     let d = device.check()?;
@@ -57,7 +63,7 @@ pub fn create_command_queue(
         return Err(CL_INVALID_QUEUE_PROPERTIES);
     }
 
-    Ok(cl_command_queue::from_arc(Queue::new(c, d, properties)?))
+    Ok(cl_command_queue::from_arc(Queue::new(&c, d, properties)?))
 }
 
 pub fn finish_queue(command_queue: cl_command_queue) -> Result<(), cl_int> {

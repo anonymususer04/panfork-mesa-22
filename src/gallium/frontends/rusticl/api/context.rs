@@ -2,6 +2,7 @@ extern crate mesa_rust_util;
 extern crate rusticl_opencl_gen;
 
 use crate::api::device::get_devs_for_type;
+use crate::api::icd::*;
 use crate::api::types::*;
 use crate::api::util::*;
 use crate::core::context::*;
@@ -13,15 +14,16 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::slice;
 
-impl CLInfo<cl_context_info> for crate::core::context::_cl_context {
+impl CLInfo<cl_context_info> for cl_context {
     fn query(&self, q: cl_context_info) -> Result<Vec<u8>, cl_int> {
+        let ctx = self.get_ref()?;
         Ok(match q {
             CL_CONTEXT_DEVICES => {
-                cl_prop::<&Vec<cl_device_id>>(&self.devs.iter().map(|d| d.cl).collect())
+                cl_prop::<&Vec<cl_device_id>>(&ctx.devs.iter().map(|d| d.cl).collect())
             }
-            CL_CONTEXT_NUM_DEVICES => cl_prop::<cl_uint>(self.devs.len() as u32),
-            CL_CONTEXT_PROPERTIES => cl_prop::<&Vec<cl_context_properties>>(&self.properties),
-            CL_CONTEXT_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refs()),
+            CL_CONTEXT_NUM_DEVICES => cl_prop::<cl_uint>(ctx.devs.len() as u32),
+            CL_CONTEXT_PROPERTIES => cl_prop::<&Vec<cl_context_properties>>(&ctx.properties),
+            CL_CONTEXT_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => Err(CL_INVALID_VALUE)?,
         })
@@ -68,7 +70,10 @@ pub fn create_context(
         HashSet::from_iter(unsafe { slice::from_raw_parts(devices, num_devices as usize) }.iter());
     let devs: Result<_, _> = set.into_iter().map(cl_device_id::check).collect();
 
-    Ok(CLContext::new(devs?, Properties::from_ptr_raw(properties)).cl)
+    Ok(cl_context::from_arc(Context::new(
+        devs?,
+        Properties::from_ptr_raw(properties),
+    )))
 }
 
 pub fn create_context_from_type(

@@ -497,11 +497,11 @@ extern "C" fn cl_create_context_from_type(
 }
 
 extern "C" fn cl_retain_context(context: cl_context) -> cl_int {
-    checked_call!(context.retain())
+    match_err!(context.retain())
 }
 
 extern "C" fn cl_release_context(context: cl_context) -> cl_int {
-    checked_call!(context.release())
+    match_err!(context.release())
 }
 
 extern "C" fn cl_get_context_info(
@@ -511,12 +511,12 @@ extern "C" fn cl_get_context_info(
     param_value: *mut ::std::os::raw::c_void,
     param_value_size_ret: *mut usize,
 ) -> cl_int {
-    checked_call!(context.get_info(
+    match_err!(context.get_info(
         param_name,
         param_value_size,
         param_value,
         param_value_size_ret,
-    )?)
+    ))
 }
 
 extern "C" fn cl_create_command_queue(

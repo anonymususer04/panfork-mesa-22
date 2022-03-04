@@ -14,7 +14,11 @@ impl CLInfo<cl_event_info> for cl_event {
         let event = self.get_ref()?;
         Ok(match q {
             CL_EVENT_COMMAND_EXECUTION_STATUS => cl_prop::<cl_int>(event.status()),
-            CL_EVENT_CONTEXT => cl_prop::<cl_context>(event.context.cl),
+            CL_EVENT_CONTEXT => {
+                // Note we use as_ptr here which doesn't increase the reference count.
+                let ptr = Arc::as_ptr(&event.context);
+                cl_prop::<cl_context>(cl_context::from_ptr(ptr))
+            }
             CL_EVENT_COMMAND_QUEUE => {
                 let ptr = match event.queue.as_ref() {
                     // Note we use as_ptr here which doesn't increase the reference count.
@@ -31,6 +35,6 @@ impl CLInfo<cl_event_info> for cl_event {
 }
 
 pub fn create_user_event(context: cl_context) -> Result<cl_event, cl_int> {
-    let c = context.check()?;
+    let c = context.get_arc()?;
     Ok(cl_event::from_arc(Event::new_user(c)))
 }

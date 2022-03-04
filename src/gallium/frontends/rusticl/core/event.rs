@@ -17,7 +17,7 @@ use std::sync::Arc;
 #[repr(C)]
 pub struct Event {
     pub base: CLObjectBase<CL_INVALID_EVENT>,
-    pub context: CLContextRef,
+    pub context: Arc<Context>,
     pub queue: Option<Arc<Queue>>,
     pub cmd_type: cl_command_type,
     pub deps: Vec<Arc<Event>>,
@@ -50,7 +50,7 @@ impl Event {
         })
     }
 
-    pub fn new_user(context: &CLContextRef) -> Arc<Event> {
+    pub fn new_user(context: Arc<Context>) -> Arc<Event> {
         Arc::new(Self {
             base: CLObjectBase::new(),
             context: context.clone(),

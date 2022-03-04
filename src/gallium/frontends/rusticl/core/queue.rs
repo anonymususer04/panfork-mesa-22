@@ -20,7 +20,7 @@ use std::thread::JoinHandle;
 #[repr(C)]
 pub struct Queue {
     pub base: CLObjectBase<CL_INVALID_COMMAND_QUEUE>,
-    pub context: CLContextRef,
+    pub context: Arc<Context>,
     pub device: CLDeviceRef,
     pub props: cl_command_queue_properties,
     pipe: Rc<PipeContext>,
@@ -34,7 +34,7 @@ impl_cl_type_trait!(cl_command_queue, Queue, CL_INVALID_COMMAND_QUEUE);
 
 impl Queue {
     pub fn new(
-        context: &CLContextRef,
+        context: &Arc<Context>,
         device: &CLDeviceRef,
         props: cl_command_queue_properties,
     ) -> Result<Arc<Queue>, i32> {

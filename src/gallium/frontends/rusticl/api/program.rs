@@ -17,12 +17,17 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
+use std::sync::Arc;
 
 impl CLInfo<cl_program_info> for cl_program {
     fn query(&self, q: cl_program_info) -> Result<Vec<u8>, cl_int> {
         let prog = self.get_ref()?;
         Ok(match q {
-            CL_PROGRAM_CONTEXT => cl_prop::<cl_context>(prog.context.cl),
+            CL_PROGRAM_CONTEXT => {
+                // Note we use as_ptr here which doesn't increase the reference count.
+                let ptr = Arc::as_ptr(&prog.context);
+                cl_prop::<cl_context>(cl_context::from_ptr(ptr))
+            }
             CL_PROGRAM_DEVICES => {
                 cl_prop::<&Vec<cl_device_id>>(&prog.devs.iter().map(|d| d.cl).collect())
             }
@@ -82,7 +87,7 @@ pub fn create_program_with_source(
     strings: *mut *const c_char,
     lengths: *const usize,
 ) -> Result<cl_program, cl_int> {
-    let c = context.check()?;
+    let c = context.get_arc()?;
 
     // CL_INVALID_VALUE if count is zero or if strings ...
     if count == 0 || strings.is_null() {
@@ -111,7 +116,7 @@ pub fn create_program_with_source(
     }
 
     Ok(cl_program::from_arc(Program::new(
-        c,
+        &c,
         &c.devs,
         CString::new(source).map_err(|_| CL_INVALID_VALUE)?,
     )))
@@ -220,7 +225,7 @@ pub fn link_program(
     pfn_notify: Option<ProgramCB>,
     user_data: *mut ::std::os::raw::c_void,
 ) -> Result<(cl_program, cl_int), cl_int> {
-    let c = context.check()?;
+    let c = context.get_arc()?;
     let devs = validate_devices(device_list, num_devices, &c.devs)?;
     let progs = cl_program::get_arc_vec_from_arr(input_programs, num_input_programs)?;
 
@@ -251,7 +256,7 @@ pub fn link_program(
     }
 
     // CL_LINK_PROGRAM_FAILURE if there is a failure to link the compiled binaries and/or libraries.
-    let res = Program::link(c, &devs, &progs);
+    let res = Program::link(&c, &devs, &progs);
     let code = if devs
         .iter()
         .map(|d| res.status(d))

@@ -39,7 +39,7 @@ fn prepare_options(options: &String) -> Vec<CString> {
 #[repr(C)]
 pub struct Program {
     pub base: CLObjectBase<CL_INVALID_PROGRAM>,
-    pub context: CLContextRef,
+    pub context: Arc<Context>,
     pub devs: Vec<CLDeviceRef>,
     pub src: CString,
     pub kernels: Vec<String>,
@@ -49,7 +49,7 @@ pub struct Program {
 impl_cl_type_trait!(cl_program, Program, CL_INVALID_PROGRAM);
 
 impl Program {
-    pub fn new(context: &CLContextRef, devs: &Vec<CLDeviceRef>, src: CString) -> Arc<Program> {
+    pub fn new(context: &Arc<Context>, devs: &Vec<CLDeviceRef>, src: CString) -> Arc<Program> {
         let builds = devs
             .iter()
             .map(|d| {
@@ -118,7 +118,7 @@ impl Program {
     }
 
     pub fn link(
-        context: &CLContextRef,
+        context: &Arc<Context>,
         devs: &Vec<&CLDeviceRef>,
         progs: &Vec<Arc<Program>>,
     ) -> Arc<Program> {

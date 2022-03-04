@@ -22,7 +22,7 @@ use std::sync::Mutex;
 #[repr(C)]
 pub struct Mem {
     pub base: CLObjectBase<CL_INVALID_MEM_OBJECT>,
-    pub context: CLContextRef,
+    pub context: Arc<Context>,
     pub parent: Option<Arc<Mem>>,
     pub mem_type: cl_mem_object_type,
     pub flags: cl_mem_flags,
@@ -65,7 +65,7 @@ fn sw_copy(
 
 impl Mem {
     pub fn new_buffer(
-        context: &CLContextRef,
+        context: &Arc<Context>,
         flags: cl_mem_flags,
         size: usize,
         host_ptr: *mut c_void,
@@ -123,7 +123,7 @@ impl Mem {
     }
 
     pub fn new_image(
-        context: &CLContextRef,
+        context: &Arc<Context>,
         mem_type: cl_mem_object_type,
         flags: cl_mem_flags,
         image_format: &cl_image_format,
@@ -325,7 +325,7 @@ impl Drop for Mem {
 #[repr(C)]
 pub struct Sampler {
     pub base: CLObjectBase<CL_INVALID_SAMPLER>,
-    pub context: CLContextRef,
+    pub context: Arc<Context>,
     pub normalized_coords: bool,
     pub addressing_mode: cl_addressing_mode,
     pub filter_mode: cl_filter_mode,
@@ -335,7 +335,7 @@ impl_cl_type_trait!(cl_sampler, Sampler, CL_INVALID_SAMPLER);
 
 impl Sampler {
     pub fn new(
-        context: &CLContextRef,
+        context: &Arc<Context>,
         normalized_coords: bool,
         addressing_mode: cl_addressing_mode,
         filter_mode: cl_filter_mode,

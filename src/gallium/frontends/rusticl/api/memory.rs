@@ -184,7 +184,11 @@ impl CLInfo<cl_mem_info> for cl_mem {
                 };
                 cl_prop::<cl_mem>(cl_mem::from_ptr(ptr))
             }
-            CL_MEM_CONTEXT => cl_prop::<cl_context>(mem.context.cl),
+            CL_MEM_CONTEXT => {
+                // Note we use as_ptr here which doesn't increase the reference count.
+                let ptr = Arc::as_ptr(&mem.context);
+                cl_prop::<cl_context>(cl_context::from_ptr(ptr))
+            }
             CL_MEM_FLAGS => cl_prop::<cl_mem_flags>(mem.flags),
             // TODO debugging feature
             CL_MEM_MAP_COUNT => cl_prop::<cl_uint>(0),
@@ -204,7 +208,7 @@ pub fn create_buffer(
     size: usize,
     host_ptr: *mut ::std::os::raw::c_void,
 ) -> Result<cl_mem, cl_int> {
-    let c = context.check()?;
+    let c = context.get_arc()?;
 
     // CL_INVALID_VALUE if values specified in flags are not valid as defined in the Memory Flags table.
     validate_mem_flags(flags, false)?;
@@ -223,7 +227,9 @@ pub fn create_buffer(
 
     validate_host_ptr(host_ptr, flags)?;
 
-    Ok(cl_mem::from_arc(Mem::new_buffer(c, flags, size, host_ptr)?))
+    Ok(cl_mem::from_arc(Mem::new_buffer(
+        &c, flags, size, host_ptr,
+    )?))
 }
 
 pub fn create_sub_buffer(
@@ -655,7 +661,7 @@ pub fn create_image(
     image_desc: *const cl_image_desc,
     host_ptr: *mut ::std::os::raw::c_void,
 ) -> Result<cl_mem, cl_int> {
-    let c = context.check()?;
+    let c = context.get_arc()?;
 
     // CL_INVALID_OPERATION if there are no devices in context that support images (i.e.
     // CL_DEVICE_IMAGE_SUPPORT specified in the Device Queries table is CL_FALSE).
@@ -687,7 +693,7 @@ pub fn create_image(
         .ok_or(CL_IMAGE_FORMAT_NOT_SUPPORTED)?;
 
     Ok(cl_mem::from_arc(Mem::new_image(
-        c,
+        &c,
         desc.image_type,
         flags,
         format,
@@ -705,7 +711,7 @@ pub fn get_supported_image_formats(
     image_formats: *mut cl_image_format,
     num_image_formats: *mut cl_uint,
 ) -> Result<(), cl_int> {
-    let c = context.check()?;
+    let c = context.get_ref()?;
 
     // CL_INVALID_VALUE if flags
     validate_mem_flags(flags, true)?;
@@ -743,7 +749,11 @@ impl CLInfo<cl_sampler_info> for cl_sampler {
         let sampler = self.get_ref()?;
         Ok(match q {
             CL_SAMPLER_ADDRESSING_MODE => cl_prop::<cl_addressing_mode>(sampler.addressing_mode),
-            CL_SAMPLER_CONTEXT => cl_prop::<cl_context>(sampler.context.cl),
+            CL_SAMPLER_CONTEXT => {
+                // Note we use as_ptr here which doesn't increase the reference count.
+                let ptr = Arc::as_ptr(&sampler.context);
+                cl_prop::<cl_context>(cl_context::from_ptr(ptr))
+            }
             CL_SAMPLER_FILTER_MODE => cl_prop::<cl_filter_mode>(sampler.filter_mode),
             CL_SAMPLER_NORMALIZED_COORDS => cl_prop::<bool>(sampler.normalized_coords),
             CL_SAMPLER_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
@@ -759,7 +769,7 @@ pub fn create_sampler(
     addressing_mode: cl_addressing_mode,
     filter_mode: cl_filter_mode,
 ) -> Result<cl_sampler, cl_int> {
-    let c = context.check()?;
+    let c = context.get_arc()?;
 
     // CL_INVALID_OPERATION if images are not supported by any device associated with context (i.e.
     // CL_DEVICE_IMAGE_SUPPORT specified in the Device Queries table is CL_FALSE).
@@ -774,7 +784,7 @@ pub fn create_sampler(
     validate_filter_mode(filter_mode)?;
 
     let sampler = Sampler::new(
-        c,
+        &c,
         check_cl_bool(normalized_coords).ok_or(CL_INVALID_VALUE)?,
         addressing_mode,
         filter_mode,

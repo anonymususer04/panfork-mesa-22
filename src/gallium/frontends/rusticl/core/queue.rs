@@ -21,7 +21,7 @@ use std::thread::JoinHandle;
 pub struct Queue {
     pub base: CLObjectBase<CL_INVALID_COMMAND_QUEUE>,
     pub context: Arc<Context>,
-    pub device: CLDeviceRef,
+    pub device: Arc<Device>,
     pub props: cl_command_queue_properties,
     pipe: Rc<PipeContext>,
     pending: Mutex<Vec<Arc<Event>>>,
@@ -35,7 +35,7 @@ impl_cl_type_trait!(cl_command_queue, Queue, CL_INVALID_COMMAND_QUEUE);
 impl Queue {
     pub fn new(
         context: &Arc<Context>,
-        device: &CLDeviceRef,
+        device: &Arc<Device>,
         props: cl_command_queue_properties,
     ) -> Result<Arc<Queue>, i32> {
         let (tx_q, rx_t) = mpsc::channel::<Vec<Arc<Event>>>();

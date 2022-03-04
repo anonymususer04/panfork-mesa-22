@@ -15,14 +15,14 @@ use std::sync::Arc;
 
 pub struct Context {
     pub base: CLObjectBase<CL_INVALID_CONTEXT>,
-    pub devs: Vec<CLDeviceRef>,
+    pub devs: Vec<Arc<Device>>,
     pub properties: Vec<cl_context_properties>,
 }
 
 impl_cl_type_trait!(cl_context, Context, CL_INVALID_CONTEXT);
 
 impl Context {
-    pub fn new(devs: Vec<CLDeviceRef>, properties: Vec<cl_context_properties>) -> Arc<Context> {
+    pub fn new(devs: Vec<Arc<Device>>, properties: Vec<cl_context_properties>) -> Arc<Context> {
         Arc::new(Self {
             base: CLObjectBase::new(),
             devs: devs,
@@ -33,7 +33,7 @@ impl Context {
     pub fn create_buffer(
         &self,
         size: usize,
-    ) -> Result<HashMap<cl_device_id, PipeResource>, cl_int> {
+    ) -> Result<HashMap<*const Device, PipeResource>, cl_int> {
         let adj_size: u32 = size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let mut res = HashMap::new();
         for dev in &self.devs {
@@ -41,7 +41,7 @@ impl Context {
                 .screen()
                 .resource_create_buffer(adj_size)
                 .ok_or(CL_OUT_OF_RESOURCES);
-            res.insert(dev.cl, resource?);
+            res.insert(Arc::as_ptr(dev), resource?);
         }
         Ok(res)
     }
@@ -50,7 +50,7 @@ impl Context {
         &self,
         size: usize,
         user_ptr: *mut c_void,
-    ) -> Result<HashMap<cl_device_id, PipeResource>, cl_int> {
+    ) -> Result<HashMap<*const Device, PipeResource>, cl_int> {
         let adj_size: u32 = size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let mut res = HashMap::new();
         for dev in &self.devs {
@@ -58,7 +58,7 @@ impl Context {
                 .screen()
                 .resource_create_buffer_from_user(adj_size, user_ptr)
                 .ok_or(CL_OUT_OF_RESOURCES);
-            res.insert(dev.cl, resource?);
+            res.insert(Arc::as_ptr(dev), resource?);
         }
         Ok(res)
     }

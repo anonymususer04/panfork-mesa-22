@@ -13,13 +13,22 @@ use self::rusticl_opencl_gen::*;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::slice;
+use std::sync::Arc;
 
 impl CLInfo<cl_context_info> for cl_context {
     fn query(&self, q: cl_context_info) -> Result<Vec<u8>, cl_int> {
         let ctx = self.get_ref()?;
         Ok(match q {
             CL_CONTEXT_DEVICES => {
-                cl_prop::<&Vec<cl_device_id>>(&ctx.devs.iter().map(|d| d.cl).collect())
+                cl_prop::<&Vec<cl_device_id>>(
+                    &ctx.devs
+                        .iter()
+                        .map(|d| {
+                            // Note we use as_ptr here which doesn't increase the reference count.
+                            cl_device_id::from_ptr(Arc::as_ptr(d))
+                        })
+                        .collect(),
+                )
             }
             CL_CONTEXT_NUM_DEVICES => cl_prop::<cl_uint>(ctx.devs.len() as u32),
             CL_CONTEXT_PROPERTIES => cl_prop::<&Vec<cl_context_properties>>(&ctx.properties),
@@ -68,7 +77,7 @@ pub fn create_context(
     // Duplicate devices specified in devices are ignored.
     let set: HashSet<_> =
         HashSet::from_iter(unsafe { slice::from_raw_parts(devices, num_devices as usize) }.iter());
-    let devs: Result<_, _> = set.into_iter().map(cl_device_id::check).collect();
+    let devs: Result<_, _> = set.into_iter().map(cl_device_id::get_arc).collect();
 
     Ok(cl_context::from_arc(Context::new(
         devs?,
@@ -87,7 +96,7 @@ pub fn create_context_from_type(
 
     let devs: Vec<_> = get_devs_for_type(device_type)
         .iter()
-        .map(|d| d.cl)
+        .map(|d| cl_device_id::from_ptr(Arc::as_ptr(d)))
         .collect();
 
     // CL_DEVICE_NOT_FOUND if no devices that match device_type and property values specified in properties were found.

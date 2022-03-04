@@ -29,7 +29,16 @@ impl CLInfo<cl_program_info> for cl_program {
                 cl_prop::<cl_context>(cl_context::from_ptr(ptr))
             }
             CL_PROGRAM_DEVICES => {
-                cl_prop::<&Vec<cl_device_id>>(&prog.devs.iter().map(|d| d.cl).collect())
+                cl_prop::<&Vec<cl_device_id>>(
+                    &prog
+                        .devs
+                        .iter()
+                        .map(|d| {
+                            // Note we use as_ptr here which doesn't increase the reference count.
+                            cl_device_id::from_ptr(Arc::as_ptr(d))
+                        })
+                        .collect(),
+                )
             }
             CL_PROGRAM_NUM_DEVICES => cl_prop::<cl_uint>(prog.devs.len() as cl_uint),
             CL_PROGRAM_NUM_KERNELS => cl_prop::<usize>(prog.kernels.len()),
@@ -44,11 +53,11 @@ impl CLInfo<cl_program_info> for cl_program {
 impl CLInfoObj<cl_program_build_info, cl_device_id> for cl_program {
     fn query(&self, d: cl_device_id, q: cl_program_build_info) -> Result<Vec<u8>, cl_int> {
         let prog = self.get_ref()?;
-        let dev = d.check()?;
+        let dev = d.get_arc()?;
         Ok(match q {
-            CL_PROGRAM_BUILD_LOG => cl_prop::<String>(prog.log(dev)),
-            CL_PROGRAM_BUILD_OPTIONS => cl_prop::<String>(prog.options(dev)),
-            CL_PROGRAM_BUILD_STATUS => cl_prop::<cl_build_status>(prog.status(dev)),
+            CL_PROGRAM_BUILD_LOG => cl_prop::<String>(prog.log(&dev)),
+            CL_PROGRAM_BUILD_OPTIONS => cl_prop::<String>(prog.options(&dev)),
+            CL_PROGRAM_BUILD_STATUS => cl_prop::<cl_build_status>(prog.status(&dev)),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => Err(CL_INVALID_VALUE)?,
         })
@@ -58,14 +67,14 @@ impl CLInfoObj<cl_program_build_info, cl_device_id> for cl_program {
 fn validate_devices(
     device_list: *const cl_device_id,
     num_devices: cl_uint,
-    default: &Vec<CLDeviceRef>,
-) -> Result<Vec<&CLDeviceRef>, cl_int> {
-    let mut devs = check_cl_objs(device_list, num_devices)?;
+    default: &Vec<Arc<Device>>,
+) -> Result<Vec<Arc<Device>>, cl_int> {
+    let mut devs = cl_device_id::get_arc_vec_from_arr(device_list, num_devices)?;
 
     // If device_list is a NULL value, the compile is performed for all devices associated with
     // program.
     if devs.is_empty() {
-        devs = default.iter().collect();
+        devs = default.clone();
     }
 
     Ok(devs)

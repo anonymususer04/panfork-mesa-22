@@ -101,14 +101,12 @@ rusticl_opencl_bindings_rs = rust.bindgen(
     rusticl_bindgen_args,
     '--disable-header-comment',
     '--ignore-functions',
-    '--raw-line', 'pub type cl_device_id = *const _cl_device_id;',
     '--raw-line', 'pub type cl_platform_id = *const _cl_platform_id;',
     # needed because bindgen adds *mut void fields...
     '--raw-line', 'unsafe impl std::marker::Sync for _cl_icd_dispatch {}',
     '--whitelist-type', 'cl_.*',
     '--whitelist-var', 'CL_.*',
     # we have to overwrite a few pointers as they get created as *mut otherwise
-    '--blacklist-type', 'cl_device_id',
     '--blacklist-type', 'cl_platform_id',
     # some info types need to be strongly typed so we can implement various get_infos
     '--new-type-alias-deref', 'cl_(mem|image)_info',

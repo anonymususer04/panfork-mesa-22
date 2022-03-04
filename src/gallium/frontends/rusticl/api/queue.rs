@@ -17,7 +17,11 @@ impl CLInfo<cl_command_queue_info> for cl_command_queue {
                 let ptr = Arc::as_ptr(&queue.context);
                 cl_prop::<cl_context>(cl_context::from_ptr(ptr))
             }
-            CL_QUEUE_DEVICE => cl_prop::<cl_device_id>(queue.device.cl),
+            CL_QUEUE_DEVICE => {
+                // Note we use as_ptr here which doesn't increase the reference count.
+                let ptr = Arc::as_ptr(&queue.device);
+                cl_prop::<cl_device_id>(cl_device_id::from_ptr(ptr))
+            }
             CL_QUEUE_PROPERTIES => cl_prop::<cl_command_queue_properties>(queue.props),
             CL_QUEUE_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
             // CL_INVALID_VALUE if param_name is not one of the supported values
@@ -46,7 +50,7 @@ pub fn create_command_queue(
     let c = context.get_arc()?;
 
     // CL_INVALID_DEVICE if device is not a valid device
-    let d = device.check()?;
+    let d = device.get_arc()?;
 
     // ... or is not associated with context.
     if !c.devs.contains(&d) {
@@ -63,7 +67,7 @@ pub fn create_command_queue(
         return Err(CL_INVALID_QUEUE_PROPERTIES);
     }
 
-    Ok(cl_command_queue::from_arc(Queue::new(&c, d, properties)?))
+    Ok(cl_command_queue::from_arc(Queue::new(&c, &d, properties)?))
 }
 
 pub fn finish_queue(command_queue: cl_command_queue) -> Result<(), cl_int> {

@@ -5,6 +5,7 @@ use crate::api::icd::*;
 use crate::api::types::*;
 use crate::api::util::*;
 use crate::core::context::*;
+use crate::core::device::*;
 use crate::core::queue::*;
 use crate::impl_cl_type_trait;
 
@@ -33,7 +34,7 @@ pub struct Mem {
     pub image_desc: cl_image_desc,
     pub image_elem_size: u8,
     pub cbs: Mutex<Vec<Box<dyn Fn(cl_mem) -> ()>>>,
-    res: Option<HashMap<cl_device_id, PipeResource>>,
+    res: Option<HashMap<*const Device, PipeResource>>,
     maps: Mutex<HashMap<*mut c_void, PipeTransfer>>,
 }
 
@@ -162,7 +163,7 @@ impl Mem {
         (a as *const Self) == (b as *const Self)
     }
 
-    fn get_res(&self) -> &HashMap<cl_device_id, PipeResource> {
+    fn get_res(&self) -> &HashMap<*const Device, PipeResource> {
         self.parent
             .as_ref()
             .map_or(self, |p| p.as_ref())
@@ -179,7 +180,7 @@ impl Mem {
         size: usize,
     ) -> Result<(), cl_int> {
         // TODO support sub buffers
-        let r = self.get_res().get(&q.device.cl).unwrap();
+        let r = self.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
         q.context().buffer_subdata(
             r,
             offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
@@ -201,7 +202,12 @@ impl Mem {
         dst_row_pitch: usize,
         dst_slice_pitch: usize,
     ) -> Result<(), cl_int> {
-        let r = self.res.as_ref().unwrap().get(&q.device.cl).unwrap();
+        let r = self
+            .res
+            .as_ref()
+            .unwrap()
+            .get(&Arc::as_ptr(&q.device))
+            .unwrap();
         let tx = q.context().buffer_map(r, 0, self.size.try_into().unwrap());
 
         sw_copy(
@@ -232,7 +238,12 @@ impl Mem {
         dst_row_pitch: usize,
         dst_slice_pitch: usize,
     ) -> Result<(), cl_int> {
-        let r = self.res.as_ref().unwrap().get(&q.device.cl).unwrap();
+        let r = self
+            .res
+            .as_ref()
+            .unwrap()
+            .get(&Arc::as_ptr(&q.device))
+            .unwrap();
         let tx = q.context().buffer_map(r, 0, self.size.try_into().unwrap());
 
         sw_copy(
@@ -263,8 +274,18 @@ impl Mem {
         dst_row_pitch: usize,
         dst_slice_pitch: usize,
     ) -> Result<(), cl_int> {
-        let res_src = self.res.as_ref().unwrap().get(&q.device.cl).unwrap();
-        let res_dst = dst.res.as_ref().unwrap().get(&q.device.cl).unwrap();
+        let res_src = self
+            .res
+            .as_ref()
+            .unwrap()
+            .get(&Arc::as_ptr(&q.device))
+            .unwrap();
+        let res_dst = dst
+            .res
+            .as_ref()
+            .unwrap()
+            .get(&Arc::as_ptr(&q.device))
+            .unwrap();
 
         let tx_src = q
             .context()
@@ -294,7 +315,12 @@ impl Mem {
 
     // TODO use PIPE_MAP_UNSYNCHRONIZED for non blocking
     pub fn map(&self, q: &Arc<Queue>, offset: usize, size: usize) -> *mut c_void {
-        let res = self.res.as_ref().unwrap().get(&q.device.cl).unwrap();
+        let res = self
+            .res
+            .as_ref()
+            .unwrap()
+            .get(&Arc::as_ptr(&q.device))
+            .unwrap();
         let tx = q
             .context()
             .buffer_map(res, offset.try_into().unwrap(), size.try_into().unwrap());

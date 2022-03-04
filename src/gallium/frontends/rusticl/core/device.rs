@@ -3,12 +3,12 @@ extern crate mesa_rust_gen;
 extern crate mesa_rust_util;
 extern crate rusticl_opencl_gen;
 
+use crate::api::icd::*;
 use crate::api::util::*;
 use crate::core::format::*;
 use crate::core::util::*;
 use crate::core::version::*;
-use crate::decl_cl_type;
-use crate::init_cl_type;
+use crate::impl_cl_type_trait;
 
 use self::mesa_rust::pipe::device::load_screens;
 use self::mesa_rust::pipe::screen::*;
@@ -19,10 +19,10 @@ use std::cmp::max;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::env;
-use std::ptr;
+use std::sync::Arc;
 
-pub struct CLDevice {
-    pub cl: cl_device_id,
+pub struct Device {
+    pub base: CLObjectBase<CL_INVALID_DEVICE>,
     screen: PipeScreen,
     pub cl_version: CLVersion,
     pub clc_version: CLVersion,
@@ -34,13 +34,13 @@ pub struct CLDevice {
     pub formats: HashMap<cl_image_format, HashMap<cl_mem_object_type, cl_mem_flags>>,
 }
 
-decl_cl_type!(_cl_device_id, CLDevice, CLDeviceRef, CL_INVALID_DEVICE);
+impl_cl_type_trait!(cl_device_id, Device, CL_INVALID_DEVICE);
 
-impl CLDevice {
-    fn new(screen: PipeScreen) -> Option<CLDeviceRef> {
+impl Device {
+    fn new(screen: PipeScreen) -> Option<Arc<Device>> {
         let mut d = Self {
-            screen,
-            cl: ptr::null(),
+            base: CLObjectBase::new(),
+            screen: screen,
             cl_version: CLVersion::Cl3_0,
             clc_version: CLVersion::Cl3_0,
             clc_versions: Vec::new(),
@@ -69,7 +69,7 @@ impl CLDevice {
         // now figure out what version we are
         d.check_version();
 
-        Some(init_cl_type!(d, _cl_device_id))
+        Some(Arc::new(d))
     }
 
     fn fill_format_tables(&mut self) {
@@ -314,11 +314,8 @@ impl CLDevice {
             .shader_param(pipe_shader_type::PIPE_SHADER_COMPUTE, cap)
     }
 
-    pub fn all() -> Vec<CLDeviceRef> {
-        load_screens()
-            .into_iter()
-            .filter_map(CLDevice::new)
-            .collect()
+    pub fn all() -> Vec<Arc<Device>> {
+        load_screens().into_iter().filter_map(Device::new).collect()
     }
 
     pub fn address_bits(&self) -> cl_uint {

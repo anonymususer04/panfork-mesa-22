@@ -461,12 +461,12 @@ extern "C" fn cl_get_device_info(
     param_value: *mut ::std::os::raw::c_void,
     param_value_size_ret: *mut usize,
 ) -> cl_int {
-    checked_call!(device.get_info(
+    match_err!(device.get_info(
         param_name,
         param_value_size,
         param_value,
         param_value_size_ret,
-    )?)
+    ))
 }
 
 extern "C" fn cl_create_context(

@@ -371,7 +371,7 @@ fn validate_image_desc<'a>(
     image_desc: *const cl_image_desc,
     host_ptr: *mut ::std::os::raw::c_void,
     elem_size: usize,
-    devs: &Vec<CLDeviceRef>,
+    devs: &Vec<Arc<Device>>,
 ) -> Result<cl_image_desc, cl_int> {
     // CL_INVALID_IMAGE_DESCRIPTOR if values specified in image_desc are not valid
     const err: cl_int = CL_INVALID_IMAGE_DESCRIPTOR;

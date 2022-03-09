@@ -10,6 +10,7 @@ use self::mesa_rust::compiler::clc::*;
 use self::rusticl_opencl_gen::*;
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::CString;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -140,7 +141,7 @@ impl Program {
     ) -> Arc<Program> {
         let devs: Vec<Arc<Device>> = devs.iter().map(|d| (*d).clone()).collect();
         let mut builds = HashMap::new();
-        let mut kernels = Vec::new();
+        let mut kernels = HashSet::new();
 
         for d in &devs {
             let mut locks = Vec::new();
@@ -155,7 +156,9 @@ impl Program {
 
             let (spirv, log) = spirv::SPIRVBin::link(&bins, false);
             let status = if let Some(spirv) = &spirv {
-                kernels.append(&mut spirv.kernels());
+                for k in spirv.kernels() {
+                    kernels.insert(k);
+                }
                 CL_BUILD_SUCCESS as cl_build_status
             } else {
                 CL_BUILD_ERROR
@@ -172,13 +175,12 @@ impl Program {
             );
         }
 
-        kernels.dedup();
         Arc::new(Self {
             base: CLObjectBase::new(),
             context: context.clone(),
             devs: devs,
             src: CString::new("").unwrap(),
-            kernels: kernels,
+            kernels: kernels.into_iter().collect(),
             builds: builds,
         })
     }

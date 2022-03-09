@@ -8,7 +8,6 @@ use crate::impl_cl_type_trait;
 
 use self::rusticl_opencl_gen::*;
 
-use std::convert::TryInto;
 use std::slice;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
@@ -53,7 +52,7 @@ impl Event {
     pub fn new_user(context: Arc<Context>) -> Arc<Event> {
         Arc::new(Self {
             base: CLObjectBase::new(),
-            context: context.clone(),
+            context: context,
             queue: None,
             cmd_type: CL_COMMAND_USER,
             deps: Vec::new(),
@@ -63,15 +62,8 @@ impl Event {
     }
 
     pub fn from_cl_arr(events: *const cl_event, num_events: u32) -> CLResult<Vec<Arc<Event>>> {
-        let c = num_events.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
-        let s = unsafe { slice::from_raw_parts(events, c) };
-
-        let mut v = Vec::new();
-        for e in s {
-            v.push(e.get_arc()?);
-        }
-
-        Ok(v)
+        let s = unsafe { slice::from_raw_parts(events, num_events as usize) };
+        s.iter().map(|e| e.get_arc()).collect()
     }
 
     pub fn is_error(&self) -> bool {
@@ -87,14 +79,14 @@ impl Event {
     // If anything requets waiting, we will update the status through fencing later.
     pub fn call(&self) -> cl_int {
         let status = self.status();
-        if status == CL_QUEUED as i32 {
+        if status == CL_QUEUED as cl_int {
             let new = self.work.as_ref().map_or(
                 // if there is no work
-                CL_SUBMITTED as i32,
+                CL_SUBMITTED as cl_int,
                 |w| {
                     w(&self.queue.as_ref().unwrap()).err().map_or(
                         // if there is an error, negate it
-                        CL_SUBMITTED as i32,
+                        CL_SUBMITTED as cl_int,
                         |e| e,
                     )
                 },

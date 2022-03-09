@@ -29,7 +29,7 @@ impl ComputeParam<u32> for PipeScreen {
         let size = self.compute_param_wrapped(cap, ptr::null_mut());
         assert_eq!(size, 4);
         let mut d: [u8; 4] = [0; 4];
-        self.compute_param_wrapped(cap, d.as_mut_ptr() as *mut c_void);
+        self.compute_param_wrapped(cap, d.as_mut_ptr().cast());
         u32::from_ne_bytes(d)
     }
 }
@@ -39,7 +39,7 @@ impl ComputeParam<u64> for PipeScreen {
         let size = self.compute_param_wrapped(cap, ptr::null_mut());
         assert_eq!(size, 8);
         let mut d: [u8; 8] = [0; 8];
-        self.compute_param_wrapped(cap, d.as_mut_ptr() as *mut c_void);
+        self.compute_param_wrapped(cap, d.as_mut_ptr().cast());
         u64::from_ne_bytes(d)
     }
 }
@@ -52,7 +52,7 @@ impl ComputeParam<Vec<u64>> for PipeScreen {
         let mut res: Vec<u64> = Vec::new();
         let mut d: Vec<u8> = vec![0; size as usize];
 
-        self.compute_param_wrapped(cap, d.as_mut_ptr() as *mut c_void);
+        self.compute_param_wrapped(cap, d.as_mut_ptr().cast());
         for i in 0..elems {
             let offset = i * 8;
             let slice = &d[offset..offset + 8];

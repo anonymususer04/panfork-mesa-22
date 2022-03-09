@@ -118,7 +118,7 @@ pub fn create_program_with_source(
                 source.push_str(&CStr::from_ptr(*strings.add(i)).to_string_lossy());
             } else {
                 let l = *lengths.add(i);
-                let arr = slice::from_raw_parts(*strings.add(i) as *const u8, l);
+                let arr = slice::from_raw_parts(*strings.add(i).cast(), l);
                 source.push_str(&CString::from_vec_unchecked(arr.to_vec()).to_string_lossy());
             }
         }

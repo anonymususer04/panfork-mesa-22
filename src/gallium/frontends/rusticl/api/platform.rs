@@ -110,7 +110,7 @@ fn test_get_platform_info() {
         ptr::null(),
         CL_PLATFORM_EXTENSIONS,
         s,
-        v.as_mut_ptr() as *mut ::std::ffi::c_void,
+        v.as_mut_ptr().cast(),
         &mut s,
     );
 

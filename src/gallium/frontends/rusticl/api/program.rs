@@ -41,7 +41,7 @@ impl CLInfo<cl_program_info> for cl_program {
                 )
             }
             CL_PROGRAM_NUM_DEVICES => cl_prop::<cl_uint>(prog.devs.len() as cl_uint),
-            CL_PROGRAM_NUM_KERNELS => cl_prop::<usize>(prog.kernels.len()),
+            CL_PROGRAM_NUM_KERNELS => cl_prop::<usize>(prog.kernels().len()),
             CL_PROGRAM_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
             CL_PROGRAM_SOURCE => cl_prop::<&CStr>(prog.src.as_c_str()),
             // CL_INVALID_VALUE if param_name is not one of the supported values

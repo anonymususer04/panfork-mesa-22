@@ -105,6 +105,39 @@ impl Program {
             .clone()
     }
 
+    pub fn build(&self, dev: &Arc<Device>, options: String) -> bool {
+        let mut d = self
+            .builds
+            .get(&Arc::as_ptr(dev))
+            .expect("")
+            .lock()
+            .unwrap();
+
+        let args = prepare_options(&options);
+        let (spirv, log) = spirv::SPIRVBin::from_clc(&self.src, &args, &Vec::new());
+
+        d.log = log;
+        d.options = options;
+        if spirv.is_none() {
+            d.status = CL_BUILD_ERROR;
+            return false;
+        }
+
+        let spirvs = vec![spirv.as_ref().unwrap()];
+        let (spirv, log) = spirv::SPIRVBin::link(&spirvs, false);
+
+        d.log.push_str(&log);
+        d.spirv = spirv;
+
+        if d.spirv.is_some() {
+            d.status = CL_BUILD_SUCCESS as cl_build_status;
+            true
+        } else {
+            d.status = CL_BUILD_ERROR;
+            false
+        }
+    }
+
     pub fn compile(
         &self,
         dev: &Arc<Device>,

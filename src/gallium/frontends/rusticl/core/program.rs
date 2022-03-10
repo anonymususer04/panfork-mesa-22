@@ -110,6 +110,14 @@ impl Program {
             .clone()
     }
 
+    pub fn args(&self, dev: &Arc<Device>, kernel: &String) -> Vec<spirv::SPIRVKernelArg> {
+        Self::dev_build_info(&mut self.build_info(), dev)
+            .spirv
+            .as_ref()
+            .unwrap()
+            .args(kernel)
+    }
+
     pub fn kernels(&self) -> Vec<String> {
         self.build_info().kernels.clone()
     }

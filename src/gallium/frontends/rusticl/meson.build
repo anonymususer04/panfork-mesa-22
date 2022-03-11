@@ -136,6 +136,7 @@ rusticl_mesa_bindings_inline_wrapper = static_library(
     inc_gallium,
     inc_gallium_aux,
     inc_include,
+    inc_nir,
     inc_src,
   ],
   c_args : pre_args,
@@ -146,6 +147,7 @@ rusticl_mesa_bindings_rs = rust.bindgen(
   output : 'rusticl_mesa_bindings.rs',
   include_directories : [
     include_directories('../../../../build/src/compiler/nir/'),
+    inc_compiler,
     inc_gallium,
     inc_gallium_aux,
     inc_include,
@@ -156,16 +158,21 @@ rusticl_mesa_bindings_rs = rust.bindgen(
   args : [
     rusticl_bindgen_args,
     '--whitelist-function', 'clc_.*',
+    '--whitelist-function', 'glsl_.*',
     '--whitelist-function', 'nir_.*',
     '--whitelist-function', 'pipe_.*',
-    '--whitelist-function', 'ralloc_.*',
+    '--whitelist-function', 'rz?alloc_.*',
+    '--whitelist-function', 'spirv_.*',
     '--whitelist-type', 'pipe_endian',
     '--whitelist-type', 'clc_kernel_arg_access_qualifier',
     '--bitfield-enum', 'clc_kernel_arg_access_qualifier',
     '--whitelist-type', 'clc_kernel_arg_type_qualifier',
     '--bitfield-enum', 'clc_kernel_arg_type_qualifier',
+    '--bitfield-enum', 'nir_variable_mode',
+    '--whitelist-type', 'float_controls',
     '--whitelist-var', 'PIPE_.*',
     '--bitfield-enum', 'pipe_map_flags',
+    '--allowlist-var', 'stderr',
   ],
 )
 

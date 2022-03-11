@@ -30,7 +30,10 @@ impl Context {
         })
     }
 
-    pub fn create_buffer(&self, size: usize) -> CLResult<HashMap<*const Device, PipeResource>> {
+    pub fn create_buffer(
+        &self,
+        size: usize,
+    ) -> CLResult<HashMap<*const Device, Arc<PipeResource>>> {
         let adj_size: u32 = size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let mut res = HashMap::new();
         for dev in &self.devs {
@@ -38,7 +41,7 @@ impl Context {
                 .screen()
                 .resource_create_buffer(adj_size)
                 .ok_or(CL_OUT_OF_RESOURCES);
-            res.insert(Arc::as_ptr(dev), resource?);
+            res.insert(Arc::as_ptr(dev), Arc::new(resource?));
         }
         Ok(res)
     }
@@ -47,7 +50,7 @@ impl Context {
         &self,
         size: usize,
         user_ptr: *mut c_void,
-    ) -> CLResult<HashMap<*const Device, PipeResource>> {
+    ) -> CLResult<HashMap<*const Device, Arc<PipeResource>>> {
         let adj_size: u32 = size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let mut res = HashMap::new();
         for dev in &self.devs {
@@ -55,7 +58,7 @@ impl Context {
                 .screen()
                 .resource_create_buffer_from_user(adj_size, user_ptr)
                 .ok_or(CL_OUT_OF_RESOURCES);
-            res.insert(Arc::as_ptr(dev), resource?);
+            res.insert(Arc::as_ptr(dev), Arc::new(resource?));
         }
         Ok(res)
     }

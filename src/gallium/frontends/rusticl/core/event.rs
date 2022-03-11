@@ -13,6 +13,8 @@ use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+pub type EventSig = Box<dyn Fn(&Arc<Queue>) -> CLResult<()>>;
+
 #[repr(C)]
 pub struct Event {
     pub base: CLObjectBase<CL_INVALID_EVENT>,
@@ -22,7 +24,7 @@ pub struct Event {
     pub deps: Vec<Arc<Event>>,
     // use AtomicI32 instead of cl_int so we can change it without a &mut reference
     status: AtomicI32,
-    work: Option<Box<dyn Fn(&Arc<Queue>) -> CLResult<()>>>,
+    work: Option<EventSig>,
 }
 
 impl_cl_type_trait!(cl_event, Event, CL_INVALID_EVENT);
@@ -36,7 +38,7 @@ impl Event {
         queue: &Arc<Queue>,
         cmd_type: cl_command_type,
         deps: Vec<Arc<Event>>,
-        work: Box<dyn Fn(&Arc<Queue>) -> CLResult<()>>,
+        work: EventSig,
     ) -> Arc<Event> {
         Arc::new(Self {
             base: CLObjectBase::new(),

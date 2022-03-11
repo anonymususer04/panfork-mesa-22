@@ -6608,6 +6608,8 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
          b->shader->num_uniforms =
             glsl_get_explicit_size(glsl_without_array(var->type), false);
          break;
+      default:
+         break;
       }
    }
 

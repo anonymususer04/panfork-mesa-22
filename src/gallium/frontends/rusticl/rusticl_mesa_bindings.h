@@ -1,8 +1,8 @@
 #include "rusticl_mesa_inline_bindings_wrapper.h"
 
 #include "compiler/clc/clc.h"
-
-#include "nir.h"
+#include "nir_types.h"
+#include "spirv/nir_spirv.h"
 
 #include "pipe/p_context.h"
 #include "pipe/p_defines.h"

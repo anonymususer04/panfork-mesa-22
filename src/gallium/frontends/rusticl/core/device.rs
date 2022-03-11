@@ -10,6 +10,8 @@ use crate::core::util::*;
 use crate::core::version::*;
 use crate::impl_cl_type_trait;
 
+use self::mesa_rust::compiler::clc::*;
+use self::mesa_rust::compiler::nir::*;
 use self::mesa_rust::pipe::device::load_screens;
 use self::mesa_rust::pipe::screen::*;
 use self::mesa_rust_gen::*;
@@ -23,7 +25,7 @@ use std::sync::Arc;
 
 pub struct Device {
     pub base: CLObjectBase<CL_INVALID_DEVICE>,
-    screen: PipeScreen,
+    pub screen: PipeScreen,
     pub cl_version: CLVersion,
     pub clc_version: CLVersion,
     pub clc_versions: Vec<cl_name_version>,
@@ -32,12 +34,22 @@ pub struct Device {
     pub extension_string: String,
     pub extensions: Vec<cl_name_version>,
     pub formats: HashMap<cl_image_format, HashMap<cl_mem_object_type, cl_mem_flags>>,
+    pub lib_clc: NirShader,
 }
 
 impl_cl_type_trait!(cl_device_id, Device, CL_INVALID_DEVICE);
 
 impl Device {
     fn new(screen: PipeScreen) -> Option<Arc<Device>> {
+        if !Self::check_valid(&screen) {
+            return None;
+        }
+
+        let lib_clc = spirv::SPIRVBin::get_lib_clc(&screen);
+        if lib_clc.is_none() {
+            return None;
+        }
+
         let mut d = Self {
             base: CLObjectBase::new(),
             screen: screen,
@@ -49,11 +61,8 @@ impl Device {
             extension_string: String::from(""),
             extensions: Vec::new(),
             formats: HashMap::new(),
+            lib_clc: lib_clc.unwrap(),
         };
-
-        if !d.check_valid() {
-            return None;
-        }
 
         d.fill_format_tables();
 
@@ -106,17 +115,21 @@ impl Device {
         }
     }
 
-    fn check_valid(&self) -> bool {
-        if self.screen.param(pipe_cap::PIPE_CAP_COMPUTE) == 0 ||
+    fn check_valid(screen: &PipeScreen) -> bool {
+        if screen.param(pipe_cap::PIPE_CAP_COMPUTE) == 0 ||
          // even though we use PIPE_SHADER_IR_NIR, PIPE_SHADER_IR_NIR_SERIALIZED marks CL support by the driver
-         self.shader_param(pipe_shader_cap::PIPE_SHADER_CAP_SUPPORTED_IRS) & (1 << (pipe_shader_ir::PIPE_SHADER_IR_NIR_SERIALIZED as i32)) == 0
+         screen.shader_param(pipe_shader_type::PIPE_SHADER_COMPUTE, pipe_shader_cap::PIPE_SHADER_CAP_SUPPORTED_IRS) & (1 << (pipe_shader_ir::PIPE_SHADER_IR_NIR_SERIALIZED as i32)) == 0
         {
             return false;
         }
 
         // CL_DEVICE_MAX_PARAMETER_SIZE
         // For this minimum value, only a maximum of 128 arguments can be passed to a kernel
-        if self.param_max_size() < 128 {
+        if ComputeParam::<u64>::compute_param(
+            screen,
+            pipe_compute_cap::PIPE_COMPUTE_CAP_MAX_INPUT_SIZE,
+        ) < 128
+        {
             return false;
         }
         true

@@ -35,7 +35,7 @@ pub struct Mem {
     pub image_desc: cl_image_desc,
     pub image_elem_size: u8,
     pub cbs: Mutex<Vec<Box<dyn Fn(cl_mem) -> ()>>>,
-    res: Option<HashMap<*const Device, PipeResource>>,
+    res: Option<HashMap<*const Device, Arc<PipeResource>>>,
     maps: Mutex<HashMap<*mut c_void, PipeTransfer>>,
 }
 
@@ -164,13 +164,17 @@ impl Mem {
         (a as *const Self) == (b as *const Self)
     }
 
-    fn get_res(&self) -> &HashMap<*const Device, PipeResource> {
+    fn get_res(&self) -> &HashMap<*const Device, Arc<PipeResource>> {
         self.parent
             .as_ref()
             .map_or(self, |p| p.as_ref())
             .res
             .as_ref()
             .unwrap()
+    }
+
+    pub fn get_res_of_dev(&self, dev: &Arc<Device>) -> &Arc<PipeResource> {
+        self.get_res().get(&Arc::as_ptr(dev)).unwrap()
     }
 
     fn to_parent<'a>(&'a self, offset: &mut usize) -> &'a Self {

@@ -957,6 +957,7 @@ if _rusticl
   add_languages('rust', required: true)
 
   with_clc = true
+  with_libclc = true
   with_gallium_rusticl = true
 else
   with_gallium_rusticl = false

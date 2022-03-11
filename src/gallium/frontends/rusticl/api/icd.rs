@@ -68,7 +68,7 @@ pub static DISPATCH: cl_icd_dispatch = cl_icd_dispatch {
     clRetainEvent: Some(cl_retain_event),
     clReleaseEvent: Some(cl_release_event),
     clGetEventProfilingInfo: Some(cl_get_event_profiling_info),
-    clFlush: None,
+    clFlush: Some(cl_flush),
     clFinish: Some(cl_finish),
     clEnqueueReadBuffer: Some(cl_enqueue_read_buffer),
     clEnqueueWriteBuffer: Some(cl_enqueue_write_buffer),
@@ -82,7 +82,7 @@ pub static DISPATCH: cl_icd_dispatch = cl_icd_dispatch {
     clEnqueueMapImage: Some(cl_enqueue_map_image),
     clEnqueueUnmapMemObject: Some(cl_enqueue_unmap_mem_object),
     clEnqueueNDRangeKernel: Some(cl_enqueue_ndrange_kernel),
-    clEnqueueTask: None,
+    clEnqueueTask: Some(cl_enqueue_task),
     clEnqueueNativeKernel: None,
     clEnqueueMarker: None,
     clEnqueueWaitForEvents: None,
@@ -124,11 +124,11 @@ pub static DISPATCH: cl_icd_dispatch = cl_icd_dispatch {
     clLinkProgram: Some(cl_link_program),
     clUnloadPlatformCompiler: Some(cl_unload_platform_compiler),
     clGetKernelArgInfo: Some(cl_get_kernel_arg_info),
-    clEnqueueFillBuffer: None,
+    clEnqueueFillBuffer: Some(cl_enqueue_fill_buffer),
     clEnqueueFillImage: Some(cl_enqueue_fill_image),
     clEnqueueMigrateMemObjects: None,
-    clEnqueueMarkerWithWaitList: None,
-    clEnqueueBarrierWithWaitList: None,
+    clEnqueueMarkerWithWaitList: Some(cl_enqueue_marker_with_wait_list),
+    clEnqueueBarrierWithWaitList: Some(cl_enqueue_barrier_with_wait_list),
     clGetExtensionFunctionAddressForPlatform: None,
     clCreateFromGLTexture: None,
     clGetDeviceIDsFromD3D11KHR: ptr::null_mut(),
@@ -1073,17 +1073,37 @@ extern "C" fn cl_enqueue_unmap_mem_object(
 }
 
 extern "C" fn cl_enqueue_ndrange_kernel(
+    command_queue: cl_command_queue,
+    kernel: cl_kernel,
+    work_dim: cl_uint,
+    global_work_offset: *const usize,
+    global_work_size: *const usize,
+    local_work_size: *const usize,
+    num_events_in_wait_list: cl_uint,
+    event_wait_list: *const cl_event,
+    event: *mut cl_event,
+) -> cl_int {
+    match_err!(enqueue_ndrange_kernel(
+        command_queue,
+        kernel,
+        work_dim,
+        global_work_offset,
+        global_work_size,
+        local_work_size,
+        num_events_in_wait_list,
+        event_wait_list,
+        event
+    ))
+}
+
+extern "C" fn cl_enqueue_task(
     _command_queue: cl_command_queue,
     _kernel: cl_kernel,
-    _work_dim: cl_uint,
-    _global_work_offset: *const usize,
-    _global_work_size: *const usize,
-    _local_work_size: *const usize,
     _num_events_in_wait_list: cl_uint,
     _event_wait_list: *const cl_event,
     _event: *mut cl_event,
 ) -> cl_int {
-    println!("cl_enqueue_ndrange_kernel not implemented");
+    println!("cl_enqueue_task not implemented");
     CL_OUT_OF_HOST_MEMORY
 }
 
@@ -1328,6 +1348,21 @@ extern "C" fn cl_get_kernel_arg_info(
     ))
 }
 
+extern "C" fn cl_enqueue_fill_buffer(
+    _command_queue: cl_command_queue,
+    _buffer: cl_mem,
+    _pattern: *const ::std::os::raw::c_void,
+    _pattern_size: usize,
+    _offset: usize,
+    _cb: usize,
+    _num_events_in_wait_list: cl_uint,
+    _event_wait_list: *const cl_event,
+    _event: *mut cl_event,
+) -> cl_int {
+    println!("cl_enqueue_fill_buffer not implemented");
+    CL_OUT_OF_HOST_MEMORY
+}
+
 extern "C" fn cl_enqueue_fill_image(
     _command_queue: cl_command_queue,
     _image: cl_mem,
@@ -1339,6 +1374,26 @@ extern "C" fn cl_enqueue_fill_image(
     _event: *mut cl_event,
 ) -> cl_int {
     println!("cl_enqueue_fill_image not implemented");
+    CL_OUT_OF_HOST_MEMORY
+}
+
+extern "C" fn cl_enqueue_marker_with_wait_list(
+    _command_queue: cl_command_queue,
+    _num_events_in_wait_list: cl_uint,
+    _event_wait_list: *const cl_event,
+    _event: *mut cl_event,
+) -> cl_int {
+    println!("cl_enqueue_marker_with_wait_list not implemented");
+    CL_OUT_OF_HOST_MEMORY
+}
+
+extern "C" fn cl_enqueue_barrier_with_wait_list(
+    _command_queue: cl_command_queue,
+    _num_events_in_wait_list: cl_uint,
+    _event_wait_list: *const cl_event,
+    _event: *mut cl_event,
+) -> cl_int {
+    println!("cl_enqueue_barrier_with_wait_list not implemented");
     CL_OUT_OF_HOST_MEMORY
 }
 

@@ -172,6 +172,25 @@ impl Mem {
             .unwrap()
     }
 
+    pub fn read_to_user(
+        &self,
+        q: &Arc<Queue>,
+        offset: usize,
+        ptr: *mut c_void,
+        size: usize,
+    ) -> CLResult<()> {
+        // TODO support sub buffers
+        let r = self.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
+        let tx = q.context().buffer_map(r, 0, self.size.try_into().unwrap());
+
+        unsafe {
+            ptr::copy_nonoverlapping(tx.ptr().add(offset), ptr, size);
+        }
+
+        drop(tx);
+        Ok(())
+    }
+
     pub fn write_from_user(
         &self,
         q: &Arc<Queue>,

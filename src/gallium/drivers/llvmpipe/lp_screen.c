@@ -1008,7 +1008,6 @@ llvmpipe_screen_late_init(struct llvmpipe_screen *screen)
       goto out;
    }
 
-   lp_disk_cache_create(screen);
    screen->late_init_done = true;
 out:
    mtx_unlock(&screen->late_mutex);
@@ -1089,6 +1088,8 @@ llvmpipe_create_screen(struct sw_winsys *winsys)
    (void) mtx_init(&screen->rast_mutex, mtx_plain);
 
    (void) mtx_init(&screen->late_mutex, mtx_plain);
+
+   lp_disk_cache_create(screen);
 
    return &screen->base;
 }

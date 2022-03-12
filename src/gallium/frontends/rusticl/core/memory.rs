@@ -15,6 +15,7 @@ use self::rusticl_opencl_gen::*;
 
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::ops::AddAssign;
 use std::os::raw::c_void;
 use std::ptr;
 use std::sync::Arc;
@@ -172,16 +173,25 @@ impl Mem {
             .unwrap()
     }
 
+    fn to_parent<'a>(&'a self, offset: &mut usize) -> &'a Self {
+        if let Some(parent) = &self.parent {
+            offset.add_assign(self.offset);
+            parent
+        } else {
+            self
+        }
+    }
+
     pub fn read_to_user(
         &self,
         q: &Arc<Queue>,
-        offset: usize,
+        mut offset: usize,
         ptr: *mut c_void,
         size: usize,
     ) -> CLResult<()> {
-        // TODO support sub buffers
-        let r = self.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
-        let tx = q.context().buffer_map(r, 0, self.size.try_into().unwrap());
+        let b = self.to_parent(&mut offset);
+        let r = b.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
+        let tx = q.context().buffer_map(r, 0, b.size.try_into().unwrap());
 
         unsafe {
             ptr::copy_nonoverlapping(tx.ptr().add(offset), ptr, size);
@@ -194,12 +204,12 @@ impl Mem {
     pub fn write_from_user(
         &self,
         q: &Arc<Queue>,
-        offset: usize,
+        mut offset: usize,
         ptr: *const c_void,
         size: usize,
     ) -> CLResult<()> {
-        // TODO support sub buffers
-        let r = self.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
+        let b = self.to_parent(&mut offset);
+        let r = b.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
         q.context().buffer_subdata(
             r,
             offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,

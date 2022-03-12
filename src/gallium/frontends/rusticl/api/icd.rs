@@ -793,6 +793,10 @@ extern "C" fn cl_get_event_profiling_info(
     CL_OUT_OF_HOST_MEMORY
 }
 
+extern "C" fn cl_flush(command_queue: cl_command_queue) -> cl_int {
+    match_err!(flush_queue(command_queue))
+}
+
 extern "C" fn cl_finish(command_queue: cl_command_queue) -> cl_int {
     match_err!(finish_queue(command_queue))
 }

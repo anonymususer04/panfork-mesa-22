@@ -1,7 +1,9 @@
+extern crate mesa_rust_util;
 extern crate rusticl_opencl_gen;
 
 use crate::api::icd::*;
 
+use self::mesa_rust_util::string::*;
 use self::rusticl_opencl_gen::*;
 
 pub fn create_kernel(

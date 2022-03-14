@@ -217,6 +217,17 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
     // implement that as part of the macro where we know the real type.
     fn from_ptr(ptr: *const T) -> Self;
 
+    fn leak_ref(ptr: *mut Self, r: &std::sync::Arc<T>)
+    where
+        Self: Sized,
+    {
+        if !ptr.is_null() {
+            unsafe {
+                ptr.write(Self::from_arc(r.clone()));
+            }
+        }
+    }
+
     fn get_ref(&self) -> CLResult<&'static T> {
         unsafe { Ok(self.get_ptr()?.as_ref().unwrap()) }
     }

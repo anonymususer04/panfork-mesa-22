@@ -72,7 +72,7 @@ impl Mem {
         size: usize,
         host_ptr: *mut c_void,
     ) -> CLResult<Arc<Mem>> {
-        if bit_check(flags, CL_MEM_COPY_HOST_PTR | CL_MEM_ALLOC_HOST_PTR) {
+        if bit_check(flags, CL_MEM_ALLOC_HOST_PTR) {
             println!("host ptr semantics not implemented!");
         }
 
@@ -81,6 +81,16 @@ impl Mem {
         } else {
             context.create_buffer(size)
         }?;
+
+        if bit_check(flags, CL_MEM_COPY_HOST_PTR) {
+            for (d, r) in &buffer {
+                unsafe {
+                    (**d)
+                        .helper_ctx
+                        .buffer_subdata(r, 0, host_ptr, size.try_into().unwrap());
+                }
+            }
+        }
 
         Ok(Arc::new(Self {
             base: CLObjectBase::new(),

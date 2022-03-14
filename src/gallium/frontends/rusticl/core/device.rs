@@ -12,6 +12,7 @@ use crate::impl_cl_type_trait;
 
 use self::mesa_rust::compiler::clc::*;
 use self::mesa_rust::compiler::nir::*;
+use self::mesa_rust::pipe::context::*;
 use self::mesa_rust::pipe::device::load_screens;
 use self::mesa_rust::pipe::screen::*;
 use self::mesa_rust_gen::*;
@@ -21,6 +22,7 @@ use std::cmp::max;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::env;
+use std::rc::Rc;
 use std::sync::Arc;
 
 pub struct Device {
@@ -35,6 +37,7 @@ pub struct Device {
     pub extensions: Vec<cl_name_version>,
     pub formats: HashMap<cl_image_format, HashMap<cl_mem_object_type, cl_mem_flags>>,
     pub lib_clc: NirShader,
+    pub helper_ctx: Rc<PipeContext>,
 }
 
 impl_cl_type_trait!(cl_device_id, Device, CL_INVALID_DEVICE);
@@ -52,6 +55,7 @@ impl Device {
 
         let mut d = Self {
             base: CLObjectBase::new(),
+            helper_ctx: screen.create_context().unwrap(),
             screen: screen,
             cl_version: CLVersion::Cl3_0,
             clc_version: CLVersion::Cl3_0,

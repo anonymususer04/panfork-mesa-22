@@ -375,7 +375,7 @@ impl Kernel {
         offsets: &[usize],
     ) -> EventSig {
         let mut block = create_kernel_arr(block, 1);
-        let grid = create_kernel_arr(grid, 1);
+        let mut grid = create_kernel_arr(grid, 1);
         let offsets = create_kernel_arr(offsets, 0);
         let mut input: Vec<u8> = Vec::new();
         let mut resource_info = Vec::new();
@@ -383,12 +383,20 @@ impl Kernel {
 
         for i in 0..3 {
             if block[i] == 0 {
-                block[i] = 1;
+                if i == 0 {
+                    // TODO: make this more nice, but at least that should work
+                    let threads = q.device.max_block_sizes()[i] as u32;
+                    if grid[0] % threads == 0 {
+                        block[i] = threads;
+                        grid[i] /= threads;
+                    } else {
+                        block[i] = 1;
+                    }
+                } else {
+                    block[i] = 1;
+                }
             }
         }
-
-        //        block[0] = 1024;
-        //        grid[0] = 16;
 
         for (arg, val) in self.args.iter().zip(&self.values) {
             if arg.dead {

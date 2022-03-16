@@ -906,6 +906,69 @@ pub fn enqueue_write_buffer(
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
 }
 
+pub fn enqueue_copy_buffer(
+    command_queue: cl_command_queue,
+    src_buffer: cl_mem,
+    dst_buffer: cl_mem,
+    src_offset: usize,
+    dst_offset: usize,
+    size: usize,
+    num_events_in_wait_list: cl_uint,
+    event_wait_list: *const cl_event,
+    event: *mut cl_event,
+) -> CLResult<()> {
+    let q = command_queue.get_arc()?;
+    let src = src_buffer.get_arc()?;
+    let dst = dst_buffer.get_arc()?;
+    let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;
+
+    // CL_INVALID_CONTEXT if the context associated with command_queue, src_buffer and dst_buffer
+    // are not the same or if the context associated with command_queue and events in
+    // event_wait_list are not the same.
+    if q.context != src.context
+        || q.context != dst.context
+        || evs.iter().find(|e| e.context != q.context).is_some()
+    {
+        Err(CL_INVALID_CONTEXT)?
+    }
+
+    // CL_INVALID_VALUE if src_offset, dst_offset, size, src_offset + size or dst_offset + size
+    // require accessing elements outside the src_buffer and dst_buffer buffer objects respectively.
+    if src_offset + size > src.size || dst_offset + size > dst.size {
+        Err(CL_INVALID_VALUE)?
+    }
+
+    // CL_MEM_COPY_OVERLAP if src_buffer and dst_buffer are the same buffer or sub-buffer object
+    // and the source and destination regions overlap or if src_buffer and dst_buffer are different
+    // sub-buffers of the same associated buffer object and they overlap. The regions overlap if
+    // src_offset ≤ dst_offset ≤ src_offset + size - 1 or if dst_offset ≤ src_offset ≤ dst_offset + size - 1.
+    if src.has_same_parent(&dst) {
+        let src_offset = src_offset + src.offset;
+        let dst_offset = dst_offset + dst.offset;
+
+        if (src_offset <= dst_offset && dst_offset < src_offset + size)
+            || (dst_offset <= src_offset && src_offset < dst_offset + size)
+        {
+            Err(CL_MEM_COPY_OVERLAP)?
+        }
+    }
+
+    let e = Event::new(
+        &q,
+        CL_COMMAND_COPY_BUFFER,
+        evs,
+        Box::new(move |q| src.copy_to(q, &dst, src_offset, dst_offset, size)),
+    );
+    cl_event::leak_ref(event, &e);
+    q.queue(&e);
+    Ok(())
+
+    // TODO
+    //• CL_MISALIGNED_SUB_BUFFER_OFFSET if src_buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
+    //• CL_MISALIGNED_SUB_BUFFER_OFFSET if dst_buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
+    //• CL_MEM_OBJECT_ALLOCATION_FAILURE if there is a failure to allocate memory for data store associated with src_buffer or dst_buffer.
+}
+
 pub fn enqueue_read_buffer_rect(
     command_queue: cl_command_queue,
     buffer: cl_mem,
@@ -1281,7 +1344,7 @@ pub fn enqueue_copy_buffer_rect(
         CL_COMMAND_COPY_BUFFER_RECT,
         evs,
         Box::new(move |q| {
-            src.copy_to(
+            src.copy_to_rect(
                 &dst,
                 q,
                 &r,

@@ -8,7 +8,6 @@ use crate::core::context::*;
 use crate::core::queue::*;
 use crate::impl_cl_type_trait;
 
-use self::mesa_rust::pipe::context::*;
 use self::mesa_rust::pipe::fence::*;
 use self::mesa_rust_util::static_assert;
 use self::rusticl_opencl_gen::*;

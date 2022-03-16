@@ -147,6 +147,14 @@ impl NirShader {
         }
     }
 
+    pub fn scratch_size(&self) -> u32 {
+        unsafe { (*self.nir.as_ptr()).scratch_size }
+    }
+
+    pub fn shared_size(&self) -> u32 {
+        unsafe { (*self.nir.as_ptr()).info.shared_size }
+    }
+
     pub fn set_workgroup_size(&self, workgroup: &[u16; 3]) {
         let mut nir = self.nir.as_ptr();
         unsafe {

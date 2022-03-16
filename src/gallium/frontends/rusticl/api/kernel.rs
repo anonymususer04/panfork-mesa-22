@@ -271,12 +271,10 @@ pub fn enqueue_ndrange_kernel(
 ) -> CLResult<()> {
     let q = command_queue.get_arc()?;
     let k = kernel.get_arc()?;
-    let evs = event_list_from_cl(num_events_in_wait_list, event_wait_list)?;
+    let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if context associated with command_queue and kernel are not the same
-    // or if the context associated with command_queue and events in event_wait_list are not the
-    // same.
-    if q.context != k.prog.context || evs.iter().any(|e| e.context != q.context) {
+    if q.context != k.prog.context {
         Err(CL_INVALID_CONTEXT)?;
     }
 

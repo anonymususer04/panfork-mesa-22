@@ -4,6 +4,7 @@ extern crate rusticl_opencl_gen;
 use crate::api::icd::CLResult;
 use crate::api::types::*;
 use crate::core::event::*;
+use crate::core::queue::*;
 
 use self::mesa_rust_util::ptr::CheckedPtr;
 use self::rusticl_opencl_gen::*;
@@ -233,6 +234,7 @@ pub fn check_cl_bool<T: PartialEq + TryInto<cl_uint>>(val: T) -> Option<bool> {
 }
 
 pub fn event_list_from_cl<'a>(
+    q: &Arc<Queue>,
     num_events_in_wait_list: cl_uint,
     event_wait_list: *const cl_event,
 ) -> CLResult<Vec<Arc<Event>>> {
@@ -245,10 +247,15 @@ pub fn event_list_from_cl<'a>(
         Err(CL_INVALID_EVENT_WAIT_LIST)?
     }
 
-    Ok(Event::from_cl_arr(
-        event_wait_list,
-        num_events_in_wait_list,
-    )?)
+    let res = Event::from_cl_arr(event_wait_list, num_events_in_wait_list)?;
+
+    // CL_INVALID_CONTEXT if context associated with command_queue and events in event_list are not
+    // the same.
+    if res.iter().find(|e| e.context != q.context).is_some() {
+        Err(CL_INVALID_CONTEXT)?
+    }
+
+    Ok(res)
 }
 
 pub fn check_cb<T>(cb: &Option<T>, user_data: *mut c_void) -> CLResult<()> {

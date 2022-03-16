@@ -1100,14 +1100,19 @@ extern "C" fn cl_enqueue_ndrange_kernel(
 }
 
 extern "C" fn cl_enqueue_task(
-    _command_queue: cl_command_queue,
-    _kernel: cl_kernel,
-    _num_events_in_wait_list: cl_uint,
-    _event_wait_list: *const cl_event,
-    _event: *mut cl_event,
+    command_queue: cl_command_queue,
+    kernel: cl_kernel,
+    num_events_in_wait_list: cl_uint,
+    event_wait_list: *const cl_event,
+    event: *mut cl_event,
 ) -> cl_int {
-    println!("cl_enqueue_task not implemented");
-    CL_OUT_OF_HOST_MEMORY
+    match_err!(enqueue_task(
+        command_queue,
+        kernel,
+        num_events_in_wait_list,
+        event_wait_list,
+        event
+    ))
 }
 
 extern "C" fn cl_get_extension_function_address(

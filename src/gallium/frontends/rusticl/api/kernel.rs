@@ -13,6 +13,7 @@ use self::mesa_rust_util::string::*;
 use self::rusticl_opencl_gen::*;
 
 use std::collections::HashSet;
+use std::ptr;
 use std::slice;
 use std::sync::Arc;
 
@@ -353,4 +354,27 @@ pub fn enqueue_ndrange_kernel(
     //• CL_MEM_OBJECT_ALLOCATION_FAILURE if there is a failure to allocate memory for data store associated with image or buffer objects specified as arguments to kernel.
     //• CL_INVALID_OPERATION if SVM pointers are passed as arguments to a kernel and the device does not support SVM or if system pointers are passed as arguments to a kernel and/or stored inside SVM allocations passed as kernel arguments and the device does not support fine grain system SVM allocations.
     Ok(())
+}
+
+pub fn enqueue_task(
+    command_queue: cl_command_queue,
+    kernel: cl_kernel,
+    num_events_in_wait_list: cl_uint,
+    event_wait_list: *const cl_event,
+    event: *mut cl_event,
+) -> CLResult<()> {
+    // clEnqueueTask is equivalent to calling clEnqueueNDRangeKernel with work_dim set to 1,
+    // global_work_offset set to NULL, global_work_size[0] set to 1, and local_work_size[0] set to
+    // 1.
+    enqueue_ndrange_kernel(
+        command_queue,
+        kernel,
+        1,
+        ptr::null(),
+        [1, 0, 0].as_ptr(),
+        [1, 0, 0].as_ptr(),
+        num_events_in_wait_list,
+        event_wait_list,
+        event,
+    )
 }

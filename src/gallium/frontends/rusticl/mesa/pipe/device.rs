@@ -5,6 +5,7 @@ use crate::pipe::screen::*;
 use self::mesa_rust_gen::*;
 
 use std::ptr;
+use std::sync::Arc;
 
 #[derive(PartialEq)]
 pub(super) struct PipeLoaderDevice {
@@ -19,7 +20,7 @@ impl PipeLoaderDevice {
         Some(Self { ldev })
     }
 
-    fn load_screen(self) -> Option<PipeScreen> {
+    fn load_screen(self) -> Option<Arc<PipeScreen>> {
         let s = unsafe { pipe_loader_create_screen(self.ldev) };
         PipeScreen::new(self, s)
     }
@@ -46,7 +47,7 @@ fn load_devs() -> Vec<PipeLoaderDevice> {
         .collect()
 }
 
-pub fn load_screens() -> Vec<PipeScreen> {
+pub fn load_screens() -> Vec<Arc<PipeScreen>> {
     load_devs()
         .into_iter()
         .filter_map(PipeLoaderDevice::load_screen)

@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 pub struct Device {
     pub base: CLObjectBase<CL_INVALID_DEVICE>,
-    pub screen: PipeScreen,
+    pub screen: Arc<PipeScreen>,
     pub cl_version: CLVersion,
     pub clc_version: CLVersion,
     pub clc_versions: Vec<cl_name_version>,
@@ -43,7 +43,7 @@ pub struct Device {
 impl_cl_type_trait!(cl_device_id, Device, CL_INVALID_DEVICE);
 
 impl Device {
-    fn new(screen: PipeScreen) -> Option<Arc<Device>> {
+    fn new(screen: Arc<PipeScreen>) -> Option<Arc<Device>> {
         if !Self::check_valid(&screen) {
             return None;
         }
@@ -439,7 +439,7 @@ impl Device {
 
     pub fn max_grid_dimensions(&self) -> cl_uint {
         ComputeParam::<u64>::compute_param(
-            &self.screen,
+            self.screen.as_ref(),
             pipe_compute_cap::PIPE_COMPUTE_CAP_GRID_DIMENSION,
         ) as cl_uint
     }
@@ -455,19 +455,19 @@ impl Device {
 
     pub fn max_threads_per_block(&self) -> usize {
         ComputeParam::<u64>::compute_param(
-            &self.screen,
+            self.screen.as_ref(),
             pipe_compute_cap::PIPE_COMPUTE_CAP_MAX_THREADS_PER_BLOCK,
         ) as usize
     }
 
     pub fn param_max_size(&self) -> usize {
         ComputeParam::<u64>::compute_param(
-            &self.screen,
+            self.screen.as_ref(),
             pipe_compute_cap::PIPE_COMPUTE_CAP_MAX_INPUT_SIZE,
         ) as usize
     }
 
-    pub fn screen(&self) -> &PipeScreen {
+    pub fn screen(&self) -> &Arc<PipeScreen> {
         &self.screen
     }
 

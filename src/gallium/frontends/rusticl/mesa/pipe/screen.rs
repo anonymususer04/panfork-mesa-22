@@ -13,6 +13,7 @@ use std::convert::TryInto;
 use std::os::raw::c_void;
 use std::ptr;
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(PartialEq)]
 pub struct PipeScreen {
@@ -64,15 +65,15 @@ impl ComputeParam<Vec<u64>> for PipeScreen {
 }
 
 impl PipeScreen {
-    pub(super) fn new(ldev: PipeLoaderDevice, screen: *mut pipe_screen) -> Option<Self> {
+    pub(super) fn new(ldev: PipeLoaderDevice, screen: *mut pipe_screen) -> Option<Arc<Self>> {
         if screen.is_null() || !has_required_cbs(screen) {
             return None;
         }
 
-        Some(Self { ldev, screen })
+        Some(Arc::new(Self { ldev, screen }))
     }
 
-    pub fn create_context(&self) -> Option<Rc<PipeContext>> {
+    pub fn create_context(self: &Arc<Self>) -> Option<Rc<PipeContext>> {
         PipeContext::new(unsafe {
             (*self.screen).context_create.unwrap()(
                 self.screen,

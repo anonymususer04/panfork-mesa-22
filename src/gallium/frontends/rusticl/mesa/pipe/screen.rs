@@ -74,13 +74,16 @@ impl PipeScreen {
     }
 
     pub fn create_context(self: &Arc<Self>) -> Option<Rc<PipeContext>> {
-        PipeContext::new(unsafe {
-            (*self.screen).context_create.unwrap()(
-                self.screen,
-                ptr::null_mut(),
-                PIPE_CONTEXT_COMPUTE_ONLY,
-            )
-        })
+        PipeContext::new(
+            unsafe {
+                (*self.screen).context_create.unwrap()(
+                    self.screen,
+                    ptr::null_mut(),
+                    PIPE_CONTEXT_COMPUTE_ONLY,
+                )
+            },
+            self,
+        )
     }
 
     pub fn resource_create_buffer(&self, size: u32) -> Option<PipeResource> {
@@ -188,6 +191,29 @@ impl PipeScreen {
             }
         }
     }
+
+    pub(super) fn ref_fence(&self, fence: *mut pipe_fence_handle) -> *mut pipe_fence_handle {
+        unsafe {
+            let s = &mut *self.screen;
+            let mut res = ptr::null_mut();
+            s.fence_reference.unwrap()(s, &mut res, fence);
+            res
+        }
+    }
+
+    pub(super) fn unref_fence(&self, mut fence: *mut pipe_fence_handle) {
+        unsafe {
+            let s = &mut *self.screen;
+            s.fence_reference.unwrap()(s, &mut fence, ptr::null_mut());
+        }
+    }
+
+    pub(super) fn fence_finish(&self, fence: *mut pipe_fence_handle) {
+        unsafe {
+            let s = &mut *self.screen;
+            s.fence_finish.unwrap()(s, ptr::null_mut(), fence, PIPE_TIMEOUT_INFINITE as u64);
+        }
+    }
 }
 
 impl Drop for PipeScreen {
@@ -202,6 +228,8 @@ fn has_required_cbs(screen: *mut pipe_screen) -> bool {
     let s = unsafe { *screen };
     s.context_create.is_some()
         && s.destroy.is_some()
+        && s.fence_finish.is_some()
+        && s.fence_reference.is_some()
         && s.get_compiler_options.is_some()
         && s.get_compute_param.is_some()
         && s.get_name.is_some()

@@ -1,0 +1,64 @@
+diff --git a/src/gallium/frontends/rusticl/core/kernel.rs b/src/gallium/frontends/rusticl/core/kernel.rs
+index fc42251329c..1bc6657755c 100644
+--- a/src/gallium/frontends/rusticl/core/kernel.rs
++++ b/src/gallium/frontends/rusticl/core/kernel.rs
+@@ -14,6 +14,7 @@ use crate::impl_cl_type_trait;
+ use self::mesa_rust::compiler::clc::*;
+ use self::mesa_rust::compiler::nir::*;
+ use self::mesa_rust::pipe::context::*;
++use self::mesa_rust::pipe::resource::*;
+ use self::mesa_rust_gen::*;
+ use self::rusticl_opencl_gen::*;
+ 
+@@ -155,6 +156,7 @@ pub struct Kernel {
+     pub work_group_size: [usize; 3],
+     internal_args: Vec<InternalKernelArg>,
+     nirs: HashMap<Arc<Device>, NirShader>,
++    const_buffer: HashMap<Arc<Device>, PipeResource>,
+ }
+ 
+ impl_cl_type_trait!(cl_kernel, Kernel, CL_INVALID_KERNEL);
+@@ -511,6 +513,27 @@ impl Kernel {
+         nirs.values_mut()
+             .for_each(|n| KernelArg::assign_locations(&mut args, &mut internal_args, n));
+ 
++        let const_buffer = internal_args
++            .iter()
++            .find(|a| a.kind == InternalKernelArgType::ConstantBuffer)
++            .map_or(HashMap::new(), |_cb| {
++                nirs.iter()
++                    .map(|(d, nir)| {
++                        let buf = nir.get_constant_buffer();
++                        let res = d.screen()
++                                .resource_create_buffer(buf.len() as u32)
++                                .unwrap();
++                        d.helper_ctx().buffer_subdata(
++                            &res,
++                            0,
++                            buf.as_ptr().cast(),
++                            buf.len() as u32,
++                        );
++                        (d.clone(), res)
++                    })
++                    .collect()
++            });
++
+         Arc::new(Self {
+             base: CLObjectBase::new(),
+             prog: prog,
+@@ -521,6 +544,7 @@ impl Kernel {
+             internal_args: internal_args,
+             // caller has to verify all kernels have the same sig
+             nirs: nirs,
++            const_buffer: const_buffer,
+         })
+     }
+ 
+@@ -607,6 +631,7 @@ impl Clone for Kernel {
+             work_group_size: self.work_group_size.clone(),
+             internal_args: self.internal_args.clone(),
+             nirs: self.nirs.clone(),
++            const_buffer: HashMap::new(),//self.const_buffer.clone(),
+         }
+     }
+ }

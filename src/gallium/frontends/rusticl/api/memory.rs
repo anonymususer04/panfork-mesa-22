@@ -1361,16 +1361,25 @@ pub fn enqueue_map_buffer(
         Err(CL_INVALID_CONTEXT)?
     }
 
-    if !block || num_events_in_wait_list > 0 || !event.is_null() {
+    if num_events_in_wait_list > 0 {
         println!("enqueue_map_buffer not implemented");
         Err(CL_MAP_FAILURE)?
     }
 
+    let e = Event::new(
+        &q,
+        CL_COMMAND_MAP_BUFFER,
+        evs,
+        // we don't really have anything to do here?
+        Box::new(|_q| Ok(())),
+    );
+    cl_event::leak_ref(event, &e);
+    q.queue(&e);
     if block {
         q.flush(true)?;
     }
 
-    Ok(b.map(&q, offset, size))
+    Ok(b.map(&q, offset, size, block))
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for the device associated with queue. This error code is missing before version 1.1.
     // CL_MAP_FAILURE if there is a failure to map the requested region into the host address space. This error cannot occur for buffer objects created with CL_MEM_USE_HOST_PTR or CL_MEM_ALLOC_HOST_PTR.

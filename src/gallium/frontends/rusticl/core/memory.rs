@@ -205,9 +205,12 @@ impl Mem {
     ) -> CLResult<()> {
         let b = self.to_parent(&mut offset);
         let r = b.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
-        let tx = q
-            .context()
-            .buffer_map(r, offset.try_into().unwrap(), size.try_into().unwrap());
+        let tx = q.context().buffer_map(
+            r,
+            offset.try_into().unwrap(),
+            size.try_into().unwrap(),
+            true,
+        );
 
         unsafe {
             ptr::copy_nonoverlapping(tx.ptr(), ptr, size);
@@ -255,7 +258,9 @@ impl Mem {
             .unwrap()
             .get(&Arc::as_ptr(&q.device))
             .unwrap();
-        let tx = q.context().buffer_map(r, 0, self.size.try_into().unwrap());
+        let tx = q
+            .context()
+            .buffer_map(r, 0, self.size.try_into().unwrap(), true);
 
         sw_copy(
             src,
@@ -293,7 +298,9 @@ impl Mem {
             .unwrap()
             .get(&Arc::as_ptr(&q.device))
             .unwrap();
-        let tx = q.context().buffer_map(r, 0, self.size.try_into().unwrap());
+        let tx = q
+            .context()
+            .buffer_map(r, 0, self.size.try_into().unwrap(), true);
 
         sw_copy(
             unsafe { tx.ptr().add(offset) },
@@ -343,10 +350,10 @@ impl Mem {
 
         let tx_src = q
             .context()
-            .buffer_map(res_src, 0, src.size.try_into().unwrap());
+            .buffer_map(res_src, 0, src.size.try_into().unwrap(), true);
         let tx_dst = q
             .context()
-            .buffer_map(res_dst, 0, dst.size.try_into().unwrap());
+            .buffer_map(res_dst, 0, dst.size.try_into().unwrap(), true);
 
         // TODO check to use hw accelerated paths (e.g. resource_copy_region or blits)
         sw_copy(
@@ -367,8 +374,7 @@ impl Mem {
         Ok(())
     }
 
-    // TODO use PIPE_MAP_UNSYNCHRONIZED for non blocking
-    pub fn map(&self, q: &Arc<Queue>, mut offset: usize, size: usize) -> *mut c_void {
+    pub fn map(&self, q: &Arc<Queue>, mut offset: usize, size: usize, block: bool) -> *mut c_void {
         let b = self.to_parent(&mut offset);
 
         let res = b
@@ -377,9 +383,12 @@ impl Mem {
             .unwrap()
             .get(&Arc::as_ptr(&q.device))
             .unwrap();
-        let tx = q
-            .context()
-            .buffer_map(res, offset.try_into().unwrap(), size.try_into().unwrap());
+        let tx = q.context().buffer_map(
+            res,
+            offset.try_into().unwrap(),
+            size.try_into().unwrap(),
+            block,
+        );
         let ptr = tx.ptr();
 
         self.maps.lock().unwrap().insert(tx.ptr(), tx);

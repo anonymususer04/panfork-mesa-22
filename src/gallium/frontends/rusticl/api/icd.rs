@@ -1369,18 +1369,27 @@ extern "C" fn cl_get_kernel_arg_info(
 }
 
 extern "C" fn cl_enqueue_fill_buffer(
-    _command_queue: cl_command_queue,
-    _buffer: cl_mem,
-    _pattern: *const ::std::os::raw::c_void,
-    _pattern_size: usize,
-    _offset: usize,
-    _cb: usize,
-    _num_events_in_wait_list: cl_uint,
-    _event_wait_list: *const cl_event,
-    _event: *mut cl_event,
+    command_queue: cl_command_queue,
+    buffer: cl_mem,
+    pattern: *const ::std::os::raw::c_void,
+    pattern_size: usize,
+    offset: usize,
+    cb: usize,
+    num_events_in_wait_list: cl_uint,
+    event_wait_list: *const cl_event,
+    event: *mut cl_event,
 ) -> cl_int {
-    println!("cl_enqueue_fill_buffer not implemented");
-    CL_OUT_OF_HOST_MEMORY
+    match_err!(enqueue_fill_buffer(
+        command_queue,
+        buffer,
+        pattern,
+        pattern_size,
+        offset,
+        cb,
+        num_events_in_wait_list,
+        event_wait_list,
+        event,
+    ))
 }
 
 extern "C" fn cl_enqueue_fill_image(

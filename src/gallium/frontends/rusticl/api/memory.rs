@@ -171,7 +171,7 @@ fn validate_matching_buffer_flags<'a>(mem: &'a Mem, flags: cl_mem_flags) -> CLRe
 }
 
 impl CLInfo<cl_mem_info> for cl_mem {
-    fn query(&self, q: cl_mem_info) -> CLResult<Vec<u8>> {
+    fn query(&self, q: cl_mem_info, _: &[u8]) -> CLResult<Vec<u8>> {
         let mem = self.get_ref()?;
         Ok(match *q {
             CL_MEM_ASSOCIATED_MEMOBJECT => {
@@ -633,7 +633,7 @@ fn validate_buffer(
 }
 
 impl CLInfo<cl_image_info> for cl_mem {
-    fn query(&self, q: cl_image_info) -> CLResult<Vec<u8>> {
+    fn query(&self, q: cl_image_info, _: &[u8]) -> CLResult<Vec<u8>> {
         let mem = self.get_ref()?;
         Ok(match *q {
             CL_IMAGE_ARRAY_SIZE => cl_prop::<usize>(mem.image_desc.image_array_size),
@@ -743,7 +743,7 @@ pub fn get_supported_image_formats(
 }
 
 impl CLInfo<cl_sampler_info> for cl_sampler {
-    fn query(&self, q: cl_sampler_info) -> CLResult<Vec<u8>> {
+    fn query(&self, q: cl_sampler_info, _: &[u8]) -> CLResult<Vec<u8>> {
         let sampler = self.get_ref()?;
         Ok(match q {
             CL_SAMPLER_ADDRESSING_MODE => cl_prop::<cl_addressing_mode>(sampler.addressing_mode),

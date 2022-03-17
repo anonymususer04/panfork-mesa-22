@@ -1460,11 +1460,6 @@ pub fn enqueue_map_buffer(
         Err(CL_INVALID_CONTEXT)?
     }
 
-    if num_events_in_wait_list > 0 {
-        println!("enqueue_map_buffer not implemented");
-        Err(CL_MAP_FAILURE)?
-    }
-
     let e = Event::new(
         &q,
         CL_COMMAND_MAP_BUFFER,
@@ -1494,8 +1489,8 @@ pub fn enqueue_unmap_mem_object(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = command_queue.get_arc()?;
-    let m = memobj.get_ref()?;
-    let _evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
+    let m = memobj.get_arc()?;
+    let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if context associated with command_queue and memobj are not the same
     if q.context != m.context {
@@ -1504,14 +1499,31 @@ pub fn enqueue_unmap_mem_object(
 
     // CL_INVALID_VALUE if mapped_ptr is not a valid pointer returned by clEnqueueMapBuffer or
     // clEnqueueMapImage for memobj.
-    if !m.unmap(mapped_ptr) {
+    if !m.is_mapped_ptr(mapped_ptr) {
         Err(CL_INVALID_VALUE)?
     }
 
-    if num_events_in_wait_list > 0 || !event.is_null() {
-        println!("enqueue_unmap_mem_object not implemented");
-        Err(CL_OUT_OF_HOST_MEMORY)?
-    }
+    let e = Event::new(
+        &q,
+        CL_COMMAND_UNMAP_MEM_OBJECT,
+        evs,
+        Box::new(move |_| Ok(m.unmap(mapped_ptr))),
+    );
+    cl_event::leak_ref(event, &e);
+    q.queue(&e);
 
     Ok(())
+}
+
+pub fn enqueue_migrate_mem_objects(
+    _command_queue: cl_command_queue,
+    _num_mem_objects: cl_uint,
+    _mem_objects: *const cl_mem,
+    _flags: cl_mem_migration_flags,
+    _num_events_in_wait_list: cl_uint,
+    _event_wait_list: *const cl_event,
+    _event: *mut cl_event,
+) -> CLResult<()> {
+    println!("enqueue_migrate_mem_objects not implemented");
+    Err(CL_OUT_OF_HOST_MEMORY)
 }

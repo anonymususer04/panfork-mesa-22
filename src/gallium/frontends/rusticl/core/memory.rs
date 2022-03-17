@@ -36,7 +36,7 @@ pub struct Mem {
     pub image_elem_size: u8,
     pub cbs: Mutex<Vec<Box<dyn Fn(cl_mem) -> ()>>>,
     res: Option<HashMap<*const Device, Arc<PipeResource>>>,
-    maps: Mutex<HashMap<*mut c_void, PipeTransfer>>,
+    maps: Mutex<HashMap<*mut c_void, (u32, PipeTransfer)>>,
 }
 
 impl_cl_type_trait!(cl_mem, Mem, CL_INVALID_MEM_OBJECT);
@@ -432,14 +432,31 @@ impl Mem {
             block,
         );
         let ptr = tx.ptr();
+        let mut lock = self.maps.lock().unwrap();
+        let e = lock.get_mut(&ptr);
 
-        self.maps.lock().unwrap().insert(tx.ptr(), tx);
+        // if we already have a mapping, reuse that and increase the refcount
+        if let Some(e) = e {
+            e.0 += 1;
+        } else {
+            lock.insert(tx.ptr(), (1, tx));
+        }
 
         ptr
     }
 
-    pub fn unmap(&self, ptr: *mut c_void) -> bool {
-        self.maps.lock().unwrap().remove(&ptr).is_some()
+    pub fn is_mapped_ptr(&self, ptr: *mut c_void) -> bool {
+        self.maps.lock().unwrap().contains_key(&ptr)
+    }
+
+    pub fn unmap(&self, ptr: *mut c_void) {
+        let mut lock = self.maps.lock().unwrap();
+        let e = lock.get_mut(&ptr).unwrap();
+
+        e.0 -= 1;
+        if e.0 == 0 {
+            lock.remove(&ptr);
+        }
     }
 }
 

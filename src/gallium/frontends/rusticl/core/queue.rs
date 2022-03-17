@@ -10,7 +10,6 @@ use crate::impl_cl_type_trait;
 use self::mesa_rust::pipe::context::*;
 use self::rusticl_opencl_gen::*;
 
-use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -23,7 +22,7 @@ pub struct Queue {
     pub context: Arc<Context>,
     pub device: Arc<Device>,
     pub props: cl_command_queue_properties,
-    pipe: Rc<PipeContext>,
+    pipe: Arc<PipeContext>,
     pending: Mutex<Vec<Arc<Event>>>,
     _thrd: Option<JoinHandle<()>>,
     chan_in: mpsc::Sender<Vec<Arc<Event>>>,
@@ -74,7 +73,7 @@ impl Queue {
         }))
     }
 
-    pub fn context(&self) -> &Rc<PipeContext> {
+    pub fn context(&self) -> &Arc<PipeContext> {
         &self.pipe
     }
 

@@ -11,7 +11,6 @@ use self::mesa_rust_gen::*;
 use std::os::raw::*;
 use std::ptr;
 use std::ptr::*;
-use std::rc::Rc;
 use std::sync::Arc;
 
 pub struct PipeContext {
@@ -20,7 +19,7 @@ pub struct PipeContext {
 }
 
 impl PipeContext {
-    pub(super) fn new(context: *mut pipe_context, screen: &Arc<PipeScreen>) -> Option<Rc<Self>> {
+    pub(super) fn new(context: *mut pipe_context, screen: &Arc<PipeScreen>) -> Option<Arc<Self>> {
         let s = Self {
             pipe: NonNull::new(context)?,
             screen: screen.clone(),
@@ -31,7 +30,7 @@ impl PipeContext {
             return None;
         }
 
-        Some(Rc::new(s))
+        Some(Arc::new(s))
     }
 
     pub fn buffer_subdata(
@@ -54,7 +53,7 @@ impl PipeContext {
     }
 
     pub fn buffer_map(
-        self: &Rc<Self>,
+        self: &Arc<Self>,
         res: &PipeResource,
         offset: i32,
         size: i32,

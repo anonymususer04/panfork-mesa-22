@@ -6,17 +6,17 @@ use self::mesa_rust_gen::*;
 
 use std::os::raw::c_void;
 use std::ptr;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub struct PipeTransfer {
     pipe: *mut pipe_transfer,
     res: *mut pipe_resource,
     ptr: *mut c_void,
-    ctx: Rc<PipeContext>,
+    ctx: Arc<PipeContext>,
 }
 
 impl PipeTransfer {
-    pub fn new(pipe: *mut pipe_transfer, ptr: *mut c_void, ctx: &Rc<PipeContext>) -> Self {
+    pub fn new(pipe: *mut pipe_transfer, ptr: *mut c_void, ctx: &Arc<PipeContext>) -> Self {
         let mut res: *mut pipe_resource = ptr::null_mut();
         unsafe { pipe_resource_reference(&mut res, (*pipe).resource) }
 

@@ -22,7 +22,6 @@ use std::cmp::max;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::env;
-use std::rc::Rc;
 use std::sync::Arc;
 
 pub struct Device {
@@ -37,7 +36,7 @@ pub struct Device {
     pub extensions: Vec<cl_name_version>,
     pub formats: HashMap<cl_image_format, HashMap<cl_mem_object_type, cl_mem_flags>>,
     pub lib_clc: NirShader,
-    pub helper_ctx: Rc<PipeContext>,
+    pub helper_ctx: Arc<PipeContext>,
 }
 
 impl_cl_type_trait!(cl_device_id, Device, CL_INVALID_DEVICE);

@@ -12,7 +12,6 @@ use self::mesa_rust_util::string::*;
 use std::convert::TryInto;
 use std::os::raw::c_void;
 use std::ptr;
-use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(PartialEq)]
@@ -73,7 +72,7 @@ impl PipeScreen {
         Some(Arc::new(Self { ldev, screen }))
     }
 
-    pub fn create_context(self: &Arc<Self>) -> Option<Rc<PipeContext>> {
+    pub fn create_context(self: &Arc<Self>) -> Option<Arc<PipeContext>> {
         PipeContext::new(
             unsafe {
                 (*self.screen).context_create.unwrap()(

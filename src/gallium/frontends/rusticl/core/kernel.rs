@@ -3,6 +3,7 @@ extern crate mesa_rust_gen;
 extern crate rusticl_opencl_gen;
 
 use crate::api::icd::*;
+use crate::api::util::cl_prop;
 use crate::core::device::*;
 use crate::core::event::*;
 use crate::core::memory::*;
@@ -44,6 +45,7 @@ pub enum KernelArgType {
 #[derive(Hash, PartialEq, Eq)]
 pub enum InternalKernelArgType {
     ConstantBuffer,
+    GlobalWorkOffsets,
 }
 
 pub struct KernelArg {
@@ -139,7 +141,11 @@ pub struct Kernel {
 
 impl_cl_type_trait!(cl_kernel, Kernel, CL_INVALID_KERNEL);
 
-fn create_kernel_arr(vals: &[usize], val: u32) -> [u32; 3] {
+fn create_kernel_arr<T>(vals: &[usize], val: T) -> [T; 3]
+where
+    T: std::convert::TryFrom<usize> + Copy,
+    <T as std::convert::TryFrom<usize>>::Error: std::fmt::Debug,
+{
     let mut res = [val; 3];
     for (i, v) in vals.iter().enumerate() {
         res[i] = (*v).try_into().expect("64 bit work groups not supported");
@@ -148,17 +154,27 @@ fn create_kernel_arr(vals: &[usize], val: u32) -> [u32; 3] {
 }
 
 struct RusticlLowerConstantBufferState {
-    var: *mut nir_variable,
+    base_global_invoc_id: *mut nir_variable,
+    const_buf: *mut nir_variable,
 }
 
-unsafe extern "C" fn rusticl_lower_constant_buffer_filter(
+impl Default for RusticlLowerConstantBufferState {
+    fn default() -> Self {
+        Self {
+            base_global_invoc_id: ptr::null_mut(),
+            const_buf: ptr::null_mut(),
+        }
+    }
+}
+
+unsafe extern "C" fn rusticl_lower_intrinsics_filter(
     instr: *const nir_instr,
     _: *const c_void,
 ) -> bool {
     (*instr).type_ == nir_instr_type::nir_instr_type_intrinsic
 }
 
-unsafe extern "C" fn rusticl_lower_constant_buffer_instr(
+unsafe extern "C" fn rusticl_lower_intrinsics_instr(
     b: *mut nir_builder,
     instr: *mut nir_instr,
     state: *mut c_void,
@@ -167,19 +183,24 @@ unsafe extern "C" fn rusticl_lower_constant_buffer_instr(
     let state: &mut RusticlLowerConstantBufferState = &mut *state.cast();
 
     match instr.intrinsic {
-        nir_intrinsic_op::nir_intrinsic_load_constant_base_ptr => nir_load_var(b, state.var),
+        nir_intrinsic_op::nir_intrinsic_load_base_global_invocation_id => {
+            nir_load_var(b, state.base_global_invoc_id)
+        }
+        nir_intrinsic_op::nir_intrinsic_load_constant_base_ptr => nir_load_var(b, state.const_buf),
         _ => ptr::null_mut(),
     }
 }
 
-extern "C" fn rusticl_lower_constant_buffer(nir: *mut nir_shader, var: *mut nir_variable) -> bool {
-    let mut state = RusticlLowerConstantBufferState { var: var };
+extern "C" fn rusticl_lower_intrinsics(
+    nir: *mut nir_shader,
+    state: *mut RusticlLowerConstantBufferState,
+) -> bool {
     unsafe {
         nir_shader_lower_instructions(
             nir,
-            Some(rusticl_lower_constant_buffer_filter),
-            Some(rusticl_lower_constant_buffer_instr),
-            (&mut state as *mut RusticlLowerConstantBufferState).cast(),
+            Some(rusticl_lower_intrinsics_filter),
+            Some(rusticl_lower_intrinsics_instr),
+            state.cast(),
         )
     }
 }
@@ -258,6 +279,7 @@ fn lower_and_optimize_nir_late(
             .screen
             .nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE)
     };
+    let mut lower_state = RusticlLowerConstantBufferState::default();
 
     nir.pass2(
         nir_remove_dead_variables,
@@ -283,21 +305,32 @@ fn lower_and_optimize_nir_late(
     nir.extract_constant_initializers();
     // TODO printf
     // TODO 32 bit devices
-    let const_var = if nir.has_constant() {
+    // add vars for global offsets
+    res.push(InternalKernelArg {
+        kind: InternalKernelArgType::GlobalWorkOffsets,
+        offset: 0,
+        size: 24,
+    });
+    lower_state.base_global_invoc_id = nir.add_var(
+        nir_variable_mode::nir_var_uniform,
+        unsafe { glsl_vector_type(glsl_base_type::GLSL_TYPE_UINT64, 3) },
+        args + res.len() - 1,
+        "base_global_invocation_id",
+    );
+    if nir.has_constant() {
         res.push(InternalKernelArg {
             kind: InternalKernelArgType::ConstantBuffer,
             offset: 0,
             size: 8,
         });
-        nir.add_var(
+        lower_state.const_buf = nir.add_var(
             nir_variable_mode::nir_var_uniform,
             unsafe { glsl_uint64_t_type() },
             args + res.len() - 1,
             "constant_buffer_addr",
-        )
-    } else {
-        ptr::null_mut()
-    };
+        );
+    }
+
     nir.pass2(
         nir_lower_vars_to_explicit_types,
         nir_variable_mode::nir_var_mem_shared
@@ -311,9 +344,11 @@ fn lower_and_optimize_nir_late(
         nir_variable_mode::nir_var_mem_global | nir_variable_mode::nir_var_mem_constant,
         nir_address_format::nir_address_format_64bit_global,
     );
-    if !const_var.is_null() {
-        nir.pass1(rusticl_lower_constant_buffer, const_var);
-    }
+    nir.pass0(nir_lower_system_values);
+    let mut compute_options = nir_lower_compute_system_values_options::default();
+    compute_options.set_has_base_global_invocation_id(true);
+    nir.pass1(nir_lower_compute_system_values, &compute_options);
+    nir.pass1(rusticl_lower_intrinsics, &mut lower_state);
     nir.pass2(
         nir_lower_explicit_io,
         nir_variable_mode::nir_var_mem_shared
@@ -321,9 +356,6 @@ fn lower_and_optimize_nir_late(
             | nir_variable_mode::nir_var_uniform,
         nir_address_format::nir_address_format_32bit_offset_as_64bit,
     );
-    nir.pass0(nir_lower_system_values);
-    let compute_options = nir_lower_compute_system_values_options::default();
-    nir.pass1(nir_lower_compute_system_values, &compute_options);
     nir.pass0(nir_opt_deref);
     nir.pass0(nir_lower_vars_to_ssa);
 
@@ -396,9 +428,9 @@ impl Kernel {
         grid: &[usize],
         offsets: &[usize],
     ) -> EventSig {
-        let mut block = create_kernel_arr(block, 1);
-        let mut grid = create_kernel_arr(grid, 1);
-        let offsets = create_kernel_arr(offsets, 0);
+        let mut block = create_kernel_arr::<u32>(block, 1);
+        let mut grid = create_kernel_arr::<u32>(grid, 1);
+        let offsets = create_kernel_arr::<u64>(offsets, 0);
         let mut input: Vec<u8> = Vec::new();
         let mut resource_info = Vec::new();
         let mut local_size: u32 = 0;
@@ -424,6 +456,7 @@ impl Kernel {
             if arg.dead {
                 continue;
             }
+            input.append(&mut vec![0; arg.offset - input.len()]);
             match val.borrow().as_ref().unwrap() {
                 KernelArgValue::Constant(c) => input.extend_from_slice(&c),
                 KernelArgValue::MemObject(mem) => {
@@ -448,6 +481,7 @@ impl Kernel {
 
         let nir = self.nirs.get(&q.device).unwrap();
         for arg in &self.internal_args {
+            input.append(&mut vec![0; arg.offset - input.len()]);
             match arg.kind {
                 InternalKernelArgType::ConstantBuffer => {
                     input.extend_from_slice(&[0; 8]);
@@ -465,6 +499,9 @@ impl Kernel {
                         buf.len() as u32,
                     );
                     resource_info.push((Some(res), arg.offset));
+                }
+                InternalKernelArgType::GlobalWorkOffsets => {
+                    input.extend_from_slice(&cl_prop::<[u64; 3]>(offsets));
                 }
             }
         }
@@ -486,8 +523,7 @@ impl Kernel {
             q.context().bind_compute_state(cso);
             q.context()
                 .set_global_binding(resources.as_slice(), &mut globals);
-            q.context()
-                .launch_grid(work_dim, block, grid, offsets, &input);
+            q.context().launch_grid(work_dim, block, grid, &input);
             q.context().clear_global_binding(globals.len() as u32);
             q.context().delete_compute_state(cso);
             q.context().memory_barrier(PIPE_BARRIER_GLOBAL_BUFFER);

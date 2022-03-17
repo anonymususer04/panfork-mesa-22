@@ -66,6 +66,7 @@ impl CLInfoObj<cl_kernel_work_group_info, cl_device_id> for cl_kernel {
         Ok(match *q {
             CL_KERNEL_COMPILE_WORK_GROUP_SIZE => cl_prop::<[usize; 3]>(kernel.work_group_size),
             CL_KERNEL_LOCAL_MEM_SIZE => cl_prop::<cl_ulong>(kernel.local_mem_size(&dev)),
+            CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE => cl_prop::<usize>(1),
             CL_KERNEL_PRIVATE_MEM_SIZE => cl_prop::<cl_ulong>(kernel.priv_mem_size(&dev)),
             // TODO
             CL_KERNEL_WORK_GROUP_SIZE => cl_prop::<usize>(1),

@@ -59,6 +59,18 @@ impl CLVersion {
             _ => None?,
         })
     }
+
+    pub fn to_clc_string(&self) -> String {
+        match self {
+            CLVersion::Cl1_0 => String::from("100"),
+            CLVersion::Cl1_1 => String::from("110"),
+            CLVersion::Cl1_2 => String::from("120"),
+            CLVersion::Cl2_0 => String::from("200"),
+            CLVersion::Cl2_1 => String::from("210"),
+            CLVersion::Cl2_2 => String::from("220"),
+            CLVersion::Cl3_0 => String::from("300"),
+        }
+    }
 }
 
 impl From<CLVersion> for String {

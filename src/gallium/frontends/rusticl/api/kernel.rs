@@ -64,6 +64,7 @@ impl CLInfoObj<cl_kernel_work_group_info, cl_device_id> for cl_kernel {
         let kernel = self.get_ref()?;
         let dev = dev.get_arc()?;
         Ok(match *q {
+            CL_KERNEL_COMPILE_WORK_GROUP_SIZE => cl_prop::<[usize; 3]>(kernel.work_group_size),
             CL_KERNEL_LOCAL_MEM_SIZE => cl_prop::<cl_ulong>(kernel.local_mem_size(&dev)),
             CL_KERNEL_PRIVATE_MEM_SIZE => cl_prop::<cl_ulong>(kernel.priv_mem_size(&dev)),
             // TODO
@@ -324,6 +325,17 @@ pub fn enqueue_ndrange_kernel(
         Err(CL_INVALID_WORK_ITEM_SIZE)?;
     }
 
+    // CL_INVALID_WORK_GROUP_SIZE if local_work_size is specified and does not match the required
+    // work-group size for kernel in the program source.
+    let wgs = k.work_group_size;
+    if wgs[0] != 0 {
+        for i in 0..work_dim as usize {
+            if wgs[i] != local_work_size[i] {
+                Err(CL_INVALID_WORK_GROUP_SIZE)?
+            }
+        }
+    }
+
     // If global_work_size is NULL, or the value in any passed dimension is 0 then the kernel
     // command will trivially succeed after its event dependencies are satisfied and subsequently
     // update its completion event.
@@ -343,7 +355,6 @@ pub fn enqueue_ndrange_kernel(
     cl_event::leak_ref(event, &e);
     q.queue(&e);
 
-    //• CL_INVALID_WORK_GROUP_SIZE if local_work_size is specified and does not match the required work-group size for kernel in the program source.
     //• CL_INVALID_WORK_GROUP_SIZE if local_work_size is specified and is not consistent with the required number of sub-groups for kernel in the program source.
     //• CL_INVALID_WORK_GROUP_SIZE if local_work_size is specified and the total number of work-items in the work-group computed as local_work_size[0] × … local_work_size[work_dim - 1] is greater than the value specified by CL_KERNEL_WORK_GROUP_SIZE in the Kernel Object Device Queries table.
     //• CL_INVALID_WORK_GROUP_SIZE if the work-group size must be uniform and the local_work_size is not NULL, is not equal to the required work-group size specified in the kernel source, or the global_work_size is not evenly divisible by the local_work_size.
@@ -371,7 +382,7 @@ pub fn enqueue_task(
         kernel,
         1,
         ptr::null(),
-        [1, 0, 0].as_ptr(),
+        [1, 1, 1].as_ptr(),
         [1, 0, 0].as_ptr(),
         num_events_in_wait_list,
         event_wait_list,

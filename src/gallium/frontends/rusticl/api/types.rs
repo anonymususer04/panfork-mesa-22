@@ -37,6 +37,13 @@ cl_callback!(
 );
 
 cl_callback!(
+    DeleteContextCB {
+        context: cl_context,
+        user_data: *mut ::std::os::raw::c_void,
+    }
+);
+
+cl_callback!(
     EventCB {
         event: cl_event,
         event_command_status: cl_int,

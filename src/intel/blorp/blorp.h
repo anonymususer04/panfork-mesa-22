@@ -183,6 +183,12 @@ blorp_buffer_copy(struct blorp_batch *batch,
                   uint64_t size);
 
 void
+blorp_buffer_fill(struct blorp_batch *batch,
+                  struct blorp_address dst,
+                  const void *data, uint32_t data_size,
+                  uint64_t size);
+
+void
 blorp_fast_clear(struct blorp_batch *batch,
                  const struct blorp_surf *surf,
                  enum isl_format format, struct isl_swizzle swizzle,

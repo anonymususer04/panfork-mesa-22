@@ -114,7 +114,7 @@ impl PipeContext {
         let flags = match block {
             false => pipe_map_flags::PIPE_MAP_UNSYNCHRONIZED,
             true => pipe_map_flags(0),
-        };
+        } | pipe_map_flags::PIPE_MAP_READ_WRITE;
 
         let ptr = unsafe {
             self.pipe.as_ref().buffer_map.unwrap()(

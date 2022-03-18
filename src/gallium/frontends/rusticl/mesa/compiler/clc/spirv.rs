@@ -227,9 +227,14 @@ impl SPIRVBin {
     pub fn get_lib_clc(screen: &PipeScreen) -> Option<NirShader> {
         let nir_options = screen.nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE);
         let spirv_options = Self::get_spirv_options(true, ptr::null());
-        NirShader::new(unsafe {
+        let nir = NirShader::new(unsafe {
             nir_load_libclc_shader(64, screen.shader_cache(), &spirv_options, nir_options)
-        })
+        });
+        // loading it might have called passes
+        if let Some(nir) = &nir {
+            nir.sweep_mem();
+        }
+        nir
     }
 
     pub fn to_bin(&self) -> &[u8] {

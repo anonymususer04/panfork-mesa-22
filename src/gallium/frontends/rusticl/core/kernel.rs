@@ -451,6 +451,9 @@ impl Kernel {
                 } else {
                     block[i] = 1;
                 }
+            } else {
+                // we already made sure everything is fine
+                grid[i] /= block[i];
             }
         }
 

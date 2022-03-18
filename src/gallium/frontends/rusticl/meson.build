@@ -153,7 +153,7 @@ rusticl_mesa_bindings_rs = rust.bindgen(
     idep_nir_headers,
   ],
   include_directories : [
-    include_directories('../../../../build/src/compiler/nir/'),
+    include_directories('../../../../_build/src/compiler/nir/'),
     inc_compiler,
     inc_gallium,
     inc_gallium_aux,

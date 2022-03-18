@@ -134,11 +134,13 @@ rusticl_mesa_bindings_inline_wrapper = static_library(
     'rusticl_mesa_inline_bindings_wrapper.h'
   ],
   gnu_symbol_visibility : 'hidden',
+  dependencies: [
+    idep_nir_headers,
+  ],
   include_directories : [
     inc_gallium,
     inc_gallium_aux,
     inc_include,
-    inc_nir,
     inc_src,
   ],
   c_args : pre_args,
@@ -147,14 +149,17 @@ rusticl_mesa_bindings_inline_wrapper = static_library(
 rusticl_mesa_bindings_rs = rust.bindgen(
   input : 'rusticl_mesa_bindings.h',
   output : 'rusticl_mesa_bindings.rs',
+  dependencies: [
+    idep_nir_headers,
+  ],
   include_directories : [
     include_directories('../../../../build/src/compiler/nir/'),
     inc_compiler,
     inc_gallium,
     inc_gallium_aux,
     inc_include,
-    inc_nir,
     inc_src,
+    inc_nir,
   ],
   c_args : pre_args,
   args : [

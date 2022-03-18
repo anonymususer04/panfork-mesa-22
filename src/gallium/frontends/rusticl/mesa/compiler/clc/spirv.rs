@@ -186,6 +186,7 @@ impl SPIRVBin {
                 int8: true,
                 int16: true,
                 int64: true,
+                printf: true,
                 ..Default::default()
             },
 

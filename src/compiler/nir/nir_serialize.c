@@ -2104,6 +2104,9 @@ nir_serialize(struct blob *blob, const nir_shader *nir, bool strip)
    if (nir->constant_data_size > 0)
       blob_write_bytes(blob, nir->constant_data, nir->constant_data_size);
 
+   assert(!nir->printf_info_count);
+   assert(!nir->printf_info);
+
    blob_overwrite_uint32(blob, idx_size_offset, ctx.next_idx);
 
    _mesa_hash_table_destroy(ctx.remap_table, NULL);

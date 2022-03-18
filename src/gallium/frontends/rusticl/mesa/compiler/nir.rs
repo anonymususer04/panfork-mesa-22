@@ -202,6 +202,23 @@ impl NirShader {
         }
     }
 
+    pub fn has_printf(&self) -> bool {
+        unsafe {
+            !self.nir.as_ref().printf_info.is_null() && self.nir.as_ref().printf_info_count != 0
+        }
+    }
+
+    pub fn printf_format(&self) -> &[nir_printf_info] {
+        if self.has_printf() {
+            unsafe {
+                let nir = self.nir.as_ref();
+                slice::from_raw_parts(nir.printf_info, nir.printf_info_count as usize)
+            }
+        } else {
+            &[]
+        }
+    }
+
     pub fn get_constant_buffer(&self) -> &[u8] {
         unsafe {
             let nir = self.nir.as_ref();

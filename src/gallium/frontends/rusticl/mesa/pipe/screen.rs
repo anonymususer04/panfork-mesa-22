@@ -93,6 +93,7 @@ impl PipeScreen {
         tmpl.height0 = 1;
         tmpl.depth0 = 1;
         tmpl.array_size = 1;
+        tmpl.bind = PIPE_BIND_GLOBAL;
 
         PipeResource::new(unsafe { (*self.screen).resource_create.unwrap()(self.screen, &tmpl) })
     }
@@ -109,6 +110,7 @@ impl PipeScreen {
         tmpl.height0 = 1;
         tmpl.depth0 = 1;
         tmpl.array_size = 1;
+        tmpl.bind = PIPE_BIND_GLOBAL;
 
         PipeResource::new(unsafe {
             (*self.screen).resource_from_user_memory.unwrap()(self.screen, &tmpl, mem)
@@ -186,7 +188,7 @@ impl PipeScreen {
         let s = &mut unsafe { *self.screen };
         if let Some(func) = s.finalize_nir {
             unsafe {
-                func(s, nir.get_nir().cast());
+                func(self.screen, nir.get_nir().cast());
             }
         }
     }

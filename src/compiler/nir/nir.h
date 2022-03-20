@@ -417,7 +417,7 @@ typedef struct nir_variable {
        *
        * \sa nir_variable_mode
        */
-      unsigned mode:15;
+      nir_variable_mode mode:16;
 
       /**
        * Is the variable read-only?

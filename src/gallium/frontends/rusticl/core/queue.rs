@@ -59,7 +59,15 @@ impl Queue {
                         }
                         let new_events = r.unwrap();
                         for e in &new_events {
-                            e.call();
+                            // all events should be processed, but we might have to wait on user
+                            // events to happen
+                            let err = e.deps.iter().map(|e| e.wait()).find(|s| *s < 0);
+                            if let Some(err) = err {
+                                // if a dependency failed, fail this event as well
+                                e.set_user_status(err);
+                            } else {
+                                e.call();
+                            }
                         }
                         for e in new_events {
                             e.wait();

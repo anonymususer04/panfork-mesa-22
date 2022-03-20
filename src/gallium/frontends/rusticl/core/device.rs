@@ -225,7 +225,7 @@ impl Device {
 
             // TODO check req formats
         }
-        false
+        !self.long_supported()
     }
 
     fn parse_env_version() -> Option<CLVersion> {
@@ -330,6 +330,12 @@ impl Device {
             add_ext(1, 0, 0, "cl_khr_fp64");
         }
 
+        if self.embedded {
+            if self.long_supported() {
+                add_ext(1, 0, 0, "cles_khr_int64");
+            }
+        }
+
         self.extensions = exts;
         self.extension_string = exts_str.join(" ");
     }
@@ -370,6 +376,10 @@ impl Device {
 
     pub fn doubles_supported(&self) -> bool {
         self.screen.param(pipe_cap::PIPE_CAP_DOUBLES) == 1
+    }
+
+    pub fn long_supported(&self) -> bool {
+        self.screen.param(pipe_cap::PIPE_CAP_INT64) == 1
     }
 
     pub fn global_mem_size(&self) -> cl_ulong {

@@ -60,6 +60,7 @@ impl CLInfoObj<cl_program_build_info, cl_device_id> for cl_program {
         let dev = d.get_arc()?;
         Ok(match q {
             CL_PROGRAM_BINARY_TYPE => cl_prop::<cl_program_binary_type>(prog.bin_type(&dev)),
+            CL_PROGRAM_BUILD_GLOBAL_VARIABLE_TOTAL_SIZE => cl_prop::<usize>(0),
             CL_PROGRAM_BUILD_LOG => cl_prop::<String>(prog.log(&dev)),
             CL_PROGRAM_BUILD_OPTIONS => cl_prop::<String>(prog.options(&dev)),
             CL_PROGRAM_BUILD_STATUS => cl_prop::<cl_build_status>(prog.status(&dev)),

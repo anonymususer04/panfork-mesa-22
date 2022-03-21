@@ -334,6 +334,16 @@ impl Device {
             if self.long_supported() {
                 add_ext(1, 0, 0, "cles_khr_int64");
             }
+
+            if !FORMATS
+                .iter()
+                .filter(|f| f.req_for_full_read_or_write)
+                .map(|f| self.formats.get(&f.cl_image_format).unwrap())
+                .map(|f| f.get(&CL_MEM_OBJECT_IMAGE2D_ARRAY).unwrap())
+                .any(|f| *f & cl_mem_flags::from(CL_MEM_WRITE_ONLY) == 0)
+            {
+                add_ext(1, 0, 0, "cles_khr_2d_image_array_writes");
+            }
         }
 
         self.extensions = exts;

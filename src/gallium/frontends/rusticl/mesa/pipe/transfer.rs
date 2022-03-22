@@ -13,10 +13,16 @@ pub struct PipeTransfer {
     res: *mut pipe_resource,
     ptr: *mut c_void,
     ctx: Arc<PipeContext>,
+    is_buffer: bool,
 }
 
 impl PipeTransfer {
-    pub fn new(pipe: *mut pipe_transfer, ptr: *mut c_void, ctx: &Arc<PipeContext>) -> Self {
+    pub(super) fn new(
+        is_buffer: bool,
+        pipe: *mut pipe_transfer,
+        ptr: *mut c_void,
+        ctx: &Arc<PipeContext>,
+    ) -> Self {
         let mut res: *mut pipe_resource = ptr::null_mut();
         unsafe { pipe_resource_reference(&mut res, (*pipe).resource) }
 
@@ -25,6 +31,7 @@ impl PipeTransfer {
             res: res,
             ptr: ptr,
             ctx: ctx.clone(),
+            is_buffer: is_buffer,
         }
     }
 
@@ -35,7 +42,11 @@ impl PipeTransfer {
 
 impl Drop for PipeTransfer {
     fn drop(&mut self) {
-        self.ctx.buffer_unmap(self.pipe);
+        if self.is_buffer {
+            self.ctx.buffer_unmap(self.pipe);
+        } else {
+            self.ctx.texture_unmap(self.pipe);
+        }
         unsafe { pipe_resource_reference(&mut self.res, ptr::null_mut()) }
     }
 }

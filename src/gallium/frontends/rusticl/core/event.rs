@@ -97,7 +97,7 @@ impl CLEvent {
                     w(&self.queue.as_ref().unwrap()).err().map_or(
                         // if there is an error, negate it
                         CL_SUBMITTED as i32,
-                        |e| -e,
+                        |e| e,
                     )
                 },
             );

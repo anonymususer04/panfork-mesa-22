@@ -124,6 +124,16 @@ impl<T: Copy + std::ops::Add<Output = T>> std::ops::Add<[T; 3]> for CLVec<T> {
     }
 }
 
+impl<T: Copy + std::ops::Sub<Output = T>> std::ops::Sub<[T; 3]> for CLVec<T> {
+    type Output = Self;
+
+    fn sub(self, other: [T; 3]) -> Self {
+        Self {
+            vals: [self[0] - other[0], self[1] - other[1], self[2] - other[2]],
+        }
+    }
+}
+
 impl<T> std::ops::Mul for CLVec<T>
 where
     T: Copy + std::ops::Mul<Output = T> + std::ops::Add<Output = T>,

@@ -468,7 +468,7 @@ impl Kernel {
         block: &[usize],
         grid: &[usize],
         offsets: &[usize],
-    ) -> EventSig {
+    ) -> CLResult<EventSig> {
         let mut block = create_kernel_arr::<u32>(block, 1);
         let mut grid = create_kernel_arr::<u32>(grid, 1);
         let offsets = create_kernel_arr::<u64>(offsets, 0);
@@ -506,7 +506,7 @@ impl Kernel {
                 KernelArgValue::Constant(c) => input.extend_from_slice(&c),
                 KernelArgValue::MemObject(mem) => {
                     input.extend_from_slice(&mem.offset.to_ne_bytes());
-                    resource_info.push((Some(mem.get_res_of_dev(&q.device).clone()), arg.offset));
+                    resource_info.push((Some(mem.get_res_of_dev(&q.device)?.clone()), arg.offset));
                 }
                 KernelArgValue::LocalMem(size) => {
                     // TODO 32 bit
@@ -562,7 +562,7 @@ impl Kernel {
         }
 
         let k = self.clone();
-        Box::new(move |q| {
+        Ok(Box::new(move |q| {
             let nir = k.nirs.get(&q.device).unwrap();
             let mut input = input.clone();
             let mut resources = Vec::with_capacity(resource_info.len());
@@ -950,7 +950,7 @@ impl Kernel {
             }
 
             Ok(())
-        })
+        }))
     }
 
     pub fn access_qualifier(&self, idx: cl_uint) -> cl_kernel_arg_access_qualifier {

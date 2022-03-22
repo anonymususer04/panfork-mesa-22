@@ -38,6 +38,14 @@ impl PipeTransfer {
     pub fn ptr(&self) -> *mut c_void {
         self.ptr
     }
+
+    pub fn row_pitch(&self) -> u32 {
+        unsafe { (*self.pipe).stride }
+    }
+
+    pub fn slice_pitch(&self) -> u32 {
+        unsafe { (*self.pipe).layer_stride }
+    }
 }
 
 impl Drop for PipeTransfer {

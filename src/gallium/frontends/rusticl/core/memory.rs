@@ -1,4 +1,5 @@
 extern crate mesa_rust;
+extern crate mesa_rust_gen;
 extern crate rusticl_opencl_gen;
 
 use crate::api::icd::*;
@@ -6,13 +7,16 @@ use crate::api::types::*;
 use crate::api::util::*;
 use crate::core::context::*;
 use crate::core::device::*;
+use crate::core::format::*;
 use crate::core::queue::*;
 use crate::impl_cl_type_trait;
 
 use self::mesa_rust::pipe::resource::*;
 use self::mesa_rust::pipe::transfer::*;
+use self::mesa_rust_gen::*;
 use self::rusticl_opencl_gen::*;
 
+use std::cmp;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::ops::AddAssign;
@@ -42,6 +46,95 @@ pub struct Mem {
 
 impl_cl_type_trait!(cl_mem, Mem, CL_INVALID_MEM_OBJECT);
 
+pub trait CLImageDescInfo {
+    fn type_info(&self) -> (u8, bool);
+    fn pixels(&self) -> usize;
+    fn bx(&self) -> CLResult<pipe_box>;
+    fn row_pitch(&self) -> CLResult<u32>;
+    fn slice_pitch(&self) -> CLResult<u32>;
+
+    fn dims(&self) -> u8 {
+        self.type_info().0
+    }
+
+    fn is_array(&self) -> bool {
+        self.type_info().1
+    }
+}
+
+impl CLImageDescInfo for cl_image_desc {
+    fn type_info(&self) -> (u8, bool) {
+        match self.image_type {
+            CL_MEM_OBJECT_IMAGE1D | CL_MEM_OBJECT_IMAGE1D_BUFFER => (1, false),
+            CL_MEM_OBJECT_IMAGE1D_ARRAY => (1, true),
+            CL_MEM_OBJECT_IMAGE2D => (2, false),
+            CL_MEM_OBJECT_IMAGE2D_ARRAY => (2, true),
+            CL_MEM_OBJECT_IMAGE3D => (3, false),
+            _ => panic!("unknown image_type {:x}", self.image_type),
+        }
+    }
+
+    fn pixels(&self) -> usize {
+        let mut res = self.image_width;
+        let dims = self.dims();
+
+        if dims > 1 {
+            res *= self.image_height;
+        }
+
+        if dims > 2 {
+            res *= self.image_depth;
+        }
+
+        if self.is_array() {
+            res *= self.image_array_size;
+        }
+
+        res
+    }
+
+    fn bx(&self) -> CLResult<pipe_box> {
+        let mut depth = if self.is_array() {
+            self.image_array_size
+                .try_into()
+                .map_err(|_| CL_OUT_OF_HOST_MEMORY)?
+        } else {
+            self.image_depth
+                .try_into()
+                .map_err(|_| CL_OUT_OF_HOST_MEMORY)?
+        };
+
+        depth = cmp::max(depth, 1);
+
+        Ok(pipe_box {
+            x: 0,
+            y: 0,
+            z: 0,
+            width: self
+                .image_width
+                .try_into()
+                .map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+            height: self
+                .image_height
+                .try_into()
+                .map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+            depth: depth,
+        })
+    }
+
+    fn row_pitch(&self) -> CLResult<u32> {
+        self.image_row_pitch
+            .try_into()
+            .map_err(|_| CL_OUT_OF_HOST_MEMORY)
+    }
+
+    fn slice_pitch(&self) -> CLResult<u32> {
+        self.image_slice_pitch
+            .try_into()
+            .map_err(|_| CL_OUT_OF_HOST_MEMORY)
+    }
+}
+
 fn sw_copy(
     src: *const c_void,
     dst: *mut c_void,
@@ -52,6 +145,7 @@ fn sw_copy(
     dst_origin: &CLVec<usize>,
     dst_row_pitch: usize,
     dst_slice_pitch: usize,
+    pixel_size: u8,
 ) {
     for z in 0..region[2] {
         for y in 0..region[1] {
@@ -59,11 +153,34 @@ fn sw_copy(
                 ptr::copy_nonoverlapping(
                     src.add((*src_origin + [0, y, z]) * [1, src_row_pitch, src_slice_pitch]),
                     dst.add((*dst_origin + [0, y, z]) * [1, dst_row_pitch, dst_slice_pitch]),
-                    region[0],
+                    region[0] * pixel_size as usize,
                 )
             };
         }
     }
+}
+
+fn create_box(
+    origin: &CLVec<usize>,
+    region: &CLVec<usize>,
+    tex_type: cl_mem_object_type,
+) -> CLResult<pipe_box> {
+    let mut y = 1;
+    let mut z = 2;
+
+    // array slice belongs to z/depth
+    if tex_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
+        (z, y) = (y, z);
+    }
+
+    Ok(pipe_box {
+        x: origin[0].try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+        y: origin[y].try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+        z: origin[z].try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+        width: region[0].try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+        height: region[y].try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+        depth: region[z].try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+    })
 }
 
 impl Mem {
@@ -143,35 +260,97 @@ impl Mem {
         mem_type: cl_mem_object_type,
         flags: cl_mem_flags,
         image_format: &cl_image_format,
-        image_desc: cl_image_desc,
+        mut image_desc: cl_image_desc,
         image_elem_size: u8,
         host_ptr: *mut c_void,
         props: Vec<cl_mem_properties>,
-    ) -> Arc<Mem> {
-        if bit_check(
-            flags,
-            CL_MEM_USE_HOST_PTR | CL_MEM_COPY_HOST_PTR | CL_MEM_ALLOC_HOST_PTR,
-        ) {
+    ) -> CLResult<Arc<Mem>> {
+        if bit_check(flags, CL_MEM_ALLOC_HOST_PTR) {
             println!("host ptr semantics not implemented!");
         }
 
-        Arc::new(Self {
+        // we have to sanitize the image_desc a little for internal use
+        let api_image_desc = image_desc;
+        let dims = image_desc.dims();
+        let is_array = image_desc.is_array();
+        if dims < 3 {
+            image_desc.image_depth = 1;
+        }
+        if dims < 2 {
+            image_desc.image_height = 1;
+        }
+        if !is_array {
+            image_desc.image_array_size = 1;
+        }
+
+        let texture = if bit_check(flags, CL_MEM_USE_HOST_PTR) {
+            context.create_texture_from_user(&image_desc, &image_format, host_ptr)
+        } else {
+            context.create_texture(&image_desc, &image_format)
+        }?;
+
+        if bit_check(flags, CL_MEM_COPY_HOST_PTR) {
+            let bx = image_desc.bx()?;
+            let stride = image_desc.row_pitch()?;
+            let layer_stride = image_desc.slice_pitch()?;
+
+            for (d, r) in &texture {
+                unsafe {
+                    (**d)
+                        .helper_ctx
+                        .texture_subdata(r, &bx, host_ptr, stride, layer_stride);
+                }
+            }
+        }
+
+        Ok(Arc::new(Self {
             base: CLObjectBase::new(),
             context: context.clone(),
             parent: None,
             mem_type: mem_type,
             flags: flags,
-            size: 0,
+            size: image_desc.pixels() * image_format.pixel_size().unwrap() as usize,
             offset: 0,
             host_ptr: host_ptr,
             image_format: *image_format,
-            image_desc: image_desc,
+            image_desc: api_image_desc,
             image_elem_size: image_elem_size,
             props: props,
             cbs: Mutex::new(Vec::new()),
-            res: None,
+            res: Some(texture),
             maps: Mutex::new(HashMap::new()),
-        })
+        }))
+    }
+
+    pub fn is_buffer(&self) -> bool {
+        self.mem_type == CL_MEM_OBJECT_BUFFER
+    }
+
+    fn tx(
+        &self,
+        q: &Arc<Queue>,
+        mut offset: usize,
+        size: usize,
+        blocking: bool,
+    ) -> CLResult<PipeTransfer> {
+        let b = self.to_parent(&mut offset);
+        let r = b.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+
+        assert!(self.is_buffer());
+
+        Ok(q.context().buffer_map(
+            r,
+            offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+            size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+            blocking,
+        ))
+    }
+
+    fn tx_image(&self, q: &Arc<Queue>, bx: &pipe_box, blocking: bool) -> CLResult<PipeTransfer> {
+        assert!(!self.is_buffer());
+
+        let r = self.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+        Ok(q.context().texture_map(r, bx, blocking))
     }
 
     pub fn has_same_parent(&self, other: &Self) -> bool {
@@ -180,17 +359,17 @@ impl Mem {
         (a as *const Self) == (b as *const Self)
     }
 
-    fn get_res(&self) -> &HashMap<*const Device, Arc<PipeResource>> {
+    fn get_res(&self) -> CLResult<&HashMap<*const Device, Arc<PipeResource>>> {
         self.parent
             .as_ref()
             .map_or(self, |p| p.as_ref())
             .res
             .as_ref()
-            .unwrap()
+            .ok_or(CL_OUT_OF_HOST_MEMORY)
     }
 
-    pub fn get_res_of_dev(&self, dev: &Arc<Device>) -> &Arc<PipeResource> {
-        self.get_res().get(&Arc::as_ptr(dev)).unwrap()
+    pub fn get_res_of_dev(&self, dev: &Arc<Device>) -> CLResult<&Arc<PipeResource>> {
+        Ok(self.get_res()?.get(&Arc::as_ptr(dev)).unwrap())
     }
 
     fn to_parent<'a>(&'a self, offset: &mut usize) -> &'a Self {
@@ -205,24 +384,18 @@ impl Mem {
     pub fn read_to_user(
         &self,
         q: &Arc<Queue>,
-        mut offset: usize,
+        offset: usize,
         ptr: *mut c_void,
         size: usize,
     ) -> CLResult<()> {
-        let b = self.to_parent(&mut offset);
-        let r = b.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
-        let tx = q.context().buffer_map(
-            r,
-            offset.try_into().unwrap(),
-            size.try_into().unwrap(),
-            true,
-        );
+        assert!(self.is_buffer());
+
+        let tx = self.tx(q, ctx, offset, size)?;
 
         unsafe {
             ptr::copy_nonoverlapping(tx.ptr(), ptr, size);
         }
 
-        drop(tx);
         Ok(())
     }
 
@@ -233,8 +406,10 @@ impl Mem {
         ptr: *const c_void,
         size: usize,
     ) -> CLResult<()> {
+        assert!(self.is_buffer());
+
         let b = self.to_parent(&mut offset);
-        let r = b.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
+        let r = b.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
         q.context().buffer_subdata(
             r,
             offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
@@ -252,11 +427,13 @@ impl Mem {
         mut dst_offset: usize,
         size: usize,
     ) -> CLResult<()> {
+        assert!(self.is_buffer());
+
         let src = self.to_parent(&mut src_offset);
         let dst = dst.to_parent(&mut dst_offset);
 
-        let src_res = src.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
-        let dst_res = dst.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
+        let src_res = src.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+        let dst_res = dst.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
 
         q.context().resource_copy_region(
             src_res,
@@ -275,8 +452,10 @@ impl Mem {
         mut offset: usize,
         size: usize,
     ) -> CLResult<()> {
+        assert!(self.is_buffer());
+
         let b = self.to_parent(&mut offset);
-        let res = b.get_res().get(&Arc::as_ptr(&q.device)).unwrap();
+        let res = b.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
         q.context().clear_buffer(
             res,
             pattern,
@@ -293,36 +472,49 @@ impl Mem {
         region: &CLVec<usize>,
         src_origin: &CLVec<usize>,
         src_row_pitch: usize,
-        src_slice_pitch: usize,
+        mut src_slice_pitch: usize,
         dst_origin: &CLVec<usize>,
         dst_row_pitch: usize,
         dst_slice_pitch: usize,
     ) -> CLResult<()> {
-        let mut offset = 0;
-        let b = self.to_parent(&mut offset);
-        let r = b
-            .res
-            .as_ref()
-            .unwrap()
-            .get(&Arc::as_ptr(&q.device))
-            .unwrap();
-        let tx = q
-            .context()
-            .buffer_map(r, 0, self.size.try_into().unwrap(), true);
+        if self.is_buffer() {
+            let tx = self.tx(q, 0, self.size, true)?;
+            sw_copy(
+                src,
+                tx.ptr(),
+                region,
+                src_origin,
+                src_row_pitch,
+                src_slice_pitch,
+                dst_origin,
+                dst_row_pitch,
+                dst_slice_pitch,
+                1,
+            );
+        } else {
+            assert!(dst_row_pitch == self.image_desc.image_row_pitch);
+            assert!(dst_slice_pitch == self.image_desc.image_slice_pitch);
+            assert!(src_origin == &CLVec::default());
 
-        sw_copy(
-            src,
-            unsafe { tx.ptr().add(offset) },
-            region,
-            src_origin,
-            src_row_pitch,
-            src_slice_pitch,
-            dst_origin,
-            dst_row_pitch,
-            dst_slice_pitch,
-        );
+            let res = self.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+            let bx = create_box(dst_origin, region, self.mem_type)?;
 
-        drop(tx);
+            if self.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
+                src_slice_pitch = src_row_pitch;
+            }
+
+            q.context().texture_subdata(
+                &res,
+                &bx,
+                src,
+                src_row_pitch
+                    .try_into()
+                    .map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+                src_slice_pitch
+                    .try_into()
+                    .map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+            );
+        }
         Ok(())
     }
 
@@ -332,26 +524,31 @@ impl Mem {
         q: &Arc<Queue>,
         region: &CLVec<usize>,
         src_origin: &CLVec<usize>,
-        src_row_pitch: usize,
-        src_slice_pitch: usize,
+        mut src_row_pitch: usize,
+        mut src_slice_pitch: usize,
         dst_origin: &CLVec<usize>,
         dst_row_pitch: usize,
         dst_slice_pitch: usize,
     ) -> CLResult<()> {
-        let mut offset = 0;
-        let b = self.to_parent(&mut offset);
-        let r = b
-            .res
-            .as_ref()
-            .unwrap()
-            .get(&Arc::as_ptr(&q.device))
-            .unwrap();
-        let tx = q
-            .context()
-            .buffer_map(r, 0, self.size.try_into().unwrap(), true);
+        let tx;
+        let pixel_size;
 
-        sw_copy(
-            unsafe { tx.ptr().add(offset) },
+        if self.is_buffer() {
+            tx = self.tx(q, 0, self.size, true)?;
+            pixel_size = 1;
+        } else {
+            assert!(dst_origin == &CLVec::default());
+
+            let bx = create_box(src_origin, region, self.mem_type)?;
+            tx = self.tx_image(q, &bx, true)?;
+            src_row_pitch = tx.row_pitch() as usize;
+            src_slice_pitch = tx.slice_pitch() as usize;
+
+            pixel_size = self.image_format.pixel_size().unwrap();
+        };
+
+        Ok(sw_copy(
+            tx.ptr(),
             dst,
             region,
             src_origin,
@@ -360,10 +557,8 @@ impl Mem {
             dst_origin,
             dst_row_pitch,
             dst_slice_pitch,
-        );
-
-        drop(tx);
-        Ok(())
+            pixel_size,
+        ))
     }
 
     pub fn copy_to_rect(
@@ -378,35 +573,15 @@ impl Mem {
         dst_row_pitch: usize,
         dst_slice_pitch: usize,
     ) -> CLResult<()> {
-        let mut src_offset = 0;
-        let mut dst_offset = 0;
-        let src = self.to_parent(&mut src_offset);
-        let dst = dst.to_parent(&mut dst_offset);
+        assert!(self.is_buffer());
 
-        let res_src = src
-            .res
-            .as_ref()
-            .unwrap()
-            .get(&Arc::as_ptr(&q.device))
-            .unwrap();
-        let res_dst = dst
-            .res
-            .as_ref()
-            .unwrap()
-            .get(&Arc::as_ptr(&q.device))
-            .unwrap();
-
-        let tx_src = q
-            .context()
-            .buffer_map(res_src, 0, src.size.try_into().unwrap(), true);
-        let tx_dst = q
-            .context()
-            .buffer_map(res_dst, 0, dst.size.try_into().unwrap(), true);
+        let tx_src = self.tx(q, 0, self.size, true)?;
+        let tx_dst = dst.tx(q, 0, self.size, true)?;
 
         // TODO check to use hw accelerated paths (e.g. resource_copy_region or blits)
-        sw_copy(
-            unsafe { tx_src.ptr().add(src_offset) },
-            unsafe { tx_dst.ptr().add(dst_offset) },
+        Ok(sw_copy(
+            tx_src.ptr(),
+            tx_dst.ptr(),
             region,
             src_origin,
             src_row_pitch,
@@ -414,30 +589,22 @@ impl Mem {
             dst_origin,
             dst_row_pitch,
             dst_slice_pitch,
-        );
-
-        drop(tx_src);
-        drop(tx_dst);
-
-        Ok(())
+            1,
+        ))
     }
 
-    pub fn map(&self, q: &Arc<Queue>, mut offset: usize, size: usize, block: bool) -> *mut c_void {
-        let b = self.to_parent(&mut offset);
+    pub fn map(
+        &self,
+        q: &Arc<Queue>,
+        offset: usize,
+        size: usize,
+        block: bool,
+    ) -> CLResult<*mut c_void> {
+        assert!(self.is_buffer());
 
-        let res = b
-            .res
-            .as_ref()
-            .unwrap()
-            .get(&Arc::as_ptr(&q.device))
-            .unwrap();
-        let tx = q.context().buffer_map(
-            res,
-            offset.try_into().unwrap(),
-            size.try_into().unwrap(),
-            block,
-        );
+        let tx = self.tx(q, offset, size, block)?;
         let ptr = tx.ptr();
+
         let mut lock = self.maps.lock().unwrap();
         let e = lock.get_mut(&ptr);
 
@@ -448,7 +615,7 @@ impl Mem {
             lock.insert(tx.ptr(), (1, tx));
         }
 
-        ptr
+        Ok(ptr)
     }
 
     pub fn is_mapped_ptr(&self, ptr: *mut c_void) -> bool {

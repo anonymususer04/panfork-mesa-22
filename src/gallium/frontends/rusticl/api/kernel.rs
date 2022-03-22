@@ -372,7 +372,7 @@ pub fn enqueue_ndrange_kernel(
             local_work_size,
             global_work_size,
             global_work_offset,
-        )
+        )?
     };
 
     let e = Event::new(&q, CL_COMMAND_NDRANGE_KERNEL, evs, cb);

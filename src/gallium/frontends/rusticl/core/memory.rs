@@ -618,6 +618,35 @@ impl Mem {
         Ok(ptr)
     }
 
+    pub fn map_image(
+        &self,
+        q: &Arc<Queue>,
+        origin: &CLVec<usize>,
+        region: &CLVec<usize>,
+        row_pitch: &mut usize,
+        slice_pitch: &mut usize,
+        block: bool,
+    ) -> CLResult<*mut c_void> {
+        let bx = create_box(origin, region, self.mem_type)?;
+        let tx = self.tx_image(q, &bx, block)?;
+        let ptr = tx.ptr();
+
+        *row_pitch = tx.row_pitch() as usize;
+        *slice_pitch = tx.slice_pitch() as usize;
+
+        let mut lock = self.maps.lock().unwrap();
+        let e = lock.get_mut(&ptr);
+
+        // if we already have a mapping, reuse that and increase the refcount
+        if let Some(e) = e {
+            e.0 += 1;
+        } else {
+            lock.insert(tx.ptr(), (1, tx));
+        }
+
+        Ok(ptr)
+    }
+
     pub fn is_mapped_ptr(&self, ptr: *mut c_void) -> bool {
         self.maps.lock().unwrap().contains_key(&ptr)
     }

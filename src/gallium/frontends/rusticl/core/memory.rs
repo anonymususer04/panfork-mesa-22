@@ -423,25 +423,24 @@ impl Mem {
         &self,
         q: &Arc<Queue>,
         dst: &Arc<Mem>,
-        mut src_offset: usize,
-        mut dst_offset: usize,
-        size: usize,
+        mut src_origin: CLVec<usize>,
+        mut dst_origin: CLVec<usize>,
+        region: &CLVec<usize>,
     ) -> CLResult<()> {
-        assert!(self.is_buffer());
-
-        let src = self.to_parent(&mut src_offset);
-        let dst = dst.to_parent(&mut dst_offset);
+        let src = self.to_parent(&mut src_origin[0]);
+        let dst = dst.to_parent(&mut dst_origin[0]);
+        let bx = create_box(&src_origin, region, self.mem_type)?;
+        let mut dst_origin: [u32; 3] = dst_origin.try_into()?;
 
         let src_res = src.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
         let dst_res = dst.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
 
-        q.context().resource_copy_region(
-            src_res,
-            src_offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-            dst_res,
-            dst_offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-            size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-        );
+        if self.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
+            (dst_origin[1], dst_origin[2]) = (dst_origin[2], dst_origin[1]);
+        }
+
+        q.context()
+            .resource_copy_region(src_res, dst_res, &dst_origin, &bx);
         Ok(())
     }
 

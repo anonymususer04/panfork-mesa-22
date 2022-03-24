@@ -17,3 +17,9 @@ nir_load_var(nir_builder *build, nir_variable *var)
 {
     return __nir_load_var(build, var);
 }
+
+void
+util_format_pack_rgba(enum pipe_format format, void *dst, const void *src, unsigned w)
+{
+    return __util_format_pack_rgba(format, dst, src, w);
+}

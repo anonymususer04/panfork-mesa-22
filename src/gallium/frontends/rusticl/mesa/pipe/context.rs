@@ -87,6 +87,18 @@ impl PipeContext {
         }
     }
 
+    pub fn clear_texture(&self, res: &PipeResource, pattern: &[u8], bx: &pipe_box) {
+        unsafe {
+            self.pipe.as_ref().clear_texture.unwrap()(
+                self.pipe.as_ptr(),
+                res.pipe(),
+                0,
+                bx,
+                pattern.as_ptr().cast(),
+            )
+        }
+    }
+
     pub fn resource_copy_region(
         &self,
         src: &PipeResource,
@@ -293,6 +305,7 @@ fn has_required_cbs(c: &pipe_context) -> bool {
         && c.buffer_subdata.is_some()
         && c.buffer_unmap.is_some()
         && c.clear_buffer.is_some()
+        && c.clear_texture.is_some()
         && c.create_compute_state.is_some()
         && c.delete_compute_state.is_some()
         && c.flush.is_some()

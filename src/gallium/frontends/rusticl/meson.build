@@ -165,6 +165,7 @@ rusticl_mesa_bindings_rs = rust.bindgen(
     '--whitelist-function', 'pipe_.*',
     '--whitelist-function', 'rz?alloc_.*',
     '--whitelist-function', 'spirv_.*',
+    '--whitelist-function', 'util_format_.*',
     '--whitelist-function', 'malloc',
     '--whitelist-type', 'pipe_endian',
     '--whitelist-type', 'clc_kernel_arg_access_qualifier',

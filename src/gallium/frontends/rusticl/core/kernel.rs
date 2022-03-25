@@ -40,7 +40,9 @@ pub enum KernelArgValue {
 #[derive(PartialEq, Eq, Clone)]
 pub enum KernelArgType {
     Constant, // for anything passed by value
+    Image,
     Sampler,
+    Texture,
     MemGlobal,
     MemConstant,
     MemLocal,
@@ -96,7 +98,15 @@ impl KernelArg {
                     KernelArgType::MemLocal
                 }
                 clc_kernel_arg_address_qualifier::CLC_KERNEL_ARG_ADDRESS_GLOBAL => {
-                    KernelArgType::MemGlobal
+                    if unsafe { glsl_type_is_image(nir.type_) } {
+                        if nir.data.access() == gl_access_qualifier::ACCESS_NON_WRITEABLE.0 {
+                            KernelArgType::Texture
+                        } else {
+                            KernelArgType::Image
+                        }
+                    } else {
+                        KernelArgType::MemGlobal
+                    }
                 }
             };
 
@@ -286,6 +296,16 @@ fn lower_and_optimize_nir_pre_inputs(dev: &Device, nir: &mut NirShader, lib_clc:
     nir.pass0(nir_opt_deref);
 }
 
+extern "C" fn can_remove_var(var: *mut nir_variable, _: *mut c_void) -> bool {
+    unsafe {
+        let var = var.as_ref().unwrap();
+
+        !glsl_type_is_sampler(var.type_)
+            && !glsl_type_is_image(var.type_)
+            && !glsl_type_is_image(var.type_)
+    }
+}
+
 fn lower_and_optimize_nir_late(
     dev: &Device,
     nir: &mut NirShader,
@@ -299,20 +319,23 @@ fn lower_and_optimize_nir_late(
     };
     let mut lower_state = RusticlLowerConstantBufferState::default();
 
+    // TODO inline samplers
+    nir.pass1(nir_lower_readonly_images_to_tex, false);
+    nir.pass0(nir_lower_cl_images);
+    // extract image/sampler infos from vars
+
+    let dv_opts = nir_remove_dead_variables_options {
+        can_remove_var: Some(can_remove_var),
+        can_remove_var_data: ptr::null_mut(),
+    };
     nir.pass2(
         nir_remove_dead_variables,
         nir_variable_mode::nir_var_uniform
+            | nir_variable_mode::nir_var_image
             | nir_variable_mode::nir_var_mem_constant
+            | nir_variable_mode::nir_var_mem_shared
             | nir_variable_mode::nir_var_function_temp,
-        ptr::null(),
-    );
-    // TODO inline samplers
-    nir.pass1(nir_lower_readonly_images_to_tex, false);
-    // TODO more image lowerings
-    nir.pass2(
-        nir_remove_dead_variables,
-        nir_variable_mode::nir_var_mem_shared | nir_variable_mode::nir_var_function_temp,
-        ptr::null(),
+        &dv_opts,
     );
     nir.reset_scratch_size();
     nir.pass2(
@@ -476,6 +499,9 @@ impl Kernel {
         let mut resource_info = Vec::new();
         let mut local_size: u32 = 0;
         let printf_size = q.device.printf_buffer_size() as u32;
+        let mut samplers = Vec::new();
+        let mut iviews = Vec::new();
+        let mut sviews = Vec::new();
 
         for i in 0..3 {
             if block[i] == 0 {
@@ -501,17 +527,35 @@ impl Kernel {
             if arg.dead {
                 continue;
             }
-            input.append(&mut vec![0; arg.offset - input.len()]);
+
+            if arg.kind != KernelArgType::Image
+                && arg.kind != KernelArgType::Texture
+                && arg.kind != KernelArgType::Sampler
+            {
+                input.resize(arg.offset, 0);
+            }
             match val.borrow().as_ref().unwrap() {
                 KernelArgValue::Constant(c) => input.extend_from_slice(&c),
                 KernelArgValue::MemObject(mem) => {
-                    input.extend_from_slice(&mem.offset.to_ne_bytes());
-                    resource_info.push((Some(mem.get_res_of_dev(&q.device)?.clone()), arg.offset));
+                    let res = mem.get_res_of_dev(&q.device)?;
+                    if mem.is_buffer() {
+                        input.extend_from_slice(&mem.offset.to_ne_bytes());
+                        resource_info.push((Some(res.clone()), arg.offset));
+                    } else {
+                        if arg.kind == KernelArgType::Image {
+                            iviews.push(res.pipe_image_view())
+                        } else {
+                            sviews.push(q.context().create_sampler_view(res))
+                        }
+                    }
                 }
                 KernelArgValue::LocalMem(size) => {
                     // TODO 32 bit
                     input.extend_from_slice(&[0; 8]);
                     local_size += *size as u32;
+                }
+                KernelArgValue::Sampler(sampler) => {
+                    samplers.push(q.context().create_sampler_state(&sampler.pipe()));
                 }
                 KernelArgValue::None => {
                     assert!(
@@ -520,7 +564,6 @@ impl Kernel {
                     );
                     input.extend_from_slice(&[0; 8]);
                 }
-                _ => panic!("unhandled arg type"),
             }
         }
 
@@ -569,6 +612,8 @@ impl Kernel {
             let mut globals: Vec<*mut u32> = Vec::new();
             let printf_format = nir.printf_format();
             let printf_buf = printf_buf.clone();
+            let iviews = iviews.clone();
+            let mut sviews = sviews.clone();
 
             for (res, offset) in resource_info.clone() {
                 resources.push(res);
@@ -589,12 +634,27 @@ impl Kernel {
                 .create_compute_state(nir, input.len() as u32, local_size);
 
             q.context().bind_compute_state(cso);
+            q.context().bind_sampler_states(&samplers);
+            q.context().set_sampler_views(&mut sviews);
+            q.context().set_shader_images(&iviews);
             q.context()
                 .set_global_binding(resources.as_slice(), &mut globals);
+
             q.context().launch_grid(work_dim, block, grid, &input);
+
             q.context().clear_global_binding(globals.len() as u32);
+            q.context().clear_shader_images(iviews.len() as u32);
+            q.context().clear_sampler_views(sviews.len() as u32);
+            q.context().clear_sampler_states(samplers.len() as u32);
             q.context().delete_compute_state(cso);
             q.context().memory_barrier(PIPE_BARRIER_GLOBAL_BUFFER);
+
+            samplers
+                .iter()
+                .for_each(|s| q.context().delete_sampler_state(*s));
+            sviews
+                .iter()
+                .for_each(|v| q.context().sampler_view_destroy(*v));
 
             if let Some(printf_buf) = &printf_buf {
                 let tx = q

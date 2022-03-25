@@ -1838,6 +1838,108 @@ pub fn enqueue_fill_image(
     Ok(())
 }
 
+pub fn enqueue_copy_buffer_to_image(
+    command_queue: cl_command_queue,
+    src_buffer: cl_mem,
+    dst_image: cl_mem,
+    src_offset: usize,
+    dst_origin: *const usize,
+    region: *const usize,
+    num_events_in_wait_list: cl_uint,
+    event_wait_list: *const cl_event,
+    event: *mut cl_event,
+) -> CLResult<()> {
+    let q = command_queue.get_arc()?;
+    let src = src_buffer.get_arc()?;
+    let dst = dst_image.get_arc()?;
+    let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
+
+    // CL_INVALID_CONTEXT if the context associated with command_queue, src_buffer and dst_image
+    // are not the same
+    if q.context != src.context || q.context != dst.context {
+        Err(CL_INVALID_CONTEXT)?
+    }
+
+    // CL_INVALID_VALUE if dst_origin or region is NULL.
+    if dst_origin.is_null() || region.is_null() {
+        Err(CL_INVALID_VALUE)?
+    }
+
+    let region = CLVec::from_raw_parts(region);
+    let src_origin = CLVec::new([src_offset, 0, 0]);
+    let dst_origin = CLVec::from_raw_parts(dst_origin);
+
+    let e = Event::new(
+        &q,
+        CL_COMMAND_COPY_BUFFER_TO_IMAGE,
+        evs,
+        Box::new(move |q| src.copy_to(q, &dst, src_origin, dst_origin, &region)),
+    );
+    cl_event::leak_ref(event, &e);
+    q.queue(&e);
+    Ok(())
+
+    //• CL_INVALID_MEM_OBJECT if src_buffer is not a valid buffer object or dst_image is not a valid image object or if dst_image is a 1D image buffer object created from src_buffer.
+    //• CL_INVALID_VALUE if the 1D, 2D or 3D rectangular region specified by dst_origin and dst_origin + region refer to a region outside dst_image, or if the region specified by src_offset and src_offset + src_cb refer to a region outside src_buffer.
+    //• CL_INVALID_VALUE if values in dst_origin and region do not follow rules described in the argument description for dst_origin and region.
+    //• CL_MISALIGNED_SUB_BUFFER_OFFSET if src_buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
+    //• CL_INVALID_IMAGE_SIZE if image dimensions (image width, height, specified or compute row and/or slice pitch) for dst_image are not supported by device associated with queue.
+    //• CL_IMAGE_FORMAT_NOT_SUPPORTED if image format (image channel order and data type) for dst_image are not supported by device associated with queue.
+    //• CL_MEM_OBJECT_ALLOCATION_FAILURE if there is a failure to allocate memory for data store associated with src_buffer or dst_image.
+    //• CL_INVALID_OPERATION if the device associated with command_queue does not support images (i.e. CL_DEVICE_IMAGE_SUPPORT specified in the Device Queries table is CL_FALSE).
+}
+
+pub fn enqueue_copy_image_to_buffer(
+    command_queue: cl_command_queue,
+    src_image: cl_mem,
+    dst_buffer: cl_mem,
+    src_origin: *const usize,
+    region: *const usize,
+    dst_offset: usize,
+    num_events_in_wait_list: cl_uint,
+    event_wait_list: *const cl_event,
+    event: *mut cl_event,
+) -> CLResult<()> {
+    let q = command_queue.get_arc()?;
+    let src = src_image.get_arc()?;
+    let dst = dst_buffer.get_arc()?;
+    let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
+
+    // CL_INVALID_CONTEXT if the context associated with command_queue, src_image and dst_buffer
+    // are not the same
+    if q.context != src.context || q.context != dst.context {
+        Err(CL_INVALID_CONTEXT)?
+    }
+
+    // CL_INVALID_VALUE if src_origin or region is NULL.
+    if src_origin.is_null() || region.is_null() {
+        Err(CL_INVALID_VALUE)?
+    }
+
+    let region = CLVec::from_raw_parts(region);
+    let src_origin = CLVec::from_raw_parts(src_origin);
+    let dst_origin = CLVec::new([dst_offset, 0, 0]);
+
+    let e = Event::new(
+        &q,
+        CL_COMMAND_COPY_IMAGE_TO_BUFFER,
+        evs,
+        Box::new(move |q| src.copy_to(q, &dst, src_origin, dst_origin, &region)),
+    );
+    cl_event::leak_ref(event, &e);
+    q.queue(&e);
+    Ok(())
+
+    //• CL_INVALID_MEM_OBJECT if src_image is not a valid image object or dst_buffer is not a valid buffer object or if src_image is a 1D image buffer object created from dst_buffer.
+    //• CL_INVALID_VALUE if the 1D, 2D or 3D rectangular region specified by src_origin and src_origin + region refers to a region outside src_image, or if the region specified by dst_offset and dst_offset + dst_cb to a region outside dst_buffer.
+    //• CL_INVALID_VALUE if values in src_origin and region do not follow rules described in the argument description for src_origin and region.
+    //• CL_MISALIGNED_SUB_BUFFER_OFFSET if dst_buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue. This error code is missing before version 1.1.
+    //• CL_INVALID_IMAGE_SIZE if image dimensions (image width, height, specified or compute row and/or slice pitch) for src_image are not supported by device associated with queue.
+    //• CL_IMAGE_FORMAT_NOT_SUPPORTED if image format (image channel order and data type) for src_image are not supported by device associated with queue.
+    //• CL_MEM_OBJECT_ALLOCATION_FAILURE if there is a failure to allocate memory for data store associated with src_image or dst_buffer.
+    //• CL_INVALID_OPERATION if the device associated with command_queue does not support images (i.e. CL_DEVICE_IMAGE_SUPPORT specified in the Device Queries table is CL_FALSE).
+}
+
 pub fn enqueue_map_image(
     command_queue: cl_command_queue,
     image: cl_mem,

@@ -429,18 +429,61 @@ impl Mem {
     ) -> CLResult<()> {
         let src = self.to_parent(&mut src_origin[0]);
         let dst = dst.to_parent(&mut dst_origin[0]);
-        let bx = create_box(&src_origin, region, self.mem_type)?;
-        let mut dst_origin: [u32; 3] = dst_origin.try_into()?;
 
         let src_res = src.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
         let dst_res = dst.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
 
-        if self.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
-            (dst_origin[1], dst_origin[2]) = (dst_origin[2], dst_origin[1]);
-        }
+        if self.is_buffer() && !dst.is_buffer() || !self.is_buffer() && dst.is_buffer() {
+            let tx_src;
+            let tx_dst;
 
-        q.context()
-            .resource_copy_region(src_res, dst_res, &dst_origin, &bx);
+            if self.is_buffer() {
+                let bpp = dst.image_format.pixel_size().unwrap() as usize;
+                tx_src = self.tx(q, src_origin[0], region.pixels() * bpp, true)?;
+                tx_dst = dst.tx_image(q, &create_box(&dst_origin, &region, dst.mem_type)?, true)?;
+
+                sw_copy(
+                    tx_src.ptr(),
+                    tx_dst.ptr(),
+                    region,
+                    &CLVec::default(),
+                    region[0] * bpp,
+                    region[0] * region[1] * bpp,
+                    &CLVec::default(),
+                    tx_dst.row_pitch() as usize,
+                    tx_dst.slice_pitch() as usize,
+                    bpp as u8,
+                )
+            } else {
+                let bpp = self.image_format.pixel_size().unwrap() as usize;
+                tx_src =
+                    self.tx_image(q, &create_box(&src_origin, &region, self.mem_type)?, true)?;
+                tx_dst = dst.tx(q, dst_origin[0], region.pixels() * bpp, true)?;
+
+                sw_copy(
+                    tx_src.ptr(),
+                    tx_dst.ptr(),
+                    region,
+                    &CLVec::default(),
+                    tx_src.row_pitch() as usize,
+                    tx_src.slice_pitch() as usize,
+                    &CLVec::default(),
+                    region[0] * bpp,
+                    region[0] * region[1] * bpp,
+                    bpp as u8,
+                )
+            }
+        } else {
+            let bx = create_box(&src_origin, region, self.mem_type)?;
+            let mut dst_origin: [u32; 3] = dst_origin.try_into()?;
+
+            if self.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
+                (dst_origin[1], dst_origin[2]) = (dst_origin[2], dst_origin[1]);
+            }
+
+            q.context()
+                .resource_copy_region(src_res, dst_res, &dst_origin, &bx);
+        }
         Ok(())
     }
 
@@ -600,6 +643,7 @@ impl Mem {
         dst_slice_pitch: usize,
     ) -> CLResult<()> {
         assert!(self.is_buffer());
+        assert!(dst.is_buffer());
 
         let tx_src = self.tx(q, 0, self.size, true)?;
         let tx_dst = dst.tx(q, 0, self.size, true)?;

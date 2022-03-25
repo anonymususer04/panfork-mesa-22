@@ -4,6 +4,7 @@ use self::rusticl_opencl_gen::*;
 
 use std::convert::TryFrom;
 use std::convert::TryInto;
+use std::ops::Mul;
 use std::slice;
 
 #[macro_export]
@@ -91,6 +92,13 @@ impl<T: Copy> CLVec<T> {
             // unwrap is safe as the slice has three elements
             vals: unsafe { slice::from_raw_parts(v, 3) }.try_into().unwrap(),
         }
+    }
+
+    pub fn pixels<'a>(&'a self) -> T
+    where
+        T: Mul<Output = T>,
+    {
+        self.vals.iter().cloned().reduce(T::mul).unwrap()
     }
 }
 

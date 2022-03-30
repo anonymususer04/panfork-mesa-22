@@ -346,6 +346,7 @@ fn lower_and_optimize_nir_late(
 
     nir.pass1(nir_lower_readonly_images_to_tex, false);
     nir.pass0(nir_lower_cl_images);
+    nir.pass0(nir_lower_memcpy);
 
     let dv_opts = nir_remove_dead_variables_options {
         can_remove_var: Some(can_remove_var),

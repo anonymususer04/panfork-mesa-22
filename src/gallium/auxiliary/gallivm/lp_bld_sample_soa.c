@@ -714,8 +714,14 @@ lp_build_sample_wrap_nearest(struct lp_build_sample_context *bld,
              coord = lp_build_add(coord_bld, coord, offset);
           }
           /* take fraction, unnormalize */
-          coord = lp_build_fract_safe(coord_bld, coord);
+          coord = lp_build_fract(coord_bld, coord);
           coord = lp_build_mul(coord_bld, coord, length_f);
+
+          LLVMValueRef tmp = lp_build_div(coord_bld, coord, length_f);
+          tmp = lp_build_floor(coord_bld, tmp);
+          tmp = lp_build_mul(coord_bld, length_f, tmp);
+          coord = lp_build_sub(coord_bld, coord, tmp);
+
           icoord = lp_build_itrunc(coord_bld, coord);
       }
       break;

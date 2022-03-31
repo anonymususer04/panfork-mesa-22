@@ -236,6 +236,7 @@ fn lower_and_optimize_nir_pre_inputs(dev: &Device, nir: &mut NirShader, lib_clc:
         let mut progress = false;
         progress |= nir.pass0(nir_copy_prop);
         progress |= nir.pass0(nir_opt_copy_prop_vars);
+        progress |= nir.pass0(nir_opt_dead_write_vars);
         progress |= nir.pass0(nir_opt_deref);
         progress |= nir.pass0(nir_opt_dce);
         progress |= nir.pass0(nir_opt_undef);
@@ -253,6 +254,7 @@ fn lower_and_optimize_nir_pre_inputs(dev: &Device, nir: &mut NirShader, lib_clc:
         let mut progress = false;
         progress |= nir.pass0(nir_copy_prop);
         progress |= nir.pass0(nir_opt_copy_prop_vars);
+        progress |= nir.pass0(nir_opt_dead_write_vars);
         progress |= nir.pass0(nir_opt_deref);
         progress |= nir.pass0(nir_opt_dce);
         progress |= nir.pass0(nir_opt_undef);
@@ -289,6 +291,7 @@ fn lower_and_optimize_nir_pre_inputs(dev: &Device, nir: &mut NirShader, lib_clc:
 
     nir.pass0(nir_split_var_copies);
     nir.pass0(nir_opt_copy_prop_vars);
+    nir.pass0(nir_opt_dead_write_vars);
     nir.pass0(nir_lower_var_copies);
     nir.pass0(nir_lower_vars_to_ssa);
     nir.pass0(nir_lower_alu);
@@ -453,6 +456,23 @@ fn lower_and_optimize_nir_late(
     }
 
     nir.pass1(nir_lower_convert_alu_types, None);
+
+    while {
+        let mut progress = false;
+        progress |= nir.pass0(nir_copy_prop);
+        progress |= nir.pass0(nir_opt_dce);
+        progress |= nir.pass0(nir_opt_undef);
+        progress |= nir.pass0(nir_opt_constant_folding);
+        progress |= nir.pass0(nir_opt_cse);
+        progress |= nir.pass0(nir_opt_algebraic);
+        progress |= nir.pass1(nir_opt_if, true);
+        progress |= nir.pass0(nir_opt_dead_cf);
+        progress |= nir.pass0(nir_opt_remove_phis);
+        // we don't want to be too aggressive here, but it kills a bit of CFG
+        progress |= nir.pass3(nir_opt_peephole_select, 1, true, true);
+        progress
+    } {}
+
     nir.pass0(nir_opt_dce);
     dev.screen.finalize_nir(nir);
     nir.sweep_mem();

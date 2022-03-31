@@ -250,12 +250,25 @@ fn lower_and_optimize_nir_pre_inputs(dev: &Device, nir: &mut NirShader, lib_clc:
     nir.remove_non_entrypoints();
     // that should free up tons of memory
     nir.sweep_mem();
+
+    nir.pass2(
+        nir_lower_vars_to_explicit_types,
+        nir_variable_mode::nir_var_uniform
+            | nir_variable_mode::nir_var_function_temp
+            | nir_variable_mode::nir_var_shader_temp
+            | nir_variable_mode::nir_var_mem_shared
+            | nir_variable_mode::nir_var_mem_generic
+            | nir_variable_mode::nir_var_mem_global,
+        Some(glsl_get_cl_type_size_align),
+    );
+
     while {
         let mut progress = false;
         progress |= nir.pass0(nir_copy_prop);
         progress |= nir.pass0(nir_opt_copy_prop_vars);
         progress |= nir.pass0(nir_opt_dead_write_vars);
         progress |= nir.pass0(nir_opt_deref);
+        progress |= nir.pass0(nir_opt_memcpy);
         progress |= nir.pass0(nir_opt_dce);
         progress |= nir.pass0(nir_opt_undef);
         progress |= nir.pass0(nir_opt_constant_folding);
@@ -276,7 +289,6 @@ fn lower_and_optimize_nir_pre_inputs(dev: &Device, nir: &mut NirShader, lib_clc:
         progress
     } {}
     // TODO variable initializers
-    // TODO lower memcpy
     nir.pass0(nir_move_inline_samplers_to_end);
     nir.pass2(
         nir_lower_vars_to_explicit_types,
@@ -439,6 +451,7 @@ fn lower_and_optimize_nir_late(
         nir_address_format::nir_address_format_32bit_offset_as_64bit,
     );
     nir.pass0(nir_opt_deref);
+    nir.pass0(nir_opt_memcpy);
     nir.pass0(nir_lower_vars_to_ssa);
 
     // TODO whatever clc is doing here

@@ -227,8 +227,60 @@ extern "C" fn rusticl_lower_intrinsics(
     }
 }
 
-// mostly like clc_spirv_to_dxil
-// does not DCEe uniforms or images!
+fn opt_nir(nir: &mut NirShader, dev: &Device) {
+    let nir_options = unsafe {
+        &*dev
+            .screen
+            .nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE)
+    };
+
+    while {
+        let mut progress = false;
+
+        progress |= nir.pass0(nir_copy_prop);
+        progress |= nir.pass0(nir_opt_copy_prop_vars);
+        progress |= nir.pass0(nir_opt_dead_write_vars);
+
+        if nir_options.lower_to_scalar {
+            nir.pass2(
+                nir_lower_alu_to_scalar,
+                nir_options.lower_to_scalar_filter,
+                ptr::null(),
+            );
+            nir.pass1(nir_lower_phis_to_scalar, false);
+        }
+
+        progress |= nir.pass0(nir_opt_deref);
+        progress |= nir.pass0(nir_opt_memcpy);
+        progress |= nir.pass0(nir_opt_dce);
+        progress |= nir.pass0(nir_opt_undef);
+        progress |= nir.pass0(nir_opt_constant_folding);
+        progress |= nir.pass0(nir_opt_cse);
+        progress |= nir.pass0(nir_split_var_copies);
+        progress |= nir.pass0(nir_lower_var_copies);
+        progress |= nir.pass0(nir_lower_vars_to_ssa);
+        nir.pass0(nir_lower_alu);
+        nir.pass0(nir_lower_pack);
+        progress |= nir.pass0(nir_opt_phi_precision);
+        progress |= nir.pass0(nir_opt_algebraic);
+        progress |= nir.pass1(nir_opt_if, true);
+        progress |= nir.pass0(nir_opt_dead_cf);
+        progress |= nir.pass0(nir_opt_remove_phis);
+        // we don't want to be too aggressive here, but it kills a bit of CFG
+        progress |= nir.pass3(nir_opt_peephole_select, 8, true, true);
+        progress |= nir.pass1(
+            nir_lower_vec3_to_vec4,
+            nir_variable_mode::nir_var_mem_generic | nir_variable_mode::nir_var_uniform,
+        );
+
+        if nir_options.max_unroll_iterations != 0 {
+            progress |= nir.pass0(nir_opt_loop_unroll);
+        }
+        nir.sweep_mem();
+        progress
+    } {}
+}
+
 fn lower_and_optimize_nir_pre_inputs(dev: &Device, nir: &mut NirShader, lib_clc: &NirShader) {
     nir.set_workgroup_size_variable_if_zero();
     nir.structurize();
@@ -251,6 +303,7 @@ fn lower_and_optimize_nir_pre_inputs(dev: &Device, nir: &mut NirShader, lib_clc:
     // that should free up tons of memory
     nir.sweep_mem();
 
+    nir.pass0(nir_move_inline_samplers_to_end);
     nir.pass2(
         nir_lower_vars_to_explicit_types,
         nir_variable_mode::nir_var_uniform
@@ -262,53 +315,12 @@ fn lower_and_optimize_nir_pre_inputs(dev: &Device, nir: &mut NirShader, lib_clc:
         Some(glsl_get_cl_type_size_align),
     );
 
-    while {
-        let mut progress = false;
-        progress |= nir.pass0(nir_copy_prop);
-        progress |= nir.pass0(nir_opt_copy_prop_vars);
-        progress |= nir.pass0(nir_opt_dead_write_vars);
-        progress |= nir.pass0(nir_opt_deref);
-        progress |= nir.pass0(nir_opt_memcpy);
-        progress |= nir.pass0(nir_opt_dce);
-        progress |= nir.pass0(nir_opt_undef);
-        progress |= nir.pass0(nir_opt_constant_folding);
-        progress |= nir.pass0(nir_opt_cse);
-        progress |= nir.pass0(nir_split_var_copies);
-        progress |= nir.pass0(nir_lower_var_copies);
-        progress |= nir.pass0(nir_lower_vars_to_ssa);
-        progress |= nir.pass0(nir_opt_algebraic);
-        progress |= nir.pass1(nir_opt_if, true);
-        progress |= nir.pass0(nir_opt_dead_cf);
-        progress |= nir.pass0(nir_opt_remove_phis);
-        // we don't want to be too aggressive here, but it kills a bit of CFG
-        progress |= nir.pass3(nir_opt_peephole_select, 1, true, true);
-        progress |= nir.pass1(
-            nir_lower_vec3_to_vec4,
-            nir_variable_mode::nir_var_mem_generic | nir_variable_mode::nir_var_uniform,
-        );
-        progress
-    } {}
-    // TODO variable initializers
-    nir.pass0(nir_move_inline_samplers_to_end);
-    nir.pass2(
-        nir_lower_vars_to_explicit_types,
-        nir_variable_mode::nir_var_function_temp,
-        Some(glsl_get_cl_type_size_align),
-    );
-
     let mut printf_opts = nir_lower_printf_options::default();
     printf_opts.set_treat_doubles_as_floats(false);
     printf_opts.max_buffer_size = dev.printf_buffer_size() as u32;
     nir.pass1(nir_lower_printf, &printf_opts);
 
-    nir.pass0(nir_split_var_copies);
-    nir.pass0(nir_opt_copy_prop_vars);
-    nir.pass0(nir_opt_dead_write_vars);
-    nir.pass0(nir_lower_var_copies);
-    nir.pass0(nir_lower_vars_to_ssa);
-    nir.pass0(nir_lower_alu);
-    nir.pass0(nir_opt_dce);
-    nir.pass0(nir_opt_deref);
+    opt_nir(nir, dev);
 }
 
 extern "C" fn can_remove_var(var: *mut nir_variable, _: *mut c_void) -> bool {
@@ -384,7 +396,6 @@ fn lower_and_optimize_nir_late(
     );
     nir.extract_constant_initializers();
 
-    // TODO printf
     // TODO 32 bit devices
     // add vars for global offsets
     res.push(InternalKernelArg {
@@ -450,19 +461,6 @@ fn lower_and_optimize_nir_late(
             | nir_variable_mode::nir_var_uniform,
         nir_address_format::nir_address_format_32bit_offset_as_64bit,
     );
-    nir.pass0(nir_opt_deref);
-    nir.pass0(nir_opt_memcpy);
-    nir.pass0(nir_lower_vars_to_ssa);
-
-    // TODO whatever clc is doing here
-
-    if nir_options.lower_to_scalar {
-        nir.pass2(
-            nir_lower_alu_to_scalar,
-            nir_options.lower_to_scalar_filter,
-            ptr::null(),
-        );
-    }
 
     if nir_options.lower_int64_options.0 != 0 {
         nir.pass0(nir_lower_int64);
@@ -470,24 +468,10 @@ fn lower_and_optimize_nir_late(
 
     nir.pass1(nir_lower_convert_alu_types, None);
 
-    while {
-        let mut progress = false;
-        progress |= nir.pass0(nir_copy_prop);
-        progress |= nir.pass0(nir_opt_dce);
-        progress |= nir.pass0(nir_opt_undef);
-        progress |= nir.pass0(nir_opt_constant_folding);
-        progress |= nir.pass0(nir_opt_cse);
-        progress |= nir.pass0(nir_opt_algebraic);
-        progress |= nir.pass1(nir_opt_if, true);
-        progress |= nir.pass0(nir_opt_dead_cf);
-        progress |= nir.pass0(nir_opt_remove_phis);
-        // we don't want to be too aggressive here, but it kills a bit of CFG
-        progress |= nir.pass3(nir_opt_peephole_select, 1, true, true);
-        progress
-    } {}
+    opt_nir(nir, dev);
+    dev.screen.finalize_nir(nir);
 
     nir.pass0(nir_opt_dce);
-    dev.screen.finalize_nir(nir);
     nir.sweep_mem();
     res
 }

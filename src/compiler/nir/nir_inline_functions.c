@@ -125,11 +125,11 @@ void nir_inline_function_impl(struct nir_builder *b,
    }
 }
 
-static bool inline_function_impl(nir_function_impl *impl, struct set *inlined);
+static bool inline_function_impl(nir_function_impl *impl, struct set *inlined, bool entry_point_only);
 
 static bool
 inline_functions_block(nir_block *block, nir_builder *b,
-                       struct set *inlined)
+                       struct set *inlined, bool entry_point_only)
 {
    bool progress = false;
    /* This is tricky.  We're iterating over instructions in a block but, as
@@ -149,7 +149,8 @@ inline_functions_block(nir_block *block, nir_builder *b,
       assert(call->callee->impl);
 
       /* Make sure that the function we're calling is already inlined */
-      inline_function_impl(call->callee->impl, inlined);
+      if (!entry_point_only)
+        inline_function_impl(call->callee->impl, inlined, entry_point_only);
 
       b->cursor = nir_instr_remove(&call->instr);
 
@@ -172,9 +173,9 @@ inline_functions_block(nir_block *block, nir_builder *b,
 }
 
 static bool
-inline_function_impl(nir_function_impl *impl, struct set *inlined)
+inline_function_impl(nir_function_impl *impl, struct set *inlined, bool entry_point_only)
 {
-   if (_mesa_set_search(inlined, impl))
+   if (_mesa_set_search(inlined, impl) && !entry_point_only)
       return false; /* Already inlined */
 
    nir_builder b;
@@ -182,7 +183,7 @@ inline_function_impl(nir_function_impl *impl, struct set *inlined)
 
    bool progress = false;
    nir_foreach_block_safe(block, impl) {
-      progress |= inline_functions_block(block, &b, inlined);
+      progress |= inline_functions_block(block, &b, inlined, entry_point_only);
    }
 
    if (progress) {
@@ -278,8 +279,32 @@ nir_inline_functions(nir_shader *shader)
 
    nir_foreach_function(function, shader) {
       if (function->impl)
-         progress = inline_function_impl(function->impl, inlined) || progress;
+         progress = inline_function_impl(function->impl, inlined, false) || progress;
    }
+
+   _mesa_set_destroy(inlined, NULL);
+
+   return progress;
+}
+
+/** A faster version of the above inlining only into the marked entry point
+ *
+ * This is very useful for CL as it reduces memory pressure by a lot as it will
+ * not inline into dead functions.
+ */
+bool
+nir_inline_function_entrypoint(nir_shader *shader)
+{
+   struct set *inlined = _mesa_pointer_set_create(NULL);
+   bool progress;
+
+   do {
+       progress = false;
+       nir_foreach_function(function, shader) {
+          if (function->impl && function->is_entrypoint)
+             progress = inline_function_impl(function->impl, inlined, true) || progress;
+       }
+   } while (progress);
 
    _mesa_set_destroy(inlined, NULL);
 

@@ -131,7 +131,7 @@ impl NirShader {
         );
         self.pass0(nir_lower_returns);
         self.pass1(nir_lower_libclc, libclc.nir.as_ptr());
-        self.pass0(nir_inline_functions);
+        self.pass0(nir_inline_function_entrypoint);
     }
 
     pub fn remove_non_entrypoints(&mut self) {

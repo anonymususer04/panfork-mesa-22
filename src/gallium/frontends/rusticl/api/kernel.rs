@@ -368,7 +368,7 @@ pub fn enqueue_ndrange_kernel(
     // command will trivially succeed after its event dependencies are satisfied and subsequently
     // update its completion event.
     let cb: EventSig = if global_work_size.contains(&0) {
-        Box::new(|_| Ok(()))
+        Box::new(|_, _| Ok(()))
     } else {
         k.launch(
             &q,

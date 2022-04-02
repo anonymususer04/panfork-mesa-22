@@ -18,6 +18,9 @@ pub struct PipeContext {
     screen: Arc<PipeScreen>,
 }
 
+unsafe impl Send for PipeContext {}
+unsafe impl Sync for PipeContext {}
+
 impl PipeContext {
     pub(super) fn new(context: *mut pipe_context, screen: &Arc<PipeScreen>) -> Option<Arc<Self>> {
         let s = Self {

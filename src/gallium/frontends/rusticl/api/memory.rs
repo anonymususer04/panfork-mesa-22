@@ -972,7 +972,7 @@ pub fn enqueue_read_buffer(
         &q,
         CL_COMMAND_READ_BUFFER,
         evs,
-        Box::new(move |q| b.read_to_user(q, offset, ptr, cb)),
+        Box::new(move |q, ctx| b.read_to_user(q, ctx, offset, ptr, cb)),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);
@@ -1028,7 +1028,7 @@ pub fn enqueue_write_buffer(
         &q,
         CL_COMMAND_WRITE_BUFFER,
         evs,
-        Box::new(move |q| b.write_from_user(q, offset, ptr, cb)),
+        Box::new(move |q, ctx| b.write_from_user(q, ctx, offset, ptr, cb)),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);
@@ -1088,9 +1088,10 @@ pub fn enqueue_copy_buffer(
         &q,
         CL_COMMAND_COPY_BUFFER,
         evs,
-        Box::new(move |q| {
+        Box::new(move |q, ctx| {
             src.copy_to(
                 q,
+                ctx,
                 &dst,
                 CLVec::new([src_offset, 0, 0]),
                 CLVec::new([dst_offset, 0, 0]),
@@ -1208,10 +1209,11 @@ pub fn enqueue_read_buffer_rect(
         &q,
         CL_COMMAND_READ_BUFFER_RECT,
         evs,
-        Box::new(move |q| {
+        Box::new(move |q, ctx| {
             buf.read_to_user_rect(
                 ptr,
                 q,
+                ctx,
                 &r,
                 &buf_ori,
                 buffer_row_pitch,
@@ -1333,10 +1335,11 @@ pub fn enqueue_write_buffer_rect(
         &q,
         CL_COMMAND_WRITE_BUFFER_RECT,
         evs,
-        Box::new(move |q| {
+        Box::new(move |q, ctx| {
             buf.write_from_user_rect(
                 ptr,
                 q,
+                ctx,
                 &r,
                 &host_ori,
                 host_row_pitch,
@@ -1474,10 +1477,11 @@ pub fn enqueue_copy_buffer_rect(
         &q,
         CL_COMMAND_COPY_BUFFER_RECT,
         evs,
-        Box::new(move |q| {
+        Box::new(move |q, ctx| {
             src.copy_to_rect(
                 &dst,
                 q,
+                ctx,
                 &r,
                 &src_ori,
                 src_row_pitch,
@@ -1539,7 +1543,7 @@ pub fn enqueue_fill_buffer(
         &q,
         CL_COMMAND_FILL_BUFFER,
         evs,
-        Box::new(move |q| b.fill(q, &pattern, offset, size)),
+        Box::new(move |q, ctx| b.fill(q, ctx, &pattern, offset, size)),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);
@@ -1590,7 +1594,7 @@ pub fn enqueue_map_buffer(
         CL_COMMAND_MAP_BUFFER,
         evs,
         // we don't really have anything to do here?
-        Box::new(|_q| Ok(())),
+        Box::new(|_, _| Ok(())),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);
@@ -1670,10 +1674,11 @@ pub fn enqueue_read_image(
         &q,
         CL_COMMAND_READ_IMAGE,
         evs,
-        Box::new(move |q| {
+        Box::new(move |q, ctx| {
             i.read_to_user_rect(
                 ptr,
                 q,
+                ctx,
                 &r,
                 &o,
                 i.image_desc.image_row_pitch,
@@ -1764,10 +1769,11 @@ pub fn enqueue_write_image(
         &q,
         CL_COMMAND_WRITE_BUFFER_RECT,
         evs,
-        Box::new(move |q| {
+        Box::new(move |q, ctx| {
             i.write_from_user_rect(
                 ptr,
                 q,
+                ctx,
                 &r,
                 &CLVec::default(),
                 row_pitch,
@@ -1833,7 +1839,9 @@ pub fn enqueue_copy_image(
         &q,
         CL_COMMAND_COPY_IMAGE,
         evs,
-        Box::new(move |q| src_image.copy_to(q, &dst_image, src_origin, dst_origin, &region)),
+        Box::new(move |q, ctx| {
+            src_image.copy_to(q, ctx, &dst_image, src_origin, dst_origin, &region)
+        }),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);
@@ -1882,7 +1890,7 @@ pub fn enqueue_fill_image(
         &q,
         CL_COMMAND_FILL_BUFFER,
         evs,
-        Box::new(move |q| i.fill_image(q, &fill_color, &origin, &region)),
+        Box::new(move |q, ctx| i.fill_image(q, ctx, &fill_color, &origin, &region)),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);
@@ -1929,7 +1937,7 @@ pub fn enqueue_copy_buffer_to_image(
         &q,
         CL_COMMAND_COPY_BUFFER_TO_IMAGE,
         evs,
-        Box::new(move |q| src.copy_to(q, &dst, src_origin, dst_origin, &region)),
+        Box::new(move |q, ctx| src.copy_to(q, ctx, &dst, src_origin, dst_origin, &region)),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);
@@ -1980,7 +1988,7 @@ pub fn enqueue_copy_image_to_buffer(
         &q,
         CL_COMMAND_COPY_IMAGE_TO_BUFFER,
         evs,
-        Box::new(move |q| src.copy_to(q, &dst, src_origin, dst_origin, &region)),
+        Box::new(move |q, ctx| src.copy_to(q, ctx, &dst, src_origin, dst_origin, &region)),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);
@@ -2035,7 +2043,7 @@ pub fn enqueue_map_image(
         CL_COMMAND_MAP_IMAGE,
         evs,
         // we don't really have anything to do here?
-        Box::new(|_q| Ok(())),
+        Box::new(|_, _| Ok(())),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);
@@ -2100,7 +2108,7 @@ pub fn enqueue_unmap_mem_object(
         &q,
         CL_COMMAND_UNMAP_MEM_OBJECT,
         evs,
-        Box::new(move |_| Ok(m.unmap(mapped_ptr))),
+        Box::new(move |_, _| Ok(m.unmap(mapped_ptr))),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);
@@ -2147,7 +2155,7 @@ pub fn enqueue_migrate_mem_objects(
         &q,
         CL_COMMAND_MIGRATE_MEM_OBJECTS,
         evs,
-        Box::new(|_| Ok(())),
+        Box::new(|_, _| Ok(())),
     );
     cl_event::leak_ref(event, &e);
     q.queue(&e);

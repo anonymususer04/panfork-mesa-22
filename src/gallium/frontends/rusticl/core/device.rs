@@ -23,6 +23,8 @@ use std::cmp::min;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 pub struct Device {
     pub base: CLObjectBase<CL_INVALID_DEVICE>,
@@ -36,7 +38,7 @@ pub struct Device {
     pub extensions: Vec<cl_name_version>,
     pub formats: HashMap<cl_image_format, HashMap<cl_mem_object_type, cl_mem_flags>>,
     pub lib_clc: NirShader,
-    pub helper_ctx: Arc<PipeContext>,
+    helper_ctx: Mutex<Arc<PipeContext>>,
 }
 
 impl_cl_type_trait!(cl_device_id, Device, CL_INVALID_DEVICE);
@@ -54,7 +56,7 @@ impl Device {
 
         let mut d = Self {
             base: CLObjectBase::new(),
-            helper_ctx: screen.create_context().unwrap(),
+            helper_ctx: Mutex::new(screen.create_context().unwrap()),
             screen: screen,
             cl_version: CLVersion::Cl3_0,
             clc_version: CLVersion::Cl3_0,
@@ -546,5 +548,9 @@ impl Device {
             return 0;
         }
         id as u32
+    }
+
+    pub fn helper_ctx(&self) -> MutexGuard<Arc<PipeContext>> {
+        self.helper_ctx.lock().unwrap()
     }
 }

@@ -3841,7 +3841,7 @@ pan_call_compute_kernel(struct panfrost_batch *batch,
 
         pipe->bind_compute_state(pipe, kernel->cso);
 
-        uint8_t *args_packed = calloc(kernel->base.args_size, sizeof(uint8_t));
+        uint8_t *args_packed = calloc(ALIGN_POT(kernel->base.args_size, 16), sizeof(uint8_t));
 
         assert(num_args == kernel->base.num_args);
         for (unsigned i = 0; i < num_args; ++i) {

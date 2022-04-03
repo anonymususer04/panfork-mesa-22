@@ -1,6 +1,7 @@
 extern crate mesa_rust_util;
 extern crate rusticl_opencl_gen;
 
+use crate::api::event::create_and_queue;
 use crate::api::icd::*;
 use crate::api::util::*;
 use crate::core::device::*;
@@ -379,9 +380,7 @@ pub fn enqueue_ndrange_kernel(
         )?
     };
 
-    let e = Event::new(&q, CL_COMMAND_NDRANGE_KERNEL, evs, cb);
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
+    create_and_queue(q, CL_COMMAND_NDRANGE_KERNEL, evs, event, false, cb)
 
     //• CL_INVALID_WORK_GROUP_SIZE if local_work_size is specified and is not consistent with the required number of sub-groups for kernel in the program source.
     //• CL_INVALID_WORK_GROUP_SIZE if local_work_size is specified and the total number of work-items in the work-group computed as local_work_size[0] × … local_work_size[work_dim - 1] is greater than the value specified by CL_KERNEL_WORK_GROUP_SIZE in the Kernel Object Device Queries table.
@@ -391,7 +390,6 @@ pub fn enqueue_ndrange_kernel(
     //• CL_OUT_OF_RESOURCES if there is a failure to queue the execution instance of kernel on the command-queue because of insufficient resources needed to execute the kernel. For example, the explicitly specified local_work_size causes a failure to execute the kernel because of insufficient resources such as registers or local memory. Another example would be the number of read-only image args used in kernel exceed the CL_DEVICE_MAX_READ_IMAGE_ARGS value for device or the number of write-only and read-write image args used in kernel exceed the CL_DEVICE_MAX_READ_WRITE_IMAGE_ARGS value for device or the number of samplers used in kernel exceed CL_DEVICE_MAX_SAMPLERS for device.
     //• CL_MEM_OBJECT_ALLOCATION_FAILURE if there is a failure to allocate memory for data store associated with image or buffer objects specified as arguments to kernel.
     //• CL_INVALID_OPERATION if SVM pointers are passed as arguments to a kernel and the device does not support SVM or if system pointers are passed as arguments to a kernel and/or stored inside SVM allocations passed as kernel arguments and the device does not support fine grain system SVM allocations.
-    Ok(())
 }
 
 pub fn enqueue_task(

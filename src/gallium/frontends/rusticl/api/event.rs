@@ -4,6 +4,7 @@ use crate::api::icd::*;
 use crate::api::types::*;
 use crate::api::util::*;
 use crate::core::event::*;
+use crate::core::queue::*;
 
 use self::rusticl_opencl_gen::*;
 
@@ -135,5 +136,22 @@ pub fn set_user_event_status(event: cl_event, execution_status: cl_int) -> CLRes
     }
 
     e.set_user_status(execution_status);
+    Ok(())
+}
+
+pub fn create_and_queue(
+    q: Arc<Queue>,
+    cmd_type: cl_command_type,
+    deps: Vec<Arc<Event>>,
+    event: *mut cl_event,
+    block: bool,
+    work: EventSig,
+) -> CLResult<()> {
+    let e = Event::new(&q, cmd_type, deps, work);
+    cl_event::leak_ref(event, &e);
+    q.queue(&e);
+    if block {
+        q.flush(true)?;
+    }
     Ok(())
 }

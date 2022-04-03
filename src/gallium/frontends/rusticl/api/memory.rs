@@ -3,11 +3,11 @@
 extern crate mesa_rust_util;
 extern crate rusticl_opencl_gen;
 
+use crate::api::event::create_and_queue;
 use crate::api::icd::*;
 use crate::api::types::*;
 use crate::api::util::*;
 use crate::core::device::*;
-use crate::core::event::*;
 use crate::core::format::*;
 use crate::core::memory::*;
 use crate::*;
@@ -968,18 +968,14 @@ pub fn enqueue_read_buffer(
         Err(CL_INVALID_OPERATION)?
     }
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_READ_BUFFER,
         evs,
+        event,
+        block,
         Box::new(move |q, ctx| b.read_to_user(q, ctx, offset, ptr, cb)),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    if block {
-        q.flush(true)?;
-    }
-    Ok(())
+    )
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
@@ -1024,18 +1020,14 @@ pub fn enqueue_write_buffer(
         Err(CL_INVALID_OPERATION)?
     }
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_WRITE_BUFFER,
         evs,
+        event,
+        block,
         Box::new(move |q, ctx| b.write_from_user(q, ctx, offset, ptr, cb)),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    if block {
-        q.flush(true)?;
-    }
-    Ok(())
+    )
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
@@ -1084,10 +1076,12 @@ pub fn enqueue_copy_buffer(
         }
     }
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_COPY_BUFFER,
         evs,
+        event,
+        false,
         Box::new(move |q, ctx| {
             src.copy_to(
                 q,
@@ -1098,10 +1092,7 @@ pub fn enqueue_copy_buffer(
                 &CLVec::new([size, 1, 1]),
             )
         }),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    Ok(())
+    )
 
     // TODO
     //• CL_MISALIGNED_SUB_BUFFER_OFFSET if src_buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
@@ -1205,10 +1196,12 @@ pub fn enqueue_read_buffer_rect(
         Err(CL_INVALID_CONTEXT)?
     }
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_READ_BUFFER_RECT,
         evs,
+        event,
+        block,
         Box::new(move |q, ctx| {
             buf.read_to_user_rect(
                 ptr,
@@ -1223,13 +1216,7 @@ pub fn enqueue_read_buffer_rect(
                 host_slice_pitch,
             )
         }),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    if block {
-        q.flush(true)?;
-    }
-    Ok(())
+    )
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
@@ -1331,10 +1318,12 @@ pub fn enqueue_write_buffer_rect(
         Err(CL_INVALID_CONTEXT)?
     }
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_WRITE_BUFFER_RECT,
         evs,
+        event,
+        block,
         Box::new(move |q, ctx| {
             buf.write_from_user_rect(
                 ptr,
@@ -1349,13 +1338,7 @@ pub fn enqueue_write_buffer_rect(
                 buffer_slice_pitch,
             )
         }),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    if block {
-        q.flush(true)?;
-    }
-    Ok(())
+    )
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
@@ -1473,10 +1456,12 @@ pub fn enqueue_copy_buffer_rect(
         Err(CL_INVALID_CONTEXT)?
     }
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_COPY_BUFFER_RECT,
         evs,
+        event,
+        false,
         Box::new(move |q, ctx| {
             src.copy_to_rect(
                 &dst,
@@ -1491,10 +1476,7 @@ pub fn enqueue_copy_buffer_rect(
                 dst_slice_pitch,
             )
         }),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    Ok(())
+    )
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if src_buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
@@ -1539,15 +1521,14 @@ pub fn enqueue_fill_buffer(
 
     // we have to copy memory
     let pattern = unsafe { slice::from_raw_parts(pattern.cast(), pattern_size).to_vec() };
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_FILL_BUFFER,
         evs,
+        event,
+        false,
         Box::new(move |q, ctx| b.fill(q, ctx, &pattern, offset, size)),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    Ok(())
+    )
 
     // TODO
     //• CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for device associated with queue.
@@ -1589,18 +1570,15 @@ pub fn enqueue_map_buffer(
         Err(CL_INVALID_CONTEXT)?
     }
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q.clone(),
         CL_COMMAND_MAP_BUFFER,
         evs,
+        event,
+        block,
         // we don't really have anything to do here?
         Box::new(|_, _| Ok(())),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    if block {
-        q.flush(true)?;
-    }
+    )?;
 
     b.map(&q, offset, size, block)
     // TODO
@@ -1670,10 +1648,12 @@ pub fn enqueue_read_image(
         slice_pitch = row_pitch * r[1];
     }
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_READ_IMAGE,
         evs,
+        event,
+        block,
         Box::new(move |q, ctx| {
             i.read_to_user_rect(
                 ptr,
@@ -1688,13 +1668,7 @@ pub fn enqueue_read_image(
                 slice_pitch,
             )
         }),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    if block {
-        q.flush(true)?;
-    }
-    Ok(())
+    )
 
     //• CL_INVALID_VALUE if the region being read or written specified by origin and region is out of bounds.
     //• CL_INVALID_VALUE if values in origin and region do not follow rules described in the argument description for origin and region.
@@ -1765,10 +1739,12 @@ pub fn enqueue_write_image(
         slice_pitch = row_pitch * r[1];
     }
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_WRITE_BUFFER_RECT,
         evs,
+        event,
+        block,
         Box::new(move |q, ctx| {
             i.write_from_user_rect(
                 ptr,
@@ -1783,13 +1759,7 @@ pub fn enqueue_write_image(
                 i.image_desc.image_slice_pitch,
             )
         }),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    if block {
-        q.flush(true)?;
-    }
-    Ok(())
+    )
 
     //• CL_INVALID_VALUE if the region being read or written specified by origin and region is out of bounds.
     //• CL_INVALID_OPERATION if clEnqueueWriteImage is called on image which has been created with CL_MEM_HOST_READ_ONLY or CL_MEM_HOST_NO_ACCESS.
@@ -1835,17 +1805,16 @@ pub fn enqueue_copy_image(
     let dst_origin = CLVec::from_raw_parts(dst_origin);
     let src_origin = CLVec::from_raw_parts(src_origin);
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_COPY_IMAGE,
         evs,
+        event,
+        false,
         Box::new(move |q, ctx| {
             src_image.copy_to(q, ctx, &dst_image, src_origin, dst_origin, &region)
         }),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    Ok(())
+    )
 
     //• CL_INVALID_VALUE if the 2D or 3D rectangular region specified by src_origin and src_origin + region refers to a region outside src_image, or if the 2D or 3D rectangular region specified by dst_origin and dst_origin + region refers to a region outside dst_image.
     //• CL_INVALID_VALUE if values in src_origin, dst_origin and region do not follow rules described in the argument description for src_origin, dst_origin and region.
@@ -1886,20 +1855,20 @@ pub fn enqueue_fill_image(
     // we have to copy memory and it's always a 4 component int value
     // TODO but not for CL_DEPTH
     let fill_color = unsafe { slice::from_raw_parts(fill_color.cast(), 4).to_vec() };
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_FILL_BUFFER,
         evs,
+        event,
+        false,
         Box::new(move |q, ctx| i.fill_image(q, ctx, &fill_color, &origin, &region)),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
+    )
+
     //• CL_INVALID_VALUE if the region being filled as specified by origin and region is out of bounds.
     //• CL_INVALID_VALUE if values in origin and region do not follow rules described in the argument description for origin and region.
     //• CL_INVALID_IMAGE_SIZE if image dimensions (image width, height, specified or compute row and/or slice pitch) for image are not supported by device associated with queue.
     //• CL_IMAGE_FORMAT_NOT_SUPPORTED if image format (image channel order and data type) for
     //image are not supported by device associated with queue.
-    Ok(())
 }
 
 pub fn enqueue_copy_buffer_to_image(
@@ -1933,15 +1902,14 @@ pub fn enqueue_copy_buffer_to_image(
     let src_origin = CLVec::new([src_offset, 0, 0]);
     let dst_origin = CLVec::from_raw_parts(dst_origin);
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_COPY_BUFFER_TO_IMAGE,
         evs,
+        event,
+        false,
         Box::new(move |q, ctx| src.copy_to(q, ctx, &dst, src_origin, dst_origin, &region)),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    Ok(())
+    )
 
     //• CL_INVALID_MEM_OBJECT if src_buffer is not a valid buffer object or dst_image is not a valid image object or if dst_image is a 1D image buffer object created from src_buffer.
     //• CL_INVALID_VALUE if the 1D, 2D or 3D rectangular region specified by dst_origin and dst_origin + region refer to a region outside dst_image, or if the region specified by src_offset and src_offset + src_cb refer to a region outside src_buffer.
@@ -1984,15 +1952,14 @@ pub fn enqueue_copy_image_to_buffer(
     let src_origin = CLVec::from_raw_parts(src_origin);
     let dst_origin = CLVec::new([dst_offset, 0, 0]);
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_COPY_IMAGE_TO_BUFFER,
         evs,
+        event,
+        false,
         Box::new(move |q, ctx| src.copy_to(q, ctx, &dst, src_origin, dst_origin, &region)),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    Ok(())
+    )
 
     //• CL_INVALID_MEM_OBJECT if src_image is not a valid image object or dst_buffer is not a valid buffer object or if src_image is a 1D image buffer object created from dst_buffer.
     //• CL_INVALID_VALUE if the 1D, 2D or 3D rectangular region specified by src_origin and src_origin + region refers to a region outside src_image, or if the region specified by dst_offset and dst_offset + dst_cb to a region outside dst_buffer.
@@ -2038,18 +2005,15 @@ pub fn enqueue_map_image(
     let region = CLVec::from_raw_parts(region);
     let origin = CLVec::from_raw_parts(origin);
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q.clone(),
         CL_COMMAND_MAP_IMAGE,
         evs,
+        event,
+        block,
         // we don't really have anything to do here?
         Box::new(|_, _| Ok(())),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-    if block {
-        q.flush(true)?;
-    }
+    )?;
 
     let mut dummy_slice_pitch: usize = 0;
     let image_slice_pitch = if image_slice_pitch.is_null() {
@@ -2104,16 +2068,14 @@ pub fn enqueue_unmap_mem_object(
         Err(CL_INVALID_VALUE)?
     }
 
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_UNMAP_MEM_OBJECT,
         evs,
+        event,
+        false,
         Box::new(move |_, _| Ok(m.unmap(mapped_ptr))),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
-
-    Ok(())
+    )
 }
 
 pub fn enqueue_migrate_mem_objects(
@@ -2151,16 +2113,15 @@ pub fn enqueue_migrate_mem_objects(
     }
 
     // we should do something, but it's legal to not do anything at all
-    let e = Event::new(
-        &q,
+    create_and_queue(
+        q,
         CL_COMMAND_MIGRATE_MEM_OBJECTS,
         evs,
+        event,
+        false,
         Box::new(|_, _| Ok(())),
-    );
-    cl_event::leak_ref(event, &e);
-    q.queue(&e);
+    )
 
-    Ok(())
     //• CL_MEM_OBJECT_ALLOCATION_FAILURE if there is a failure to allocate memory for the specified set of memory objects in mem_objects.
 }
 

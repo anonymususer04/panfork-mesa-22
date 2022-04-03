@@ -358,7 +358,7 @@ impl Program {
     }
 
     pub fn link(
-        context: &Arc<Context>,
+        context: Arc<Context>,
         devs: &Vec<Arc<Device>>,
         progs: &Vec<Arc<Program>>,
         options: String,
@@ -408,7 +408,7 @@ impl Program {
 
         Arc::new(Self {
             base: CLObjectBase::new(),
-            context: context.clone(),
+            context: context,
             devs: devs,
             src: CString::new("").unwrap(),
             build: Mutex::new(ProgramBuild {

@@ -69,7 +69,7 @@ pub fn create_command_queue(
         return Err(CL_INVALID_QUEUE_PROPERTIES);
     }
 
-    Ok(cl_command_queue::from_arc(Queue::new(&c, &d, properties)?))
+    Ok(cl_command_queue::from_arc(Queue::new(c, d, properties)?))
 }
 
 pub fn enqueue_marker(command_queue: cl_command_queue, event: *mut cl_event) -> CLResult<()> {
@@ -111,7 +111,7 @@ pub fn enqueue_barrier(command_queue: cl_command_queue) -> CLResult<()> {
 
     // TODO barriers make sure previous commands did complete and other commands didn't start
     let e = Event::new(&q, CL_COMMAND_BARRIER, Vec::new(), Box::new(|_, _| Ok(())));
-    q.queue(&e);
+    q.queue(e);
     Ok(())
 }
 

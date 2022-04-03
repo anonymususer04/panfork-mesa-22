@@ -30,8 +30,8 @@ impl_cl_type_trait!(cl_command_queue, Queue, CL_INVALID_COMMAND_QUEUE);
 
 impl Queue {
     pub fn new(
-        context: &Arc<Context>,
-        device: &Arc<Device>,
+        context: Arc<Context>,
+        device: Arc<Device>,
         props: cl_command_queue_properties,
     ) -> CLResult<Arc<Queue>> {
         // we assume that memory allocation is the only possible failure. Any other failure reason
@@ -40,8 +40,8 @@ impl Queue {
         let (tx_q, rx_t) = mpsc::channel::<Vec<Arc<Event>>>();
         Ok(Arc::new(Self {
             base: CLObjectBase::new(),
-            context: context.clone(),
-            device: device.clone(),
+            context: context,
+            device: device,
             props: props,
             pending: Mutex::new(Vec::new()),
             _thrd: Some(
@@ -74,8 +74,8 @@ impl Queue {
         }))
     }
 
-    pub fn queue(&self, e: &Arc<Event>) {
-        self.pending.lock().unwrap().push(e.clone());
+    pub fn queue(&self, e: Arc<Event>) {
+        self.pending.lock().unwrap().push(e);
     }
 
     pub fn flush(&self, wait: bool) -> CLResult<()> {

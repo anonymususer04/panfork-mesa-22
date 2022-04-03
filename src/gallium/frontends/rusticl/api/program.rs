@@ -344,7 +344,7 @@ pub fn link_program(
     }
 
     // CL_LINK_PROGRAM_FAILURE if there is a failure to link the compiled binaries and/or libraries.
-    let res = Program::link(&c, &devs, &progs, c_string_to_string(options));
+    let res = Program::link(c, &devs, &progs, c_string_to_string(options));
     let code = if devs
         .iter()
         .map(|d| res.status(d))

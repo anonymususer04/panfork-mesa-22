@@ -268,7 +268,7 @@ pub fn create_buffer_with_properties(
     }
 
     Ok(cl_mem::from_arc(Mem::new_buffer(
-        &c, flags, size, host_ptr, props,
+        c, flags, size, host_ptr, props,
     )?))
 }
 
@@ -327,7 +327,7 @@ pub fn create_sub_buffer(
     };
 
     Ok(cl_mem::from_arc(Mem::new_sub_buffer(
-        &b, flags, offset, size,
+        b, flags, offset, size,
     )))
 
     // TODO
@@ -712,7 +712,7 @@ pub fn create_image_with_properties(
     }
 
     Ok(cl_mem::from_arc(Mem::new_image(
-        &c,
+        c,
         desc.image_type,
         flags,
         format,
@@ -869,7 +869,7 @@ fn create_sampler_impl(
     validate_filter_mode(filter_mode)?;
 
     let sampler = Sampler::new(
-        &c,
+        c,
         check_cl_bool(normalized_coords).ok_or(CL_INVALID_VALUE)?,
         addressing_mode,
         filter_mode,

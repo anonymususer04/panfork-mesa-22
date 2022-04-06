@@ -907,6 +907,7 @@ iris_setup_binding_table(const struct intel_device_info *devinfo,
 
    bt->sizes[IRIS_SURFACE_GROUP_TEXTURE] = BITSET_LAST_BIT(info->textures_used);
    bt->used_mask[IRIS_SURFACE_GROUP_TEXTURE] = info->textures_used[0];
+   bt->samplers_used_mask = info->textures_used[0];
 
    bt->sizes[IRIS_SURFACE_GROUP_IMAGE] = info->num_images;
 

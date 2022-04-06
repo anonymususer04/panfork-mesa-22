@@ -819,6 +819,9 @@ pub fn get_supported_image_formats(
         }
     }
 
+    res.sort();
+    res.dedup();
+
     num_image_formats.write_checked(res.len() as cl_uint);
     unsafe { image_formats.copy_checked(res.as_ptr(), res.len()) };
 

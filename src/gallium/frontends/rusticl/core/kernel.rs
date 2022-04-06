@@ -533,12 +533,13 @@ impl Kernel {
         grid: &[usize],
         offsets: &[usize],
     ) -> CLResult<EventSig> {
+        let nir = self.nirs.get(&q.device).unwrap();
         let mut block = create_kernel_arr::<u32>(block, 1);
         let mut grid = create_kernel_arr::<u32>(grid, 1);
         let offsets = create_kernel_arr::<u64>(offsets, 0);
         let mut input: Vec<u8> = Vec::new();
         let mut resource_info = Vec::new();
-        let mut local_size: u32 = 0;
+        let mut local_size: u32 = nir.shared_size();
         let printf_size = q.device.printf_buffer_size() as u32;
         let mut samplers = Vec::new();
         let mut iviews = Vec::new();
@@ -608,7 +609,6 @@ impl Kernel {
             }
         }
 
-        let nir = self.nirs.get(&q.device).unwrap();
         let mut printf_buf = None;
         for arg in &self.internal_args {
             if arg.offset > input.len() {

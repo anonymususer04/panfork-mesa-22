@@ -1031,8 +1031,18 @@ iris_resource_create_for_buffer(struct pipe_screen *pscreen,
 
    unsigned flags = iris_resource_alloc_flags(screen, templ, res->aux.usage);
 
+   /* Some buffer operations want some amount of alignment.  The largest
+    * buffer texture pixel size is 4 * 4 = 16B.  OpenCL data is also supposed
+    * to be aligned and largest OpenCL data type is a double16 which is
+    * 8 * 16 = 128B.  Align to the largest power of 2 which fits in the size,
+    * up to 128B.
+    */
+   unsigned align = MAX2(4 * 4, 8 * 16);
+   while (align > templ->width0)
+      align >>= 1;
+
    res->bo =
-      iris_bo_alloc(screen->bufmgr, name, templ->width0, 1, memzone, flags);
+      iris_bo_alloc(screen->bufmgr, name, templ->width0, align, memzone, flags);
 
    if (!res->bo) {
       iris_resource_destroy(pscreen, &res->base.b);

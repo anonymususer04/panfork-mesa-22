@@ -43,7 +43,7 @@ pub struct Mem {
     pub image_elem_size: u8,
     pub props: Vec<cl_mem_properties>,
     pub cbs: Mutex<Vec<Box<dyn Fn(cl_mem) -> ()>>>,
-    res: Option<HashMap<*const Device, Arc<PipeResource>>>,
+    res: Option<HashMap<Arc<Device>, Arc<PipeResource>>>,
     maps: Mutex<HashMap<*mut c_void, (u32, PipeTransfer)>>,
 }
 
@@ -206,11 +206,8 @@ impl Mem {
 
         if bit_check(flags, CL_MEM_COPY_HOST_PTR) {
             for (d, r) in &buffer {
-                unsafe {
-                    (**d)
-                        .helper_ctx()
-                        .buffer_subdata(r, 0, host_ptr, size.try_into().unwrap());
-                }
+                d.helper_ctx()
+                    .buffer_subdata(r, 0, host_ptr, size.try_into().unwrap());
             }
         }
 
@@ -298,11 +295,8 @@ impl Mem {
             let layer_stride = image_desc.slice_pitch()?;
 
             for (d, r) in &texture {
-                unsafe {
-                    (**d)
-                        .helper_ctx()
-                        .texture_subdata(r, &bx, host_ptr, stride, layer_stride);
-                }
+                d.helper_ctx()
+                    .texture_subdata(r, &bx, host_ptr, stride, layer_stride);
             }
         }
 
@@ -338,7 +332,7 @@ impl Mem {
         blocking: bool,
     ) -> CLResult<PipeTransfer> {
         let b = self.to_parent(&mut offset);
-        let r = b.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+        let r = b.get_res()?.get(&q.device).unwrap();
 
         assert!(self.is_buffer());
 
@@ -359,7 +353,7 @@ impl Mem {
     ) -> CLResult<PipeTransfer> {
         assert!(!self.is_buffer());
 
-        let r = self.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+        let r = self.get_res()?.get(&q.device).unwrap();
         Ok(ctx.texture_map(r, bx, blocking))
     }
 
@@ -369,7 +363,7 @@ impl Mem {
         (a as *const Self) == (b as *const Self)
     }
 
-    fn get_res(&self) -> CLResult<&HashMap<*const Device, Arc<PipeResource>>> {
+    fn get_res(&self) -> CLResult<&HashMap<Arc<Device>, Arc<PipeResource>>> {
         self.parent
             .as_ref()
             .map_or(self, |p| p.as_ref())
@@ -379,7 +373,7 @@ impl Mem {
     }
 
     pub fn get_res_of_dev(&self, dev: &Arc<Device>) -> CLResult<&Arc<PipeResource>> {
-        Ok(self.get_res()?.get(&Arc::as_ptr(dev)).unwrap())
+        Ok(self.get_res()?.get(dev).unwrap())
     }
 
     fn to_parent<'a>(&'a self, offset: &mut usize) -> &'a Self {
@@ -421,7 +415,7 @@ impl Mem {
         assert!(self.is_buffer());
 
         let b = self.to_parent(&mut offset);
-        let r = b.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+        let r = b.get_res()?.get(&q.device).unwrap();
         ctx.buffer_subdata(
             r,
             offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
@@ -443,8 +437,8 @@ impl Mem {
         let src = self.to_parent(&mut src_origin[0]);
         let dst = dst.to_parent(&mut dst_origin[0]);
 
-        let src_res = src.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
-        let dst_res = dst.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+        let src_res = src.get_res()?.get(&q.device).unwrap();
+        let dst_res = dst.get_res()?.get(&q.device).unwrap();
 
         if self.is_buffer() && !dst.is_buffer() || !self.is_buffer() && dst.is_buffer() {
             let tx_src;
@@ -519,7 +513,7 @@ impl Mem {
         assert!(self.is_buffer());
 
         let b = self.to_parent(&mut offset);
-        let res = b.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+        let res = b.get_res()?.get(&q.device).unwrap();
         ctx.clear_buffer(
             res,
             pattern,
@@ -539,7 +533,7 @@ impl Mem {
     ) -> CLResult<()> {
         assert!(!self.is_buffer());
 
-        let res = self.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+        let res = self.get_res()?.get(&q.device).unwrap();
         let bx = create_box(origin, region, self.mem_type)?;
         let mut new_pattern = vec![0; self.image_format.pixel_size().unwrap() as usize];
 
@@ -589,7 +583,7 @@ impl Mem {
             assert!(dst_slice_pitch == self.image_desc.image_slice_pitch);
             assert!(src_origin == &CLVec::default());
 
-            let res = self.get_res()?.get(&Arc::as_ptr(&q.device)).unwrap();
+            let res = self.get_res()?.get(&q.device).unwrap();
             let bx = create_box(dst_origin, region, self.mem_type)?;
 
             if self.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {

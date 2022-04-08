@@ -40,10 +40,7 @@ impl Context {
         })
     }
 
-    pub fn create_buffer(
-        &self,
-        size: usize,
-    ) -> CLResult<HashMap<*const Device, Arc<PipeResource>>> {
+    pub fn create_buffer(&self, size: usize) -> CLResult<HashMap<Arc<Device>, Arc<PipeResource>>> {
         let adj_size: u32 = size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let mut res = HashMap::new();
         for dev in &self.devs {
@@ -51,7 +48,7 @@ impl Context {
                 .screen()
                 .resource_create_buffer(adj_size)
                 .ok_or(CL_OUT_OF_RESOURCES);
-            res.insert(Arc::as_ptr(dev), Arc::new(resource?));
+            res.insert(Arc::clone(dev), Arc::new(resource?));
         }
         Ok(res)
     }
@@ -60,7 +57,7 @@ impl Context {
         &self,
         size: usize,
         user_ptr: *mut c_void,
-    ) -> CLResult<HashMap<*const Device, Arc<PipeResource>>> {
+    ) -> CLResult<HashMap<Arc<Device>, Arc<PipeResource>>> {
         let adj_size: u32 = size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let mut res = HashMap::new();
         for dev in &self.devs {
@@ -68,7 +65,7 @@ impl Context {
                 .screen()
                 .resource_create_buffer_from_user(adj_size, user_ptr)
                 .ok_or(CL_OUT_OF_RESOURCES);
-            res.insert(Arc::as_ptr(dev), Arc::new(resource?));
+            res.insert(Arc::clone(dev), Arc::new(resource?));
         }
         Ok(res)
     }
@@ -77,7 +74,7 @@ impl Context {
         &self,
         desc: &cl_image_desc,
         format: &cl_image_format,
-    ) -> CLResult<HashMap<*const Device, Arc<PipeResource>>> {
+    ) -> CLResult<HashMap<Arc<Device>, Arc<PipeResource>>> {
         let width = desc
             .image_width
             .try_into()
@@ -103,7 +100,7 @@ impl Context {
                 .screen()
                 .resource_create_texture(width, height, depth, array_size, target, format)
                 .ok_or(CL_OUT_OF_RESOURCES);
-            res.insert(Arc::as_ptr(dev), Arc::new(resource?));
+            res.insert(Arc::clone(dev), Arc::new(resource?));
         }
         Ok(res)
     }
@@ -113,7 +110,7 @@ impl Context {
         desc: &cl_image_desc,
         format: &cl_image_format,
         user_ptr: *mut c_void,
-    ) -> CLResult<HashMap<*const Device, Arc<PipeResource>>> {
+    ) -> CLResult<HashMap<Arc<Device>, Arc<PipeResource>>> {
         let width = desc
             .image_width
             .try_into()
@@ -141,7 +138,7 @@ impl Context {
                     width, height, depth, array_size, target, format, user_ptr,
                 )
                 .ok_or(CL_OUT_OF_RESOURCES);
-            res.insert(Arc::as_ptr(dev), Arc::new(resource?));
+            res.insert(Arc::clone(dev), Arc::new(resource?));
         }
         Ok(res)
     }

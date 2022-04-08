@@ -466,7 +466,7 @@ lower_mul_high64(nir_builder *b, nir_ssa_def *x, nir_ssa_def *y,
           * so we're guaranteed that we can add in two more 32-bit values
           * without overflowing tmp.
           */
-         nir_ssa_def *tmp = nir_umul_2x32_64(b, x32[i], y32[i]);
+         nir_ssa_def *tmp = nir_umul_2x32_64(b, x32[i], y32[j]);
 
          if (res[i + j])
             tmp = nir_iadd(b, tmp, nir_u2u64(b, res[i + j]));

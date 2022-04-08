@@ -46,6 +46,8 @@ void
 util_vma_heap_init(struct util_vma_heap *heap,
                    uint64_t start, uint64_t size)
 {
+   heap->start = start;
+   heap->size = size;
    list_inithead(&heap->holes);
    util_vma_heap_free(heap, start, size);
 
@@ -308,7 +310,7 @@ util_vma_heap_free(struct util_vma_heap *heap,
 
 void
 util_vma_heap_print(struct util_vma_heap *heap, FILE *fp,
-                    const char *tab, uint64_t total_size)
+                    const char *tab)
 {
    fprintf(fp, "%sutil_vma_heap:\n", tab);
 
@@ -319,8 +321,8 @@ util_vma_heap_print(struct util_vma_heap *heap, FILE *fp,
               tab, hole->offset, hole->offset, hole->size, hole->size);
       total_free += hole->size;
    }
-   assert(total_free <= total_size);
+   assert(total_free <= heap->size);
    fprintf(fp, "%s%"PRIu64"B (0x%"PRIx64") free (%.2f%% full)\n",
            tab, total_free, total_free,
-           ((double)(total_size - total_free) / (double)total_size) * 100);
+           ((double)(heap->size - total_free) / (double)heap->size) * 100);
 }

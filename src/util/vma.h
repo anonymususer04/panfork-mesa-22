@@ -34,6 +34,9 @@ extern "C" {
 #endif
 
 struct util_vma_heap {
+   uint64_t start;
+   uint64_t size;
+
    struct list_head holes;
 
    /** If true, util_vma_heap_alloc will prefer high addresses
@@ -57,7 +60,7 @@ void util_vma_heap_free(struct util_vma_heap *heap,
                         uint64_t offset, uint64_t size);
 
 void util_vma_heap_print(struct util_vma_heap *heap, FILE *fp,
-                         const char *tab, uint64_t total_size);
+                         const char *tab);
 
 #ifdef __cplusplus
 } /* extern C */

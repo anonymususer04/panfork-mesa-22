@@ -404,6 +404,12 @@ vma_alloc(struct iris_bufmgr *bufmgr,
    uint64_t addr =
       util_vma_heap_alloc(&bufmgr->vma_allocator[memzone], size, alignment);
 
+   if (addr == 0ull) {
+      fprintf(stderr, "Failed to allocate VA space in %s:\n",
+              memzone_name(memzone));
+      util_vma_heap_print(&bufmgr->vma_allocator[memzone], stderr, "    ");
+   }
+
    assert((addr >> 48ull) == 0);
    assert((addr % alignment) == 0);
 

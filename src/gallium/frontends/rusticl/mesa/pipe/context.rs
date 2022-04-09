@@ -155,7 +155,7 @@ impl PipeContext {
             )
         };
 
-        PipeTransfer::new(true, out, ptr, self)
+        PipeTransfer::new(true, out, ptr)
     }
 
     pub(super) fn buffer_unmap(&self, tx: *mut pipe_transfer) {
@@ -186,7 +186,7 @@ impl PipeContext {
             )
         };
 
-        PipeTransfer::new(false, out, ptr, self)
+        PipeTransfer::new(false, out, ptr)
     }
 
     pub(super) fn texture_unmap(&self, tx: *mut pipe_transfer) {

@@ -5,6 +5,7 @@ extern crate rusticl_opencl_gen;
 use crate::api::icd::*;
 use crate::core::device::*;
 use crate::core::format::*;
+use crate::core::memory::*;
 use crate::core::util::*;
 use crate::impl_cl_type_trait;
 
@@ -40,7 +41,11 @@ impl Context {
         })
     }
 
-    pub fn create_buffer(&self, size: usize) -> CLResult<HashMap<Arc<Device>, Arc<PipeResource>>> {
+    pub fn create_buffer(
+        &self,
+        size: usize,
+        user_ptr: *mut c_void,
+    ) -> CLResult<HashMap<Arc<Device>, Arc<PipeResource>>> {
         let adj_size: u32 = size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let mut res = HashMap::new();
         for dev in &self.devs {
@@ -50,6 +55,18 @@ impl Context {
                 .ok_or(CL_OUT_OF_RESOURCES);
             res.insert(Arc::clone(dev), Arc::new(resource?));
         }
+
+        if !user_ptr.is_null() {
+            let fences: Vec<_> = res
+                .iter()
+                .map(|(d, r)| {
+                    d.helper_ctx()
+                        .exec(|ctx| ctx.buffer_subdata(r, 0, user_ptr, size.try_into().unwrap()))
+                })
+                .collect();
+            fences.iter().for_each(|f| f.wait());
+        }
+
         Ok(res)
     }
 
@@ -74,6 +91,7 @@ impl Context {
         &self,
         desc: &cl_image_desc,
         format: &cl_image_format,
+        user_ptr: *mut c_void,
     ) -> CLResult<HashMap<Arc<Device>, Arc<PipeResource>>> {
         let width = desc
             .image_width
@@ -102,6 +120,22 @@ impl Context {
                 .ok_or(CL_OUT_OF_RESOURCES);
             res.insert(Arc::clone(dev), Arc::new(resource?));
         }
+
+        if !user_ptr.is_null() {
+            let bx = desc.bx()?;
+            let stride = desc.row_pitch()?;
+            let layer_stride = desc.slice_pitch()?;
+
+            let fences: Vec<_> = res
+                .iter()
+                .map(|(d, r)| {
+                    d.helper_ctx()
+                        .exec(|ctx| ctx.texture_subdata(r, &bx, user_ptr, stride, layer_stride))
+                })
+                .collect();
+            fences.iter().for_each(|f| f.wait());
+        }
+
         Ok(res)
     }
 

@@ -16,6 +16,7 @@ use self::mesa_rust_util::properties::Properties;
 use self::mesa_rust_util::ptr::*;
 use self::rusticl_opencl_gen::*;
 
+use std::cell::Cell;
 use std::cmp::Ordering;
 use std::os::raw::c_void;
 use std::ptr;
@@ -1573,17 +1574,37 @@ pub fn enqueue_map_buffer(
         Err(CL_INVALID_CONTEXT)?
     }
 
-    create_and_queue(
-        q.clone(),
-        CL_COMMAND_MAP_BUFFER,
-        evs,
-        event,
-        block,
-        // we don't really have anything to do here?
-        Box::new(|_, _| Ok(())),
-    )?;
+    if block {
+        let ptr = Arc::new(Cell::new(Ok(ptr::null_mut())));
+        let cloned = ptr.clone();
+        create_and_queue(
+            q.clone(),
+            CL_COMMAND_MAP_BUFFER,
+            evs,
+            event,
+            block,
+            // we don't really have anything to do here?
+            Box::new(move |q, ctx| {
+                cloned.set(b.map_buffer(&q, Some(ctx), offset, size));
+                Ok(())
+            }),
+        )?;
 
-    b.map(&q, offset, size, block)
+        ptr.get()
+    } else {
+        create_and_queue(
+            q.clone(),
+            CL_COMMAND_MAP_BUFFER,
+            evs,
+            event,
+            block,
+            // we don't really have anything to do here?
+            Box::new(|_, _| Ok(())),
+        )?;
+
+        b.map_buffer(&q, None, offset, size)
+    }
+
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for the device associated with queue. This error code is missing before version 1.1.
     // CL_MAP_FAILURE if there is a failure to map the requested region into the host address space. This error cannot occur for buffer objects created with CL_MEM_USE_HOST_PTR or CL_MEM_ALLOC_HOST_PTR.
@@ -2008,16 +2029,6 @@ pub fn enqueue_map_image(
     let region = CLVec::from_raw_parts(region);
     let origin = CLVec::from_raw_parts(origin);
 
-    create_and_queue(
-        q.clone(),
-        CL_COMMAND_MAP_IMAGE,
-        evs,
-        event,
-        block,
-        // we don't really have anything to do here?
-        Box::new(|_, _| Ok(())),
-    )?;
-
     let mut dummy_slice_pitch: usize = 0;
     let image_slice_pitch = if image_slice_pitch.is_null() {
         // CL_INVALID_VALUE if image is a 3D image, 1D or 2D image array object and
@@ -2030,14 +2041,60 @@ pub fn enqueue_map_image(
         unsafe { image_slice_pitch.as_mut().unwrap() }
     };
 
-    i.map_image(
-        &q,
-        &origin,
-        &region,
-        unsafe { image_row_pitch.as_mut().unwrap() },
-        image_slice_pitch,
-        block,
-    )
+    if block {
+        let res = Arc::new(Cell::new((Ok(ptr::null_mut()), 0, 0)));
+        let cloned = res.clone();
+
+        create_and_queue(
+            q.clone(),
+            CL_COMMAND_MAP_IMAGE,
+            evs,
+            event,
+            block,
+            // we don't really have anything to do here?
+            Box::new(move |q, ctx| {
+                let mut image_row_pitch = 0;
+                let mut image_slice_pitch = 0;
+
+                let ptr = i.map_image(
+                    &q,
+                    Some(ctx),
+                    &origin,
+                    &region,
+                    &mut image_row_pitch,
+                    &mut image_slice_pitch,
+                );
+                cloned.set((ptr, image_row_pitch, image_slice_pitch));
+
+                Ok(())
+            }),
+        )?;
+
+        let res = res.get();
+        unsafe { *image_row_pitch = res.1 };
+        *image_slice_pitch = res.2;
+        res.0
+    } else {
+        create_and_queue(
+            q.clone(),
+            CL_COMMAND_MAP_IMAGE,
+            evs,
+            event,
+            block,
+            // we don't really have anything to do here?
+            Box::new(|_, _| Ok(())),
+        )?;
+
+        i.map_image(
+            &q,
+            None,
+            &origin,
+            &region,
+            unsafe { image_row_pitch.as_mut().unwrap() },
+            image_slice_pitch,
+        )
+    }
+
     //• CL_INVALID_VALUE if region being mapped given by (origin, origin + region) is out of bounds or if values specified in map_flags are not valid.
     //• CL_INVALID_VALUE if values in origin and region do not follow rules described in the argument description for origin and region.
     //• CL_INVALID_IMAGE_SIZE if image dimensions (image width, height, specified or compute row and/or slice pitch) for image are not supported by device associated with queue.
@@ -2077,7 +2134,7 @@ pub fn enqueue_unmap_mem_object(
         evs,
         event,
         false,
-        Box::new(move |_, _| Ok(m.unmap(mapped_ptr))),
+        Box::new(move |q, ctx| Ok(m.unmap(q, ctx, mapped_ptr))),
     )
 }
 

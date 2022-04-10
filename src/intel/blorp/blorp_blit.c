@@ -3212,7 +3212,7 @@ blorp_buffer_fill(struct blorp_batch *batch,
    assert(util_is_power_of_two_nonzero(data_size) && data_size <= bs);
    uint8_t data_repeated[16];
    for (unsigned i = 0; i < bs; i += data_size)
-      memcpy(data_repeated + i, data + i, data_size);
+      memcpy(data_repeated + i, data, data_size);
 
    /* Turn it into a color value */
    union isl_color_value color = {};

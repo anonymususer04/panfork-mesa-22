@@ -201,6 +201,16 @@ fn create_box(
     })
 }
 
+fn buffer_offset_size(
+    origin: &CLVec<usize>,
+    region: &CLVec<usize>,
+    row_pitch: usize,
+    slice_pitch: usize,
+) -> (usize, usize) {
+    let pitch = [1, row_pitch, slice_pitch];
+    (*origin * pitch, *region * pitch)
+}
+
 impl Mem {
     pub fn new_buffer(
         context: Arc<Context>,
@@ -584,7 +594,10 @@ impl Mem {
         dst_slice_pitch: usize,
     ) -> CLResult<()> {
         if self.is_buffer() {
-            let tx = self.tx(q, ctx, 0, self.size)?;
+            let (offset, size) =
+                buffer_offset_size(dst_origin, region, dst_row_pitch, dst_slice_pitch);
+            let tx = self.tx(q, ctx, offset, size)?;
+
             sw_copy(
                 src,
                 tx.ptr(),
@@ -592,7 +605,7 @@ impl Mem {
                 src_origin,
                 src_row_pitch,
                 src_slice_pitch,
-                dst_origin,
+                &CLVec::default(),
                 dst_row_pitch,
                 dst_slice_pitch,
                 1,
@@ -641,7 +654,9 @@ impl Mem {
         let pixel_size;
 
         if self.is_buffer() {
-            tx = self.tx(q, ctx, 0, self.size)?;
+            let (offset, size) =
+                buffer_offset_size(src_origin, region, src_row_pitch, src_slice_pitch);
+            tx = self.tx(q, ctx, offset, size)?;
             pixel_size = 1;
         } else {
             assert!(dst_origin == &CLVec::default());
@@ -658,7 +673,7 @@ impl Mem {
             tx.ptr(),
             dst,
             region,
-            src_origin,
+            &CLVec::default(),
             src_row_pitch,
             src_slice_pitch,
             dst_origin,
@@ -686,18 +701,21 @@ impl Mem {
         assert!(self.is_buffer());
         assert!(dst.is_buffer());
 
-        let tx_src = self.tx(q, ctx, 0, self.size)?;
-        let tx_dst = dst.tx(q, ctx, 0, self.size)?;
+        let (offset, size) = buffer_offset_size(src_origin, region, src_row_pitch, src_slice_pitch);
+        let tx_src = self.tx(q, ctx, offset, size)?;
+
+        let (offset, size) = buffer_offset_size(dst_origin, region, dst_row_pitch, dst_slice_pitch);
+        let tx_dst = dst.tx(q, ctx, offset, size)?;
 
         // TODO check to use hw accelerated paths (e.g. resource_copy_region or blits)
         sw_copy(
             tx_src.ptr(),
             tx_dst.ptr(),
             region,
-            src_origin,
+            &CLVec::default(),
             src_row_pitch,
             src_slice_pitch,
-            dst_origin,
+            &CLVec::default(),
             dst_row_pitch,
             dst_slice_pitch,
             1,

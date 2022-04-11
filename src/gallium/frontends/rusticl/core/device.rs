@@ -42,7 +42,7 @@ pub struct Device {
     pub extensions: Vec<cl_name_version>,
     pub formats: HashMap<cl_image_format, HashMap<cl_mem_object_type, cl_mem_flags>>,
     pub lib_clc: NirShader,
-    helper_ctx: Mutex<Arc<PipeContext>>,
+    helper_ctx: Mutex<PipeContext>,
 }
 
 pub trait HelperContextWrapper {
@@ -57,7 +57,7 @@ pub trait HelperContextWrapper {
 }
 
 pub struct HelperContext<'a> {
-    lock: MutexGuard<'a, Arc<PipeContext>>,
+    lock: MutexGuard<'a, PipeContext>,
 }
 
 impl<'a> HelperContext<'a> {

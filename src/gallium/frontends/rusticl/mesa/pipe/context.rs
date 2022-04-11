@@ -22,7 +22,7 @@ unsafe impl Send for PipeContext {}
 unsafe impl Sync for PipeContext {}
 
 impl PipeContext {
-    pub(super) fn new(context: *mut pipe_context, screen: &Arc<PipeScreen>) -> Option<Arc<Self>> {
+    pub(super) fn new(context: *mut pipe_context, screen: &Arc<PipeScreen>) -> Option<Self> {
         let s = Self {
             pipe: NonNull::new(context)?,
             screen: screen.clone(),
@@ -33,7 +33,7 @@ impl PipeContext {
             return None;
         }
 
-        Some(Arc::new(s))
+        Some(s)
     }
 
     pub fn buffer_subdata(
@@ -125,7 +125,7 @@ impl PipeContext {
     }
 
     pub fn buffer_map(
-        self: &Arc<Self>,
+        self: &Self,
         res: &PipeResource,
         offset: i32,
         size: i32,
@@ -163,7 +163,7 @@ impl PipeContext {
     }
 
     pub fn texture_map(
-        self: &Arc<Self>,
+        self: &Self,
         res: &PipeResource,
         bx: &pipe_box,
         block: bool,

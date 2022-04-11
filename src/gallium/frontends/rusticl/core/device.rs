@@ -331,10 +331,6 @@ impl Device {
             }
         }
 
-        if !exts.contains(&"cl_khr_fp64") {
-            res = CLVersion::Cl1_1;
-        }
-
         if self.embedded {
             // The minimum value for the EMBEDDED profile is 1 KB.
             if self.printf_buffer_size() < 1024 {

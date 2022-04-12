@@ -1097,6 +1097,21 @@ iris_bo_alloc(struct iris_bufmgr *bufmgr,
 
    /* If that fails, we try for any cached BO, without matching memzone. */
    if (!bo) {
+      if (memzone == IRIS_MEMZONE_SHADER) {
+         fprintf(stderr, "Failed to find cached BO.  Buckets:\n");
+         int *num_buckets;
+         struct bo_cache_bucket *buckets;
+         bucket_info_for_heap(bufmgr, heap, &buckets, &num_buckets);
+
+         for (int i = 0; i < *num_buckets; i++) {
+            if (list_is_empty(&buckets[i].head))
+               continue;
+
+            fprintf(stderr, "Bucket % 3d: % 5d BOs (%"PRIu64"B each)\n", i,
+                    (int)list_length(&buckets[i].head), buckets[i].size);
+         }
+      }
+
       bo = alloc_bo_from_cache(bufmgr, bucket, alignment, memzone, mmap_mode,
                                flags, false);
    }

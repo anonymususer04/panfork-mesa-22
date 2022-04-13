@@ -415,7 +415,15 @@ bi_make_vec_to(bi_builder *b, bi_index final_dst,
 
         bi_index dst = reads_self ? bi_temp(b->shader) : final_dst;
 
-        if (bitsize == 32) {
+        if (bitsize == 64) {
+                for (unsigned i = 0; i < count; i += 2) {
+                        bi_mov_i32_to(b, bi_word(dst, i),
+                                      bi_word(src[i], channel ? channel[i] : 0));
+                        bi_mov_i32_to(b, bi_word(dst, i + 1),
+                                      bi_word(src[i],
+                                              (channel ? channel[i] : 0) + 1));
+                }
+        } else if (bitsize == 32) {
                 for (unsigned i = 0; i < count; ++i) {
                         bi_mov_i32_to(b, bi_word(dst, i),
                                         bi_word(src[i], channel ? channel[i] : 0));
@@ -1613,18 +1621,22 @@ static void
 bi_emit_load_const(bi_builder *b, nir_load_const_instr *instr)
 {
         /* Make sure we've been lowered */
-        assert(instr->def.num_components <= (32 / instr->def.bit_size));
+        unsigned bits = instr->def.num_components * instr->def.bit_size;
+
+        assert(bits <= 64);
 
         /* Accumulate all the channels of the constant, as if we did an
          * implicit SEL over them */
-        uint32_t acc = 0;
+        uint64_t acc = 0;
 
         for (unsigned i = 0; i < instr->def.num_components; ++i) {
-                unsigned v = nir_const_value_as_uint(instr->value[i], instr->def.bit_size);
+                uint64_t v = nir_const_value_as_uint(instr->value[i], instr->def.bit_size);
                 acc |= (v << (i * instr->def.bit_size));
         }
 
         bi_mov_i32_to(b, bi_get_index(instr->def.index, false, 0), bi_imm_u32(acc));
+        if (bits > 32)
+                bi_mov_i32_to(b, bi_get_index(instr->def.index, false, 1), bi_imm_u32(acc >> 32));
 }
 
 static bi_index

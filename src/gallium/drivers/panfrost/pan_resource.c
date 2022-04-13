@@ -1345,6 +1345,28 @@ panfrost_resource_get_stencil(struct pipe_resource *prsrc)
         return &pan_resource(prsrc)->separate_stencil->base;
 }
 
+// todo: use u_transfer_helper?
+static void
+panfrost_clear_texture(struct pipe_context *pipe,
+                            struct pipe_resource *res,
+                            unsigned level,
+                            const struct pipe_box *box,
+                            const void *data)
+{
+        assert(0);
+}
+
+static void
+panfrost_clear_buffer(struct pipe_context *pipe,
+                           struct pipe_resource *res,
+                           unsigned offset,
+                           unsigned size,
+                           const void *clear_value,
+                           int clear_value_size)
+{
+        assert(0);
+}
+
 static const struct u_transfer_vtbl transfer_vtbl = {
         .resource_create          = panfrost_resource_create,
         .resource_destroy         = panfrost_resource_destroy,
@@ -1356,6 +1378,14 @@ static const struct u_transfer_vtbl transfer_vtbl = {
         .get_stencil              = panfrost_resource_get_stencil,
 };
 
+static struct pipe_resource *
+panfrost_resource_from_user_memory(struct pipe_screen *pscreen,
+                                   const struct pipe_resource *t,
+                                   void *user_memory)
+{
+        return NULL;
+}
+
 void
 panfrost_resource_screen_init(struct pipe_screen *pscreen)
 {
@@ -1366,6 +1396,7 @@ panfrost_resource_screen_init(struct pipe_screen *pscreen)
         pscreen->resource_create_with_modifiers =
                 panfrost_resource_create_with_modifiers;
         pscreen->resource_create = u_transfer_helper_resource_create;
+        pscreen->resource_from_user_memory = panfrost_resource_from_user_memory;
         pscreen->resource_destroy = u_transfer_helper_resource_destroy;
         pscreen->resource_from_handle = panfrost_resource_from_handle;
         pscreen->resource_get_handle = panfrost_resource_get_handle;
@@ -1397,4 +1428,6 @@ panfrost_resource_context_init(struct pipe_context *pctx)
         pctx->transfer_flush_region = u_transfer_helper_transfer_flush_region;
         pctx->buffer_subdata = u_default_buffer_subdata;
         pctx->texture_subdata = u_default_texture_subdata;
+        pctx->clear_buffer = panfrost_clear_buffer;
+        pctx->clear_texture = panfrost_clear_texture;
 }

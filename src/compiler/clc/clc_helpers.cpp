@@ -1158,6 +1158,8 @@ initialize_llvm_once(void)
    LLVMInitializeAllTargetMCs();
    LLVMInitializeAllAsmParsers();
    LLVMInitializeAllAsmPrinters();
+
+   glsl_type_singleton_init_or_ref();
 }
 
 std::once_flag initialize_llvm_once_flag;

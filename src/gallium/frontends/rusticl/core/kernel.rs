@@ -477,8 +477,8 @@ fn lower_and_optimize_nir_late(
 }
 
 fn extract<'a, const S: usize>(buf: &'a mut &[u8]) -> &'a [u8; S] {
-    let val;
-    (val, *buf) = (*buf).split_at(S);
+    let (val, rest) = (*buf).split_at(S);
+    *buf = rest;
     // we split of 4 bytes and convert to [u8; 4], so this should be safe
     // use split_array_ref once it's stable
     val.try_into().unwrap()

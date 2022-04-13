@@ -188,7 +188,8 @@ fn create_box(
 
     // array slice belongs to z/depth
     if tex_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
-        (z, y) = (y, z);
+        y = 2;
+        z = 1;
     }
 
     Ok(pipe_box {
@@ -523,7 +524,9 @@ impl Mem {
             let mut dst_origin: [u32; 3] = dst_origin.try_into()?;
 
             if self.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
-                (dst_origin[1], dst_origin[2]) = (dst_origin[2], dst_origin[1]);
+                let tmp = dst_origin[1];
+                dst_origin[1] = dst_origin[2];
+                dst_origin[2] = tmp;
             }
 
             ctx.resource_copy_region(src_res, dst_res, &dst_origin, &bx);

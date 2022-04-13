@@ -45,6 +45,7 @@ librusticl = shared_library(
     driver_iris,
     driver_nouveau,
     driver_swrast,
+    driver_panfrost,
   ],
   version : '@0@.0.0'.format(opencl_version),
   install : true,

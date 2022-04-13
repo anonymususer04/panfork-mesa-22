@@ -895,7 +895,7 @@ spirv_version_to_llvm_spirv_translator_version(enum clc_spirv_version version)
 
 static int
 llvm_mod_to_spirv(std::unique_ptr<::llvm::Module> mod,
-                  std::unique_ptr<LLVMContext> context,
+                  LLVMContext *context,
                   const struct clc_compile_args *args,
                   const struct clc_logger *logger,
                   struct clc_binary *out_spirv)
@@ -981,7 +981,7 @@ clc_c_to_spirv(const struct clc_compile_args *args,
    auto pair = clc_compile_to_llvm_module(args, logger);
    if (!pair.first)
       return -1;
-   return llvm_mod_to_spirv(std::move(pair.first), std::move(pair.second), args, logger, out_spirv);
+   return llvm_mod_to_spirv(std::move(pair.first), pair.second.get(), args, logger, out_spirv);
 }
 
 int
@@ -991,13 +991,13 @@ clc_spir_to_spirv(const struct clc_binary *in_spir,
 {
    clc_initialize_llvm();
 
-   std::unique_ptr<LLVMContext> llvm_ctx{ new LLVMContext };
+   LLVMContext llvm_ctx;
    ::llvm::StringRef spir_ref(static_cast<const char*>(in_spir->data), in_spir->size);
-   auto mod = ::llvm::parseBitcodeFile(::llvm::MemoryBufferRef(spir_ref, "<spir>"), *llvm_ctx);
+   auto mod = ::llvm::parseBitcodeFile(::llvm::MemoryBufferRef(spir_ref, "<spir>"), llvm_ctx);
    if (!mod)
       return -1;
 
-   return llvm_mod_to_spirv(std::move(mod.get()), std::move(llvm_ctx), NULL, logger, out_spirv);
+   return llvm_mod_to_spirv(std::move(mod.get()), &llvm_ctx, NULL, logger, out_spirv);
 }
 
 class SPIRVMessageConsumer {

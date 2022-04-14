@@ -399,9 +399,12 @@ panfrost_bo_create(struct panfrost_device *dev, size_t size,
         assert(bo);
 
         if (!bo) {
+                panfrost_dump_bo_info(dev, stderr);
                 fprintf(stderr, "BO creation failed\n");
                 return NULL;
         }
+
+        bo->requested_size = size;
 
         /* Only mmap now if we know we need to. For CPU-invisible buffers, we
          * never map since we don't care about their contents; they're purely
@@ -535,3 +538,46 @@ panfrost_bo_export(struct panfrost_bo *bo)
         return args.fd;
 }
 
+static void
+print_size(FILE *f, uint64_t value)
+{
+        if (value > 1024 * 1024 * 2)
+                fprintf(f, "%"PRIu64" MiB", DIV_ROUND_UP(value, 1024 * 1024));
+        else
+                fprintf(f, "%"PRIu64" kiB", DIV_ROUND_UP(value, 1024));
+}
+
+void
+panfrost_dump_bo_info(struct panfrost_device *dev, FILE *f)
+{
+        // TODO: Create a utility function for doing this in sparse_array.c
+        struct util_sparse_array *arr = &dev->bo_map;
+
+        const unsigned node_size_log2 = arr->node_size_log2;
+        uintptr_t root = p_atomic_read(&arr->root);
+
+        unsigned root_level = (root & 63);
+        unsigned shift = (root_level + 1) * node_size_log2;
+
+        uint64_t total_size = 0;
+
+        for (unsigned idx = 0; idx < 1 << shift; ++idx) {
+                struct panfrost_bo *bo = util_sparse_array_get(arr, idx);
+
+                if (!bo->size)
+                        continue;
+
+                total_size += bo->size;
+
+                fprintf(f, "BO %i: ", idx);
+                print_size(f, bo->requested_size);
+                if (ALIGN_POT(bo->requested_size, 4096) != bo->size) {
+                        fprintf(f, " (");
+                        print_size(f, bo->size);
+                        fprintf(f, " allocated)");
+                }
+                fprintf(f, ", %s\n", bo->label);
+        }
+
+        fprintf(f, "Total %"PRIu64" bytes\n\n", total_size);
+}

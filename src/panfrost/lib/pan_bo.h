@@ -29,6 +29,7 @@
 #include "util/list.h"
 #include "panfrost-job.h"
 #include <time.h>
+#include <stdio.h>
 
 /* Flags for allocated memory */
 
@@ -100,6 +101,7 @@ struct panfrost_bo {
 
         /* Size of all entire trees */
         size_t size;
+        size_t requested_size;
 
         int gem_handle;
 
@@ -132,5 +134,8 @@ int
 panfrost_bo_export(struct panfrost_bo *bo);
 void
 panfrost_bo_cache_evict_all(struct panfrost_device *dev);
+
+void
+panfrost_dump_bo_info(struct panfrost_device *dev, FILE *f);
 
 #endif /* __PAN_BO_H__ */

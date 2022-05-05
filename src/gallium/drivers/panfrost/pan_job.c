@@ -697,6 +697,12 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
         return 0;
 }
 
+static bool
+panfrost_has_fragment_job(struct panfrost_batch *batch)
+{
+        return batch->scoreboard.first_tiler || batch->clear;
+}
+
 /* Submit both vertex/tiler and fragment jobs for a batch, possibly with an
  * outsync corresponding to the later of the two (since there will be an
  * implicit dep between them) */
@@ -711,7 +717,7 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
         struct panfrost_device *dev = pan_device(pscreen);
         bool has_draws = batch->scoreboard.first_job;
         bool has_tiler = batch->scoreboard.first_tiler;
-        bool has_frag = has_tiler || batch->clear;
+        bool has_frag = panfrost_has_fragment_job(batch);
         int ret = 0;
 
         mali_ptr fragjob = has_frag ?
@@ -826,6 +832,21 @@ panfrost_batch_submit(struct panfrost_context *ctx,
         /* Nothing to do! */
         if (!batch->scoreboard.first_job && !batch->clear)
                 goto out;
+
+        if (batch->key.zsbuf && panfrost_has_fragment_job(batch)) {
+                struct pipe_surface *surf = batch->key.zsbuf;
+                struct panfrost_resource *z_rsrc = pan_resource(surf->texture);
+
+                if (z_rsrc->constant_stencil) {
+                        batch->clear_stencil = z_rsrc->stencil_value;
+                        batch->clear |= PIPE_CLEAR_STENCIL;
+                } else if (batch->clear & PIPE_CLEAR_STENCIL) {
+                        z_rsrc->constant_stencil = true;
+                }
+
+                if (batch->draws & PIPE_CLEAR_STENCIL)
+                        z_rsrc->constant_stencil = false;
+        }
 
         struct pan_fb_info fb;
         struct pan_image_view rts[8], zs, s;

@@ -694,6 +694,8 @@ panfrost_resource_create_with_modifier(struct pipe_screen *screen,
 
         util_range_init(&so->valid_buffer_range);
 
+        so->constant_stencil = true;
+
         panfrost_resource_setup(dev, so, modifier, template->format);
 
         /* Guess a label based on the bind */
@@ -973,6 +975,9 @@ panfrost_ptr_map(struct pipe_context *pctx,
 
         pipe_resource_reference(&transfer->base.resource, resource);
         *out_transfer = &transfer->base;
+
+        if (usage & PIPE_MAP_WRITE)
+                rsrc->constant_stencil = false;
 
         /* We don't have s/w routines for AFBC, so use a staging texture */
         if (drm_is_afbc(rsrc->image.layout.modifier)) {
@@ -1610,6 +1615,9 @@ panfrost_invalidate_resource(struct pipe_context *pctx, struct pipe_resource *pr
 {
         struct panfrost_context *ctx = pan_context(pctx);
         struct panfrost_batch *batch = panfrost_get_batch_for_fbo(ctx);
+        struct panfrost_resource *rsrc = pan_resource(prsrc);
+
+        rsrc->constant_stencil = true;
 
         /* Handle the glInvalidateFramebuffer case */
         if (batch->key.zsbuf && batch->key.zsbuf->texture == prsrc)

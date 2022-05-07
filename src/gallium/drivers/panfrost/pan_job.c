@@ -815,6 +815,18 @@ panfrost_batch_submit_jobs(struct panfrost_batch *batch,
                 panfrost_core_add_cmdlist(core, &cmd);
                 panfrost_core_finish(core);
                 close(dump);
+
+                int num = atoi(getenv("BO_DUMP"));
+                if (num) {
+                        --num;
+                        char buf[20];
+                        if (num > 0) {
+                                snprintf(buf, 20, "%i", num);
+                                setenv("BO_DUMP", buf, 1);
+                        } else {
+                                unsetenv("BO_DUMP");
+                        }
+                }
         }
 
         /* Take the submit lock to make sure no tiler jobs from other context

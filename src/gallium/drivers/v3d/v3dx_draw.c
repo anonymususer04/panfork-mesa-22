@@ -1706,7 +1706,32 @@ v3d_clear_render_target(struct pipe_context *pctx, struct pipe_surface *ps,
                         unsigned x, unsigned y, unsigned w, unsigned h,
                         bool render_condition_enabled)
 {
-        fprintf(stderr, "unimpl: clear RT\n");
+        struct v3d_context *v3d = v3d_context(pctx);
+
+        v3d_flush(pctx);
+
+        /* TODO: dstx, etc. */
+
+        struct pipe_framebuffer_state tmp = {0};
+        util_copy_framebuffer_state(&tmp, &v3d->framebuffer);
+
+        struct pipe_framebuffer_state fb = {
+                .width = ps->width,
+                .height = ps->height,
+                .layers = 1,
+                .samples = 1,
+                .nr_cbufs = 1,
+                .cbufs[0] = ps,
+        };
+        pctx->set_framebuffer_state(pctx, &fb);
+
+        v3d_clear(pctx, PIPE_CLEAR_COLOR0,
+                  NULL, color, 0, 0);
+
+        v3d_flush(pctx);
+
+        pctx->set_framebuffer_state(pctx, &tmp);
+        util_unreference_framebuffer_state(&tmp);
 }
 
 static void

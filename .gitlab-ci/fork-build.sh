@@ -91,13 +91,13 @@ meson -Dplatforms=x11,wayland -Ddri-drivers= -Dgallium-drivers=v3d,vc4,swrast -D
 
 DESTDIR=_inst ninja install
 
-mkdir panfork
-mv _inst/usr/local/* panfork
-mv panfork/lib/*/* panfork
-rmdir panfork/lib/* panfork/lib
+mkdir panfork-v3d
+mv _inst/usr/local/* panfork-v3d
+mv panfork-v3d/lib/*/* panfork-v3d
+rmdir panfork-v3d/lib/* panfork-v3d/lib
 
-touch panfork/"$(git log -1 | sed -n '1s/commit \([^ ]\)\( .*\)\?/\1/p')"
+touch panfork-v3d/"$(git log -1 | sed -n '1s/commit \([^ ]\)\( .*\)\?/\1/p')"
 
-tar cvJf ../panfork.tar.xz panfork
-sha256sum ../panfork.tar.xz
+tar cvJf ../panfork-v3d.tar.xz panfork-v3d
+sha256sum ../panfork-v3d.tar.xz
 ccache -s

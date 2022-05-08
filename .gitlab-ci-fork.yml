@@ -12,7 +12,7 @@ build:
     - .gitlab-ci/fork-build.sh
   artifacts:
     paths:
-      - panfork.tar.xz
+      - panfork-v3d.tar.xz
     expire_in: never
   parallel:
     matrix:

@@ -152,8 +152,7 @@ panfrost_batch_cleanup(struct panfrost_context *ctx, struct panfrost_batch *batc
 
 static void
 panfrost_batch_submit(struct panfrost_context *ctx,
-                      struct panfrost_batch *batch,
-                      uint32_t in_sync, uint32_t out_sync);
+                      struct panfrost_batch *batch);
 
 /* TODO: Move to pan_resource.c? */
 static void
@@ -210,7 +209,7 @@ panfrost_get_batch(struct panfrost_context *ctx,
 
         /* The selected slot is used, we need to flush the batch */
         if (batch->seqnum)
-                panfrost_batch_submit(ctx, batch, 0, 0);
+                panfrost_batch_submit(ctx, batch);
 
         panfrost_batch_init(ctx, key, batch);
 
@@ -258,7 +257,7 @@ panfrost_get_fresh_batch_for_fbo(struct panfrost_context *ctx, const char *reaso
 
         if (batch->scoreboard.first_job) {
                 perf_debug_ctx(ctx, "Flushing the current FBO due to: %s", reason);
-                panfrost_batch_submit(ctx, batch, 0, 0);
+                panfrost_batch_submit(ctx, batch);
                 batch = panfrost_get_batch(ctx, &ctx->pipe_framebuffer);
         }
 
@@ -298,7 +297,7 @@ panfrost_batch_update_access(struct panfrost_batch *batch,
 
                         /* Submit if it's a user */
                         if (_mesa_set_search(batch->resources, rsrc))
-                                panfrost_batch_submit(ctx, batch, 0, 0);
+                                panfrost_batch_submit(ctx, batch);
                 }
         }
 
@@ -898,8 +897,7 @@ panfrost_emit_tile_map(struct panfrost_batch *batch, struct pan_fb_info *fb)
 
 static void
 panfrost_batch_submit(struct panfrost_context *ctx,
-                      struct panfrost_batch *batch,
-                      uint32_t in_sync, uint32_t out_sync)
+                      struct panfrost_batch *batch)
 {
         struct pipe_screen *pscreen = ctx->base.screen;
         struct panfrost_screen *screen = pan_screen(pscreen);
@@ -941,7 +939,7 @@ panfrost_batch_submit(struct panfrost_context *ctx,
         if (batch->scoreboard.first_tiler || batch->clear)
                 screen->vtbl.emit_fbd(batch, &fb);
 
-        ret = panfrost_batch_submit_jobs(batch, &fb, in_sync, out_sync);
+        ret = panfrost_batch_submit_jobs(batch, &fb, 0, ctx->syncobj);
 
         if (ret)
                 fprintf(stderr, "panfrost_batch_submit failed: %d\n", ret);
@@ -968,21 +966,20 @@ out:
         panfrost_batch_cleanup(ctx, batch);
 }
 
-/* Submit all batches, applying the out_sync to the currently bound batch */
+/* Submit all batches */
 
 void
 panfrost_flush_all_batches(struct panfrost_context *ctx, const char *reason)
 {
         struct panfrost_batch *batch = panfrost_get_batch_for_fbo(ctx);
-        panfrost_batch_submit(ctx, batch, ctx->syncobj, ctx->syncobj);
+        panfrost_batch_submit(ctx, batch);
 
         for (unsigned i = 0; i < PAN_MAX_BATCHES; i++) {
                 if (ctx->batches.slots[i].seqnum) {
                         if (reason)
                                 perf_debug_ctx(ctx, "Flushing everything due to: %s", reason);
 
-                        panfrost_batch_submit(ctx, &ctx->batches.slots[i],
-                                              ctx->syncobj, ctx->syncobj);
+                        panfrost_batch_submit(ctx, &ctx->batches.slots[i]);
                 }
         }
 }
@@ -996,7 +993,7 @@ panfrost_flush_writer(struct panfrost_context *ctx,
 
         if (entry) {
                 perf_debug_ctx(ctx, "Flushing writer due to: %s", reason);
-                panfrost_batch_submit(ctx, entry->data, ctx->syncobj, ctx->syncobj);
+                panfrost_batch_submit(ctx, entry->data);
         }
 }
 
@@ -1013,7 +1010,7 @@ panfrost_flush_batches_accessing_rsrc(struct panfrost_context *ctx,
                         continue;
 
                 perf_debug_ctx(ctx, "Flushing user due to: %s", reason);
-                panfrost_batch_submit(ctx, batch, ctx->syncobj, ctx->syncobj);
+                panfrost_batch_submit(ctx, batch);
         }
 }
 

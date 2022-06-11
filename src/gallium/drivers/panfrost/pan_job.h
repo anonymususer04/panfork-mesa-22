@@ -204,6 +204,8 @@ struct panfrost_batch {
 
         /* Referenced resources */
         struct set *resources;
+
+        struct pan_command_stream s;
 };
 
 /* Functions for managing the above */

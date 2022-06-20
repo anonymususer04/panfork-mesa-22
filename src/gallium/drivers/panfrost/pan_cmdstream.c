@@ -3634,7 +3634,7 @@ panfrost_launch_xfb(struct panfrost_batch *batch,
                  */
                 cfg.allow_merging_workgroups = true;
 #if PAN_ARCH < 10
-                cfg.task_increment = 1; // TODO v10
+                cfg.task_increment = 1;
                 cfg.task_axis = MALI_TASK_AXIS_Z;
 #endif
         }
@@ -3652,9 +3652,17 @@ panfrost_launch_xfb(struct panfrost_batch *batch,
         panfrost_draw_emit_vertex(batch, info, &invocation, 0, 0,
                                   attribs, attrib_bufs, t.cpu);
 #endif
+#if PAN_ARCH >= 10
+        // TODO NULL
+        pan_pack(NULL, COMPUTE_LAUNCH, cfg) {
+                cfg.task_increment = 1;
+                cfg.task_axis = MALI_TASK_AXIS_Z;
+        }
+#else
         panfrost_add_job(&batch->pool.base, &batch->scoreboard,
                         MALI_JOB_TYPE_COMPUTE, true, false,
                         0, 0, &t, false);
+#endif
 
         ctx->shader[PIPE_SHADER_VERTEX] = saved_vs;
         batch->rsd[PIPE_SHADER_VERTEX] = saved_rsd;
@@ -4238,14 +4246,15 @@ panfrost_launch_grid(struct pipe_context *pipe,
 #endif
 
                 cfg.allow_merging_workgroups = cs->info.cs.allow_merging_workgroups;
+
 #if PAN_ARCH < 10
-                cfg.task_increment = 1; // TODO v10
+                cfg.task_increment = 1;
                 cfg.task_axis = MALI_TASK_AXIS_Z;
 #endif
         }
 #endif
 
-        unsigned indirect_dep = 0;
+        UNUSED unsigned indirect_dep = 0; // TODO v10 (unused)
 #if PAN_GPU_INDIRECTS
         if (info->indirect) {
                 struct pan_indirect_dispatch_info indirect = {
@@ -4265,9 +4274,17 @@ panfrost_launch_grid(struct pipe_context *pipe,
         }
 #endif
 
+#if PAN_ARCH >= 10
+        // TODO NULL
+        pan_pack(NULL, COMPUTE_LAUNCH, cfg) {
+                cfg.task_increment = 1;
+                cfg.task_axis = MALI_TASK_AXIS_Z;
+        }
+#else
         panfrost_add_job(&batch->pool.base, &batch->scoreboard,
                          MALI_JOB_TYPE_COMPUTE, true, false,
                          indirect_dep, 0, &t, false);
+#endif
         panfrost_flush_all_batches(ctx, "Launch grid post-barrier");
 }
 

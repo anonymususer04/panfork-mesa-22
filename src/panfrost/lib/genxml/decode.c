@@ -297,6 +297,8 @@ pandecode_mfbd_bfr(uint64_t gpu_va, int job_no, bool is_fragment, unsigned gpu_i
 #if PAN_ARCH >= 6
         pandecode_sample_locations(fb, job_no);
 
+        /* TODO v10: How do DCDs work with CSF? */
+#if PAN_ARCH < 10
         pan_section_unpack(fb, FRAMEBUFFER, PARAMETERS, bparams);
         unsigned dcd_size = pan_size(DRAW);
         struct pandecode_mapped_memory *dcdmem =
@@ -322,6 +324,7 @@ pandecode_mfbd_bfr(uint64_t gpu_va, int job_no, bool is_fragment, unsigned gpu_i
                 pandecode_log("Post frame:\n");
                 pandecode_dcd(&draw, job_no, MALI_JOB_TYPE_FRAGMENT, "", gpu_id);
         }
+#endif
 #endif /* PAN_ARCH >= 6 */
  
         pandecode_log("Multi-Target Framebuffer:\n");
@@ -1270,7 +1273,10 @@ pandecode_dcd(const struct MALI_DRAW *p,
                 }
         }
 
+        // TODO v10
+#if PAN_ARCH < 10
         pandecode_shader_environment(&p->shader, gpu_id);
+#endif
         DUMP_UNPACKED(DRAW, *p, "Draw:\n");
 }
 

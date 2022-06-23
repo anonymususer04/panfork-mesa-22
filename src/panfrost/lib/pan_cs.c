@@ -1001,6 +1001,6 @@ GENX(pan_emit_fragment_job)(const struct pan_fb_info *fb,
 
         /* TODO: Do this here? */
 #if PAN_ARCH >= 10
-        pan_pack(out, FRAGMENT_LAUNCH, launch);
+        pan_pack_ins(out, FRAGMENT_LAUNCH, launch);
 #endif
 }

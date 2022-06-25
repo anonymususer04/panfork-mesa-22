@@ -301,3 +301,14 @@ pandecode_jc(mali_ptr jc_gpu_va, unsigned gpu_id)
         default: unreachable("Unsupported architecture");
         }
 }
+
+void pandecode_cs_v10(mali_ptr cs_gpu_va, unsigned cs_size, unsigned gpu_id);
+
+void
+pandecode_cs(mali_ptr cs_gpu_va, unsigned cs_size, unsigned gpu_id)
+{
+        switch (pan_arch(gpu_id)) {
+        case 10: pandecode_cs_v10(cs_gpu_va, cs_size, gpu_id); return;
+        default: unreachable("Unsupported architecture");
+        }
+}

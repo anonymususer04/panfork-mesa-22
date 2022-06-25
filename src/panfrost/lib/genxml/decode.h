@@ -89,6 +89,7 @@ __pandecode_fetch_gpu_mem(const struct pandecode_mapped_memory *mem,
 
 #ifdef PAN_ARCH
 void GENX(pandecode_jc)(mali_ptr jc_gpu_va, unsigned gpu_id);
+void GENX(pandecode_cs)(mali_ptr jc_gpu_va, unsigned size, unsigned gpu_id);
 void GENX(pandecode_abort_on_fault)(mali_ptr jc_gpu_va);
 #endif
 

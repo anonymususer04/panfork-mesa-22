@@ -303,34 +303,31 @@ pandecode_mfbd_bfr(uint64_t gpu_va, int job_no, bool is_fragment, unsigned gpu_i
 #if PAN_ARCH >= 6
         pandecode_sample_locations(fb, job_no);
 
-        /* TODO v10: How do DCDs work with CSF? */
-#if PAN_ARCH < 10
         pan_section_unpack(fb, FRAMEBUFFER, PARAMETERS, bparams);
-        unsigned dcd_size = pan_size(DRAW);
+        unsigned dcd_size = pan_size(DRAW_NO_CS);
 
         if (bparams.pre_frame_0 != MALI_PRE_POST_FRAME_SHADER_MODE_NEVER) {
                 const void *PANDECODE_PTR_VAR(dcd, NULL, bparams.frame_shader_dcds + (0 * dcd_size));
-                pan_unpack(dcd, DRAW, draw);
+                pan_unpack(dcd, DRAW_NO_CS, draw);
                 pandecode_log("Pre frame 0:\n");
                 pandecode_dcd(&draw, job_no, MALI_JOB_TYPE_FRAGMENT, "", gpu_id);
         }
 
         if (bparams.pre_frame_1 != MALI_PRE_POST_FRAME_SHADER_MODE_NEVER) {
                 const void *PANDECODE_PTR_VAR(dcd, NULL, bparams.frame_shader_dcds + (1 * dcd_size));
-                pan_unpack(dcd, DRAW, draw);
+                pan_unpack(dcd, DRAW_NO_CS, draw);
                 pandecode_log("Pre frame 1:\n");
                 pandecode_dcd(&draw, job_no, MALI_JOB_TYPE_FRAGMENT, "", gpu_id);
         }
 
         if (bparams.post_frame != MALI_PRE_POST_FRAME_SHADER_MODE_NEVER) {
                 const void *PANDECODE_PTR_VAR(dcd, NULL, bparams.frame_shader_dcds + (2 * dcd_size));
-                pan_unpack(dcd, DRAW, draw);
+                pan_unpack(dcd, DRAW_NO_CS, draw);
                 pandecode_log("Post frame:\n");
                 pandecode_dcd(&draw, job_no, MALI_JOB_TYPE_FRAGMENT, "", gpu_id);
         }
-#endif
 #endif /* PAN_ARCH >= 6 */
- 
+
         pandecode_log("Multi-Target Framebuffer:\n");
         pandecode_indent++;
 

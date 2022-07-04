@@ -180,6 +180,7 @@ struct panfrost_device {
         void *memctx;
 
         int fd;
+        bool kbase;
 
         /* Properties of the GPU in use */
         unsigned arch;
@@ -251,7 +252,7 @@ struct panfrost_device {
 
         struct panfrost_bo *sample_positions;
 
-        struct kbase kbase;
+        struct kbase mali;
 };
 
 void

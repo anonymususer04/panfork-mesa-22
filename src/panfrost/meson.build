@@ -32,6 +32,8 @@ subdir('util')
 subdir('midgard')
 subdir('bifrost')
 
+subdir('base')
+
 if with_gallium_panfrost or with_panfrost_vk
    subdir('lib')
    subdir('perf')

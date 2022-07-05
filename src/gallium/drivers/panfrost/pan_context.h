@@ -228,6 +228,8 @@ struct panfrost_context {
 
         /* Mask of active render targets */
         uint8_t fb_rt_mask;
+
+        struct kbase_context *kbase_ctx;
 };
 
 /* Corresponds to the CSO */

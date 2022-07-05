@@ -821,6 +821,13 @@ panfrost_destroy(struct pipe_context *pipe)
         struct panfrost_context *panfrost = pan_context(pipe);
         struct panfrost_device *dev = pan_device(panfrost->base.screen);
 
+        if (dev->kbase) {
+                dev->mali.syncobj_destroy(&dev->mali, panfrost->syncobj_kbase);
+        } else {
+                // TODO: upstream this
+                drmSyncobjDestroy(dev->fd, panfrost->syncobj);
+        }
+
         if (dev->kbase && dev->mali.context_create)
                 dev->mali.context_destroy(&dev->mali, panfrost->kbase_ctx);
 
@@ -1168,8 +1175,12 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         /* Create a syncobj in a signaled state. Will be updated to point to the
          * last queued job out_sync every time we submit a new job.
          */
-        ret = drmSyncobjCreate(dev->fd, DRM_SYNCOBJ_CREATE_SIGNALED, &ctx->syncobj);
-        assert(!ret && ctx->syncobj);
+        if (dev->kbase) {
+                ctx->syncobj_kbase = dev->mali.syncobj_create(&dev->mali);
+        } else {
+                ret = drmSyncobjCreate(dev->fd, DRM_SYNCOBJ_CREATE_SIGNALED, &ctx->syncobj);
+                assert(!ret && ctx->syncobj);
+        }
 
         return gallium;
 }

@@ -1196,6 +1196,8 @@ static void
 pandecode_resources(mali_ptr addr, unsigned size)
 {
         struct pandecode_mapped_memory *mem = pandecode_find_mapped_gpu_mem_containing(addr);
+        if (!mem)
+                return;
         const uint8_t *cl = pandecode_fetch_gpu_mem(mem, addr, size);
         assert((size % 0x20) == 0);
 

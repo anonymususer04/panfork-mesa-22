@@ -250,6 +250,17 @@ with_cs_pack = """
         struct PREFIX1(T) name; \\
         PREFIX2(T, unpack)(buf, buf_unk, &name)
 
+#define pan_section_pack_cs(dst, A, S, name) \\
+   for (PREFIX4(A, SECTION, S, TYPE) name = { PREFIX4(A, SECTION, S, header) }, \\
+        *_loop_terminate = (void *) (dst); \\
+        __builtin_expect(_loop_terminate != NULL, 1); \\
+        ({ PREFIX4(A, SECTION, S, pack_cs) (dst, &name); \\
+           _loop_terminate = NULL; }))
+
+#define pan_section_unpack_cs(buf, buf_unk, A, S, name) \\
+        PREFIX4(A, SECTION, S, TYPE) name; \\
+        PREFIX4(A, SECTION, S, unpack)(buf, buf_unk, &name)
+
 static inline void
 pan_emit_cs_ins(pan_command_stream *s, uint8_t op, uint64_t instr)
 {
@@ -275,11 +286,17 @@ pan_emit_cs_48(pan_command_stream *s, uint8_t index, uint64_t value)
 before_v10_pack = """
 #define pan_pack_cs_v10(dst, _, T, name) pan_pack(dst, T, name)
 #define pan_unpack_cs_v10(dst, _, __, T, name) pan_unpack(dst, T, name)
+
+#define pan_section_pack_cs_v10(dst, _, A, S, name) pan_section_pack(dst, A, S, name)
+#define pan_section_unpack_cs_v10(src, _, __, A, S, name) pan_section_unpack(src, A, S, name)
 """
 
 since_v10_pack = """
 #define pan_pack_cs_v10(_, dst, T, name) pan_pack_cs(dst, T, name)
 #define pan_unpack_cs_v10(_, buf, buf_unk, T, name) pan_unpack_cs(buf, buf_unk, T, name)
+
+#define pan_section_pack_cs_v10(_, dst, A, S, name) pan_section_pack_cs(dst, A, S, name)
+#define pan_section_unpack_cs_v10(_, buf, buf_unk, A, S, name) pan_section_unpack_cs(buf, buf_unk, A, S, name)
 """
 
 def to_alphanum(name):
@@ -364,6 +381,7 @@ class Aggregate(object):
         self.explicit_size = int(attrs["size"]) if "size" in attrs else 0
         self.size = 0
         self.align = int(attrs["align"]) if "align" in attrs else None
+        self.layout = attrs.get("layout", "struct")
 
     class Section:
         def __init__(self, name):
@@ -388,8 +406,11 @@ class Aggregate(object):
         assert("name" in attrs)
         section = self.Section(safe_name(attrs["name"]).lower())
         section.human_name = attrs["name"]
-        section.offset = int(attrs["offset"])
-        assert(section.offset % 4 == 0)
+        if self.layout == "struct":
+            section.offset = int(attrs["offset"])
+            assert(section.offset % 4 == 0)
+        else:
+            assert("offset" not in attrs)
         section.type = self.parser.structs[attrs["type"]]
         section.type_name = type_name
         self.sections.append(section)
@@ -937,19 +958,27 @@ class Parser(object):
 
     def emit_aggregate(self):
         aggregate = self.aggregate
-        print("struct %s_packed {" % aggregate.name.lower())
-        print("   uint32_t opaque[{}];".format(aggregate.get_size() // 4))
-        print("};\n")
-        print('#define {}_LENGTH {}'.format(aggregate.name.upper(), aggregate.size))
+
+        if aggregate.layout == "struct":
+            print("struct %s_packed {" % aggregate.name.lower())
+            print("   uint32_t opaque[{}];".format(aggregate.get_size() // 4))
+            print("};\n")
+            print('#define {}_LENGTH {}'.format(aggregate.name.upper(), aggregate.size))
+        else:
+            assert(aggregate.layout == "cs")
+
         if aggregate.align != None:
             print('#define {}_ALIGN {}'.format(aggregate.name.upper(), aggregate.align))
         for section in aggregate.sections:
             print('#define {}_SECTION_{}_TYPE struct {}'.format(aggregate.name.upper(), section.name.upper(), section.type_name))
             print('#define {}_SECTION_{}_header {}_header'.format(aggregate.name.upper(), section.name.upper(), section.type_name))
-            print('#define {}_SECTION_{}_pack {}_pack'.format(aggregate.name.upper(), section.name.upper(), section.type_name))
             print('#define {}_SECTION_{}_unpack {}_unpack'.format(aggregate.name.upper(), section.name.upper(), section.type_name))
             print('#define {}_SECTION_{}_print {}_print'.format(aggregate.name.upper(), section.name.upper(), section.type_name))
-            print('#define {}_SECTION_{}_OFFSET {}'.format(aggregate.name.upper(), section.name.upper(), section.offset))
+            if aggregate.layout == "struct":
+                print('#define {}_SECTION_{}_pack {}_pack'.format(aggregate.name.upper(), section.name.upper(), section.type_name))
+                print('#define {}_SECTION_{}_OFFSET {}'.format(aggregate.name.upper(), section.name.upper(), section.offset))
+            else:
+                print('#define {}_SECTION_{}_pack_cs {}_pack_cs'.format(aggregate.name.upper(), section.name.upper(), section.type_name))
         print("")
 
     def emit_pack_function(self, name, group):

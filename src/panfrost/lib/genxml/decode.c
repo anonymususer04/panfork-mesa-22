@@ -53,6 +53,12 @@
         pan_section_print(pandecode_dump_stream, A, S, temp, (pandecode_indent + 1) * 2); \
 }
 
+#define DUMP_SECTION_CS_V10(A, S, cl, buf, buf_unk, ...) { \
+        pan_section_unpack_cs_v10(cl, buf, buf_unk, A, S, temp); \
+        pandecode_log(__VA_ARGS__); \
+        pan_section_print(pandecode_dump_stream, A, S, temp, (pandecode_indent + 1) * 2); \
+}
+
 #define MAP_ADDR(T, addr, cl) \
         const uint8_t *cl = 0; \
         { \
@@ -490,6 +496,7 @@ pandecode_invocation(const void *i)
 }
 #endif /* PAN_ARCH <= 7 */
 
+#if PAN_ARCH < 10
 static void
 pandecode_primitive(const void *p)
 {
@@ -527,6 +534,7 @@ pandecode_primitive_size(const void *s, bool constant)
 
         DUMP_UNPACKED(PRIMITIVE_SIZE, ps, "Primitive Size:\n")
 }
+#endif /* PAN_ARCH < 10 */
 
 #if PAN_ARCH <= 7
 static void
@@ -992,6 +1000,10 @@ pandecode_bifrost_tiler(mali_ptr gpu_va)
         DUMP_UNPACKED(TILER_CONTEXT, t, "Bifrost Tiler:\n");
 }
 
+#endif /* PAN_ARCH >= 6 */
+
+#if PAN_ARCH < 10
+#if PAN_ARCH >= 6
 #if PAN_ARCH <= 7
 static void
 pandecode_indexed_vertex_job(const struct MALI_JOB_HEADER *h,
@@ -1069,14 +1081,18 @@ pandecode_tiler_job(const struct MALI_JOB_HEADER *h,
         pandecode_indent--;
         pandecode_log("\n");
 }
+#endif /* PAN_ARCH < 10 */
 
 static void
 pandecode_fragment_job(const struct pandecode_mapped_memory *mem,
-                       mali_ptr job, unsigned gpu_id)
+                       mali_ptr job, uint32_t *cs_buf, uint32_t *cs_buf_unk,
+                       unsigned gpu_id)
 {
+#if PAN_ARCH < 10
         struct mali_fragment_job_packed *PANDECODE_PTR_VAR(p, mem, job);
-        pan_section_unpack(p, FRAGMENT_JOB, PAYLOAD, s);
+#endif
 
+        pan_section_unpack_cs_v10(p, cs_buf, cs_buf_unk, FRAGMENT_JOB, PAYLOAD, s);
 
 #if PAN_ARCH == 4
         pandecode_sfbd(s.framebuffer, true, gpu_id);
@@ -1118,6 +1134,7 @@ pandecode_fragment_job(const struct pandecode_mapped_memory *mem,
         pandecode_log("\n");
 }
 
+#if PAN_ARCH < 10
 static void
 pandecode_write_value_job(const struct pandecode_mapped_memory *mem,
                           mali_ptr job)
@@ -1137,6 +1154,7 @@ pandecode_cache_flush_job(const struct pandecode_mapped_memory *mem,
         DUMP_SECTION(CACHE_FLUSH_JOB, PAYLOAD, p, "Cache Flush Payload:\n");
         pandecode_log("\n");
 }
+#endif /* PAN_ARCH < 10 */
 
 #if PAN_ARCH >= 9
 static void
@@ -1272,21 +1290,28 @@ pandecode_dcd(const struct MALI_DRAW *p,
 
 static void
 pandecode_malloc_vertex_job(const struct pandecode_mapped_memory *mem,
-                          mali_ptr job, unsigned gpu_id)
+                            mali_ptr job, uint32_t *cs_buf, uint32_t *cs_buf_unk,
+                            unsigned gpu_id)
 {
+#if PAN_ARCH < 10
         struct mali_malloc_vertex_job_packed *PANDECODE_PTR_VAR(p, mem, job);
+#endif
 
-        DUMP_SECTION(MALLOC_VERTEX_JOB, PRIMITIVE, p, "Primitive:\n");
-        DUMP_SECTION(MALLOC_VERTEX_JOB, INSTANCE_COUNT, p, "Instance count:\n");
+        DUMP_SECTION_CS_V10(MALLOC_VERTEX_JOB, PRIMITIVE, p, cs_buf, cs_buf_unk, "Primitive:\n");
+        DUMP_SECTION_CS_V10(MALLOC_VERTEX_JOB, INSTANCE_COUNT, p, cs_buf, cs_buf_unk, "Instance count:\n");
+#if PAN_ARCH < 10
         DUMP_SECTION(MALLOC_VERTEX_JOB, ALLOCATION, p, "Allocation:\n");
-        DUMP_SECTION(MALLOC_VERTEX_JOB, TILER, p, "Tiler:\n");
-        DUMP_SECTION(MALLOC_VERTEX_JOB, SCISSOR, p, "Scissor:\n");
-        DUMP_SECTION(MALLOC_VERTEX_JOB, PRIMITIVE_SIZE, p, "Primitive Size:\n");
-        DUMP_SECTION(MALLOC_VERTEX_JOB, INDICES, p, "Indices:\n");
+#endif
+        DUMP_SECTION_CS_V10(MALLOC_VERTEX_JOB, TILER, p, cs_buf, cs_buf_unk, "Tiler:\n");
+        DUMP_SECTION_CS_V10(MALLOC_VERTEX_JOB, SCISSOR, p, cs_buf, cs_buf_unk, "Scissor:\n");
+        DUMP_SECTION_CS_V10(MALLOC_VERTEX_JOB, PRIMITIVE_SIZE, p, cs_buf, cs_buf_unk, "Primitive Size:\n");
+#if PAN_ARCH < 10
+        DUMP_SECTION_CS_V10(MALLOC_VERTEX_JOB, INDICES, p, cs_buf, cs_buf_unk, "Indices:\n"); // todo v10
+#endif
 
-        pan_section_unpack(p, MALLOC_VERTEX_JOB, DRAW, dcd);
+        pan_section_unpack_cs_v10(p, cs_buf, cs_buf_unk, MALLOC_VERTEX_JOB, DRAW, dcd);
 
-        pan_section_unpack(p, MALLOC_VERTEX_JOB, TILER, tiler_ptr);
+        pan_section_unpack_cs_v10(p, cs_buf, cs_buf_unk, MALLOC_VERTEX_JOB, TILER, tiler_ptr);
         pandecode_log("Tiler Job Payload:\n");
         pandecode_indent++;
         if (tiler_ptr.address)
@@ -1297,17 +1322,21 @@ pandecode_malloc_vertex_job(const struct pandecode_mapped_memory *mem,
 
         pandecode_dcd(&dcd, 0, NULL, gpu_id);
 
-        pan_section_unpack(p, MALLOC_VERTEX_JOB, POSITION, position);
-        pan_section_unpack(p, MALLOC_VERTEX_JOB, VARYING, varying);
+        pan_section_unpack_cs_v10(p, cs_buf, cs_buf_unk, MALLOC_VERTEX_JOB, POSITION, position);
+        pan_section_unpack_cs_v10(p, cs_buf, cs_buf_unk, MALLOC_VERTEX_JOB, VARYING, varying);
         pandecode_shader_environment(&position, gpu_id);
         pandecode_shader_environment(&varying, gpu_id);
 }
 
 static void
-pandecode_compute_job(const struct pandecode_mapped_memory *mem, mali_ptr job, unsigned gpu_id)
+pandecode_compute_job(const struct pandecode_mapped_memory *mem,
+                      mali_ptr job, uint32_t *cs_buf, uint32_t *cs_buf_unk,
+                      unsigned gpu_id)
 {
+#if PAN_ARCH < 10
 	struct mali_compute_job_packed *PANDECODE_PTR_VAR(p, mem, job);
-	pan_section_unpack(p, COMPUTE_JOB, PAYLOAD, payload);
+#endif
+	pan_section_unpack_cs_v10(p, cs_buf, cs_buf_unk, COMPUTE_JOB, PAYLOAD, payload);
 
 	pandecode_shader(payload.compute.shader, "Shader", gpu_id);
 	if (payload.compute.thread_storage)
@@ -1321,6 +1350,7 @@ pandecode_compute_job(const struct pandecode_mapped_memory *mem, mali_ptr job, u
 }
 #endif /* PAN_ARCH >= 9 */
 
+#if PAN_ARCH < 10
 /* Entrypoint to start tracing. jc_gpu_va is the GPU address for the first job
  * in the chain; later jobs are found by walking the chain. Bifrost is, well,
  * if it's bifrost or not. GPU ID is the more finegrained ID (at some point, we
@@ -1371,16 +1401,16 @@ GENX(pandecode_jc)(mali_ptr jc_gpu_va, unsigned gpu_id)
 #endif
 #else /* PAN_ARCH > 7 */
 		case MALI_JOB_TYPE_COMPUTE:
-			pandecode_compute_job(mem, jc_gpu_va, gpu_id);
+			pandecode_compute_job(mem, jc_gpu_va, NULL, NULL, gpu_id);
 			break;
 
 		case MALI_JOB_TYPE_MALLOC_VERTEX:
-			pandecode_malloc_vertex_job(mem, jc_gpu_va, gpu_id);
+			pandecode_malloc_vertex_job(mem, jc_gpu_va, NULL, NULL, gpu_id);
 			break;
 #endif
 
                 case MALI_JOB_TYPE_FRAGMENT:
-                        pandecode_fragment_job(mem, jc_gpu_va, gpu_id);
+                        pandecode_fragment_job(mem, jc_gpu_va, NULL, NULL, gpu_id);
                         break;
 
                 default:
@@ -1415,3 +1445,4 @@ GENX(pandecode_abort_on_fault)(mali_ptr jc_gpu_va)
 
         pandecode_map_read_write();
 }
+#endif /* PAN_ARCH < 10 */

@@ -704,7 +704,6 @@ class Parser(object):
                     print(v7_format_printer)
         elif name == "struct":
             name = attrs["name"]
-            self.no_direct_packing = attrs.get("no-direct-packing", False)
             object_name = self.gen_prefix(safe_name(name.upper()))
             self.struct = object_name
 
@@ -712,6 +711,8 @@ class Parser(object):
             if "size" in attrs:
                 self.group.length = int(attrs["size"]) * 4
             self.group.align = int(attrs["align"]) if "align" in attrs else None
+            self.group.no_direct_packing = attrs.get("no-direct-packing", False)
+
             self.structs[attrs["name"]] = self.group
         elif name == "field":
             self.group.fields.append(Field(self, attrs))
@@ -829,9 +830,13 @@ class Parser(object):
 
         self.emit_template_struct(self.struct, self.group)
         self.emit_header(name)
-        if self.no_direct_packing == False:
+
+        if self.group.no_direct_packing:
+            pass
+        else:
             self.emit_pack_function(self.struct, self.group)
             self.emit_unpack_function(self.struct, self.group)
+
         self.emit_print_function(self.struct, self.group)
 
     def enum_prefix(self, name):

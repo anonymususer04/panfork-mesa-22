@@ -1090,6 +1090,8 @@ pan_preload_emit_dcd(struct pan_pool *pool,
         struct pan_blitter_views views = pan_preload_get_views(fb, zs, &patched_s);
 
 #if PAN_ARCH <= 7
+        /* This should be FRAME_DRAW for Bifrost, but the two structs are
+         * identical there so it doesn't matter. */
         pan_pack(out, DRAW, cfg) {
                 uint16_t minx = 0, miny = 0, maxx, maxy;
 
@@ -1164,7 +1166,7 @@ pan_preload_emit_dcd(struct pan_pool *pool,
                                         blend.cpu);
         }
 
-        pan_pack(out, DRAW, cfg) {
+        pan_pack(out, FRAME_DRAW, cfg) {
                 if (zs) {
                         /* ZS_EMIT requires late update/kill */
                         cfg.zs_update_operation = MALI_PIXEL_KILL_FORCE_LATE;
@@ -1239,7 +1241,7 @@ pan_preload_fb_alloc_pre_post_dcds(struct pan_pool *desc_pool,
                 return;
 
         fb->bifrost.pre_post.dcds =
-                pan_pool_alloc_desc_array(desc_pool, 3, DRAW);
+                pan_pool_alloc_desc_array(desc_pool, 3, FRAME_DRAW);
 }
 
 static void
@@ -1251,7 +1253,7 @@ pan_preload_emit_pre_frame_dcd(struct pan_pool *desc_pool,
         pan_preload_fb_alloc_pre_post_dcds(desc_pool, fb);
         assert(fb->bifrost.pre_post.dcds.cpu);
         void *dcd = fb->bifrost.pre_post.dcds.cpu +
-                    (dcd_idx * pan_size(DRAW));
+                    (dcd_idx * pan_size(FRAME_DRAW));
 
         /* We only use crc_rt to determine whether to force writes for updating
          * the CRCs, so use a conservative tile size (16x16).

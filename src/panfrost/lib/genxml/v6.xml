@@ -617,6 +617,8 @@
     <field name="Thread Storage" size="64" start="28:0" type="address"/>
   </struct>
 
+  <struct name="Frame Draw" alias="Draw"/>
+
   <struct name="Surface" align="8">
     <field name="Pointer" size="64" start="0:0" type="address"/>
   </struct>

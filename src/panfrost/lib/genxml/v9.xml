@@ -1418,6 +1418,8 @@
     <field name="Shader" start="16:0" size="512" type="Shader Environment"/>
   </struct>
 
+  <struct name="Frame Draw" alias="Draw"/>
+
   <struct name="Count" size="1">
     <field name="Count" start="0:0" size="32" type="uint"/>
   </struct>

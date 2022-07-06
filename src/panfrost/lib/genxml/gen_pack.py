@@ -712,6 +712,7 @@ class Parser(object):
                 self.group.length = int(attrs["size"]) * 4
             self.group.align = int(attrs["align"]) if "align" in attrs else None
             self.group.no_direct_packing = attrs.get("no-direct-packing", False)
+            self.group.alias = attrs.get("alias")
 
             self.structs[attrs["name"]] = self.group
         elif name == "field":
@@ -827,6 +828,15 @@ class Parser(object):
 
     def emit_struct(self):
         name = self.struct
+
+        if self.group.alias:
+            assert(len(self.group.fields) == 0)
+            target = self.gen_prefix(safe_name(self.group.alias.upper()))
+            for field in ("", "_header", "_pack", "_LENGTH", "_ALIGN",
+                         "_unpack", "_print"):
+                print(f"#define {name}{field} {target}{field}")
+            print(f"#define {name.lower()}_packed {target.lower()}_packed")
+            return
 
         self.emit_template_struct(self.struct, self.group)
         self.emit_header(name)

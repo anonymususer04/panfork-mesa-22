@@ -272,6 +272,16 @@ pan_emit_cs_48(pan_command_stream *s, uint8_t index, uint64_t value)
 }
 """
 
+before_v10_pack = """
+#define pan_pack_cs_v10(dst, _, T, name) pan_pack(dst, T, name)
+#define pan_unpack_cs_v10(dst, _, __, T, name) pan_unpack(dst, T, name)
+"""
+
+since_v10_pack = """
+#define pan_pack_cs_v10(_, dst, T, name) pan_pack_cs(dst, T, name)
+#define pan_unpack_cs_v10(_, buf, buf_unk, T, name) pan_unpack_cs(buf, buf_unk, T, name)
+"""
+
 def to_alphanum(name):
     substitutions = {
         ' ': '_',
@@ -811,8 +821,11 @@ class Parser(object):
                     print(v6_format_printer)
                 else:
                     print(v7_format_printer)
-                if arch >= 10:
+                if arch < 10:
+                    print(before_v10_pack)
+                else:
                     print(with_cs_pack)
+                    print(since_v10_pack)
         elif name == "struct":
             name = attrs["name"]
             object_name = self.gen_prefix(safe_name(name.upper()))

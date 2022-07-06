@@ -31,7 +31,7 @@ from functools import reduce
 global_prefix = "mali"
 
 pack_header = """
-/* Generated code, see midgard.xml and gen_pack_header.py
+/* Generated code, see genxml/ *.xml and gen_pack.py
  *
  * Packets, enums and structures for Panfrost.
  *

@@ -1446,3 +1446,205 @@ GENX(pandecode_abort_on_fault)(mali_ptr jc_gpu_va)
         pandecode_map_read_write();
 }
 #endif /* PAN_ARCH < 10 */
+
+#if PAN_ARCH >= 10
+static void
+pandecode_cs_dump_state(uint32_t *state)
+{
+        uint64_t *st_64 = (uint64_t *)state;
+        for (unsigned i = 0; i < 256 / 4; ++i) {
+                uint64_t v1 = st_64[i * 2];
+                uint64_t v2 = st_64[i * 2 + 1];
+
+                if (!v1 && !v2)
+                        continue;
+
+                pandecode_log("0x%2x: 0x%16"PRIx64" 0x%16"PRIx64"\n",
+                              i * 4, v1, v2);
+        }
+}
+
+static void
+pandecode_cs_buffer(uint64_t *commands, unsigned size,
+                    uint32_t *buffer, uint32_t *buffer_unk,
+                    unsigned gpu_id);
+
+static void
+pandecode_cs_command(uint64_t command,
+                     uint32_t *buffer, uint32_t *buffer_unk,
+                     unsigned gpu_id)
+{
+        uint8_t op = command >> 56;
+        uint8_t addr = (command >> 48) & 0xff;
+        uint64_t value = command & 0xffffffffffffULL;
+
+        uint32_t h = value >> 32;
+        uint32_t l = value;
+
+        uint8_t arg1 = h & 0xff;
+        uint8_t arg2 = h >> 8;
+
+        switch (op) {
+        case 0:
+                if (addr || value)
+                        pandecode_log("nop %02x, #0x%"PRIx64"\n", addr, value);
+                break;
+        case 1:
+                buffer_unk[addr] = buffer[addr] = l;
+                buffer_unk[addr + 1] = buffer[addr + 1] = h;
+                pandecode_log("mov x%02x, #0x%"PRIx64"\n", addr, value);
+                break;
+        case 2:
+                buffer_unk[addr] = buffer[addr] = l;
+                pandecode_log("mov w%02x, #0x%"PRIx64"\n", addr, value);
+                break;
+        case 3:
+                if (l & 0xffff || h || addr)
+                        pandecode_log("state (unk %02x), (unk %04x), "
+                                      "%i, (unk %04x)\n", addr, h, l >> 16, l);
+                else
+                        pandecode_log("state %i\n", l >> 16);
+                break;
+        case 4: {
+                uint32_t masked = l & 0xffff0000;
+                unsigned task_increment = l & 0x3fff;
+                unsigned task_axis = (l >> 14) & 3;
+                if (h != 0xff00 || addr || masked)
+                        pandecode_log("compute (unk %02x), (unk %04x), "
+                                      "(unk %x), inc %i, axis %i\n\n", addr, h, masked, task_increment, task_axis);
+                else
+                        pandecode_log("compute inc %i, axis %i\n\n", task_increment, task_axis);
+
+                pandecode_indent++;
+
+                pandecode_compute_job(NULL, 0, buffer, buffer_unk, gpu_id);
+
+                /* The gallium driver emits this even for compute jobs, clear
+                 * it from unknown state */
+                pan_unpack_cs(buffer, buffer_unk, SCISSOR, unused_scissor);
+
+                pandecode_cs_dump_state(buffer_unk);
+                pandecode_log("\n");
+                pandecode_indent--;
+
+                break;
+        }
+        case 6: {
+                uint32_t masked = l & 0xfffff8f0;
+                uint8_t mode = l & 0xf;
+                uint8_t index = (l >> 8) & 7;
+                if (addr || masked)
+                        pandecode_log("idvs (unk %02x), w%02x, w%02x, (unk %x), "
+                                      "mode %i index %i\n\n",
+                                      addr, arg1, arg2, masked, mode, index);
+                else
+                        pandecode_log("idvs w%02x, w%02x, mode %i index %i\n\n",
+                                      arg1, arg2, mode, index);
+
+                pandecode_indent++;
+
+                pandecode_malloc_vertex_job(NULL, 0, buffer, buffer_unk, gpu_id);
+
+                pandecode_cs_dump_state(buffer_unk);
+                pandecode_log("\n");
+                pandecode_indent--;
+
+                break;
+        }
+        case 7: {
+                if (addr || value)
+                        pandecode_log("fragment (unk %02x), (unk %"PRIx64")\n\n",
+                                      addr, value);
+                else
+                        pandecode_log("fragment\n\n");
+
+                pandecode_indent++;
+
+                pandecode_fragment_job(NULL, 0, buffer, buffer_unk, gpu_id);
+
+                pandecode_cs_dump_state(buffer_unk);
+                pandecode_log("\n");
+                pandecode_indent--;
+
+                break;
+        }
+        case 17: {
+                if (arg1)
+                        pandecode_log("add x%02x, (unk %x), x%02x, #0x%x\n",
+                                      addr, arg1, arg2, l);
+                else if (l)
+                        pandecode_log("add x%02x, x%02x, #0x%x\n",
+                                      addr, arg2, l);
+                else
+                        pandecode_log("mov x%02x, x%02x\n", addr, arg2);
+
+                break;
+        }
+        case 23: {
+                if (value >> 8 || addr)
+                        pandecode_log("select (unk %02x), (unk %"PRIx64"), "
+                                      "%i\n", addr, value >> 8, l & 0xff);
+                else
+                        pandecode_log("select %i\n", l & 0xff);
+                break;
+        }
+        case 32: {
+                unsigned length = buffer[arg1];
+                uint64_t target = (((uint64_t)buffer[arg2 + 1]) << 32) | buffer[arg2];
+
+                assert(!(length & 7));
+                unsigned instrs = length / 8;
+
+                if (addr || l)
+                        pandecode_log("job (unk %02x), w%02x (%i instructions), x%02x (0x%"PRIx64"), (unk %x)\n",
+                                      addr, arg1, instrs, arg2, target, l);
+                else
+                        pandecode_log("job w%02x (%i instructions), x%02x (0x%"PRIx64")\n",
+                                      arg1, instrs, arg2, target);
+
+                uint64_t *t = pandecode_fetch_gpu_mem(NULL, target, length);
+                pandecode_indent++;
+                pandecode_cs_buffer(t, length, buffer, buffer_unk, gpu_id);
+                pandecode_indent--;
+                break;
+        }
+        case 34: {
+                const char *name;
+                switch (l) {
+                case 1: name = "other"; break;
+                case 2: name = "fragment"; break;
+                case 3: name = "compute"; break;
+                case 13: name = "vertex"; break;
+                default: name = "unk";
+                }
+                pandecode_log("iter %s\n", name);
+                break;
+        }
+        case 37: {
+                pandecode_log("str(unk) (unk %02x), w%02x, [x%02x, unk %x]\n",
+                              addr, arg1, arg2, l);
+                break;
+        }
+        case 38: {
+                pandecode_log("str (unk %02x), w%02x, [x%02x, unk %x]\n",
+                              addr, arg1, arg2, l);
+                break;
+        }
+        default:
+                pandecode_log("UNK %02x %02x, #0x%"PRIx64"\n", addr, op, value);
+                break;
+        }
+}
+
+static void
+pandecode_cs_buffer(uint64_t *commands, unsigned size,
+                    uint32_t *buffer, uint32_t *buffer_unk,
+                    unsigned gpu_id)
+{
+        uint64_t *end = (uint64_t *)((uint8_t *) commands + size);
+
+        for (uint64_t c = *commands; commands < end; c = *(++commands)) {
+                pandecode_cs_command(c, buffer, buffer_unk, gpu_id);
+        }
+}
+#endif

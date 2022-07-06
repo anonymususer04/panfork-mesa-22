@@ -1647,4 +1647,22 @@ pandecode_cs_buffer(uint64_t *commands, unsigned size,
                 pandecode_cs_command(c, buffer, buffer_unk, gpu_id);
         }
 }
+
+void
+GENX(pandecode_cs)(mali_ptr cs_gpu_va, unsigned size, unsigned gpu_id)
+{
+        pandecode_dump_file_open();
+
+        uint32_t buffer[256] = {0};
+        uint32_t buffer_unk[256] = {0};
+
+        uint64_t *commands = pandecode_fetch_gpu_mem(NULL, cs_gpu_va, size);
+
+        pandecode_log("\n");
+
+        pandecode_cs_buffer(commands, size, buffer, buffer_unk, gpu_id);
+
+        pandecode_map_read_write();
+        fflush(pandecode_dump_stream);
+}
 #endif

@@ -876,11 +876,12 @@ class Parser(object):
         self.parser.ParseFile(file)
         file.close()
 
-if len(sys.argv) < 2:
-    print("No input xml file specified")
+if len(sys.argv) < 3:
+    print("No input xml / output header file specified")
     sys.exit(1)
 
 input_file = sys.argv[1]
+sys.stdout = open(sys.argv[2], "w")
 
 p = Parser()
 p.parse(input_file)

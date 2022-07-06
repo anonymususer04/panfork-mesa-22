@@ -25,8 +25,7 @@ foreach packer : ['common', 'v4', 'v5', 'v6', 'v7', 'v9']
     packer + '_pack.h',
     input : ['gen_pack.py', packer + '.xml'],
     output : packer + '_pack.h',
-    command : [prog_python, '@INPUT@'],
-    capture : true,
+    command : [prog_python, '@INPUT@', '@OUTPUT@'],
   )
 endforeach
 

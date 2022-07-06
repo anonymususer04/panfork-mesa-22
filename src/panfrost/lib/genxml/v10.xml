@@ -1246,6 +1246,10 @@
     <field name="Tile Enable Map Row Stride" size="8" start="6:0" type="uint"/>
   </struct>
 
+  <aggregate name="Fragment Job" layout="cs">
+    <section name="Payload" type="Fragment Job Payload"/>
+  </aggregate>
+
   <struct name="Shader Environment" size="16" align="64">
     <field name="Attribute offset" start="0:0" size="32" type="uint"/>
     <field name="FAU count" start="1:0" size="8" type="uint"/>
@@ -1306,6 +1310,10 @@
     <field name="Offset Z" start="7:0" size="32" type="uint"/>
     <field name="Compute" start="0x00:0" size="0" type="Compute Shader Environment"/>
   </struct>
+
+  <aggregate name="Compute Job" layout="cs">
+    <section name="Payload" type="Compute Payload"/>
+  </aggregate>
 
   <struct name="Resource" size="4" align="16">
     <field name="Address" start="0:0" size="56" type="address"/>
@@ -1436,4 +1444,32 @@
     <field name="Constant" size="32" start="0x3c:0" type="float"/>
     <field name="Size Array" size="48" start="0x3c:0" type="uint"/>
   </struct>
+
+  <struct name="Indices" size="2">
+    <field name="Address" size="64" start="0:0" type="address"/>
+  </struct>
+
+  <aggregate name="Malloc Vertex Job" layout="cs">
+    <section name="Primitive" type="Primitive"/>
+    <section name="Instance Count" type="Count"/>
+    <section name="Tiler" type="Tiler Pointer"/>
+    <section name="Scissor" type="Scissor"/>
+    <section name="Primitive Size" type="Primitive Size"/>
+    <section name="Indices" type="Indices"/>
+    <section name="Draw" type="Draw"/>
+    <section name="Position" type="Position Shader Environment"/>
+    <section name="Varying" type="Varying Shader Environment"/>
+  </aggregate>
+
+  <!-- TODO: Does this job type even exist any more? -->
+  <aggregate name="Tiler Job" layout="cs">
+    <section name="Primitive" type="Primitive"/>
+    <section name="Instance Count" type="Count"/>
+    <section name="Vertex Count" type="Count"/>
+    <section name="Tiler" type="Tiler Pointer"/>
+    <section name="Scissor" type="Scissor"/>
+    <section name="Primitive Size" type="Primitive Size"/>
+    <section name="Indices" type="Indices"/>
+    <section name="Draw" type="Draw"/>
+  </aggregate>
 </panxml>

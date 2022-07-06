@@ -829,8 +829,14 @@ class Parser(object):
 
             self.structs[attrs["name"]] = self.group
         elif name == "field":
-            self.group.fields.append(Field(self, attrs))
             self.values = []
+            # Skip fields which have not yet been converted from packed
+            # structs to command-stream registers
+            if self.group.layout == "cs" and not attrs["start"].startswith("0x"):
+                self.skip_field = True
+                return
+            self.skip_field = False
+            self.group.fields.append(Field(self, attrs))
         elif name == "enum":
             self.values = []
             self.enum = safe_name(attrs["name"])
@@ -855,7 +861,8 @@ class Parser(object):
             self.struct = None
             self.group = None
         elif name  == "field":
-            self.group.fields[-1].values = self.values
+            if not self.skip_field:
+                self.group.fields[-1].values = self.values
         elif name  == "enum":
             self.emit_enum()
             self.enum = None

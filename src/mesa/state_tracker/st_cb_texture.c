@@ -71,6 +71,7 @@
 #include "pipe/p_shader_tokens.h"
 #include "util/u_tile.h"
 #include "util/format/u_format.h"
+#include "util/format/u_format_bptc.h"
 #include "util/u_surface.h"
 #include "util/u_sampler.h"
 #include "util/u_math.h"
@@ -442,6 +443,14 @@ st_compressed_format_fallback(struct st_context *st, mesa_format format)
    if (st_astc_format_fallback(st, format))
       return true;
 
+   /* If BPTC is unsupported and transcoding is not enabled, don't expose the
+    * formats at all */
+   if (format == MESA_FORMAT_BPTC_RGBA_UNORM ||
+       format == MESA_FORMAT_BPTC_SRGB_ALPHA_UNORM ||
+       format == MESA_FORMAT_BPTC_RGB_SIGNED_FLOAT ||
+       format == MESA_FORMAT_BPTC_RGB_UNSIGNED_FLOAT)
+      return st->transcode_bptc;
+
    return false;
 }
 
@@ -549,7 +558,44 @@ st_UnmapTextureImage(struct gl_context *ctx,
       assert(z == transfer->box.z);
 
       if (transfer->usage & PIPE_MAP_WRITE) {
-         if (util_format_is_compressed(texImage->pt->format)) {
+         if (texImage->TexFormat == MESA_FORMAT_BPTC_RGB_UNSIGNED_FLOAT ||
+             texImage->TexFormat == MESA_FORMAT_BPTC_RGB_SIGNED_FLOAT) {
+
+            /* Decompress to FP16 */
+            unsigned size =
+               _mesa_format_image_size(PIPE_FORMAT_R32G32B32A32_FLOAT,
+                                       transfer->box.width,
+                                       transfer->box.height, 1);
+
+            void *tmp = malloc(size);
+
+            if (texImage->TexFormat == MESA_FORMAT_BPTC_RGB_UNSIGNED_FLOAT) {
+               util_format_bptc_rgb_ufloat_unpack_rgba_float(
+                  tmp, transfer->box.width * 16,
+                  itransfer->temp_data,
+                  itransfer->temp_stride,
+                  transfer->box.width,
+                  transfer->box.height);
+            } else {
+               util_format_bptc_rgb_float_unpack_rgba_float(
+                  tmp, transfer->box.width * 16,
+                  itransfer->temp_data,
+                  itransfer->temp_stride,
+                  transfer->box.width,
+                  transfer->box.height);
+            }
+
+            /* Compress it to the target format. */
+            struct gl_pixelstore_attrib pack = {0};
+            pack.Alignment = 16;
+
+            _mesa_texstore(ctx, 2, GL_RGBA, texImage->pt->format,
+                           transfer->stride, &itransfer->map,
+                           transfer->box.width,
+                           transfer->box.height, 1, GL_RGBA,
+                           GL_FLOAT, tmp, &pack);
+            free(tmp);
+         } else if (util_format_is_compressed(texImage->pt->format)) {
             /* Transcode into a different compressed format. */
             unsigned size =
                _mesa_format_image_size(PIPE_FORMAT_R8G8B8A8_UNORM,
@@ -581,6 +627,14 @@ st_UnmapTextureImage(struct gl_context *ctx,
                                         transfer->box.width,
                                         transfer->box.height,
                                         texImage->TexFormat);
+            } else if (texImage->TexFormat == MESA_FORMAT_BPTC_RGBA_UNORM ||
+                       texImage->TexFormat == MESA_FORMAT_BPTC_SRGB_ALPHA_UNORM) {
+               util_format_bptc_rgba_unorm_unpack_rgba_8unorm(
+                  tmp, transfer->box.width * 4,
+                  itransfer->temp_data,
+                  itransfer->temp_stride,
+                  transfer->box.width,
+                  transfer->box.height);
             } else {
                unreachable("unexpected format for a compressed format fallback");
             }
@@ -618,6 +672,13 @@ st_UnmapTextureImage(struct gl_context *ctx,
                                         itransfer->temp_stride,
                                         transfer->box.width, transfer->box.height,
                                         texImage->TexFormat);
+            } else if (texImage->TexFormat == MESA_FORMAT_BPTC_RGBA_UNORM ||
+                       texImage->TexFormat == MESA_FORMAT_BPTC_SRGB_ALPHA_UNORM) {
+               util_format_bptc_rgba_unorm_unpack_rgba_8unorm(itransfer->map, transfer->stride,
+                                                              itransfer->temp_data,
+                                                              itransfer->temp_stride,
+                                                              transfer->box.width,
+                                                              transfer->box.height);
             } else {
                unreachable("unexpected format for a compressed format fallback");
             }

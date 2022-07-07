@@ -142,6 +142,7 @@ struct st_context
    boolean transcode_etc;
    boolean transcode_astc_to_bptc;
    boolean transcode_astc_to_dxt5;
+   boolean transcode_bptc;
    boolean has_astc_2d_ldr;
    boolean has_astc_5x5_ldr;
    boolean prefer_blit_based_texture_transfer;

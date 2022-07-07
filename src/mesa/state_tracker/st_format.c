@@ -127,6 +127,24 @@ st_mesa_format_to_pipe_format(const struct st_context *st,
       }
    }
 
+   if (st->transcode_bptc) {
+      if (mesaFormat == PIPE_FORMAT_BPTC_RGBA_UNORM ||
+          mesaFormat == PIPE_FORMAT_BPTC_SRGBA) {
+
+         if (mesaFormat == PIPE_FORMAT_BPTC_SRGBA)
+            return PIPE_FORMAT_DXT5_SRGBA;
+         else
+            return PIPE_FORMAT_DXT5_RGBA;
+      }
+
+      /* ASTC would be better, but it's too complex to encode */
+      if (mesaFormat == PIPE_FORMAT_BPTC_RGB_UFLOAT)
+         return PIPE_FORMAT_R9G9B9E5_FLOAT;
+
+      if (mesaFormat == PIPE_FORMAT_BPTC_RGB_FLOAT)
+         return PIPE_FORMAT_R16G16B16X16_FLOAT;
+   }
+
    return mesaFormat;
 }
 

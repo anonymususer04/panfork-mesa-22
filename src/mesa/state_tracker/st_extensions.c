@@ -1464,6 +1464,21 @@ void st_init_extensions(struct pipe_screen *screen,
    if (options->allow_glsl_relaxed_es)
       consts->AllowGLSLRelaxedES = GL_TRUE;
 
+   if (options->transcode_bptc &&
+       screen->is_format_supported(screen, PIPE_FORMAT_DXT5_SRGBA,
+                                   PIPE_TEXTURE_2D, 0, 0,
+                                   PIPE_BIND_SAMPLER_VIEW) &&
+       screen->is_format_supported(screen, PIPE_FORMAT_DXT5_RGBA,
+                                   PIPE_TEXTURE_2D, 0, 0,
+                                   PIPE_BIND_SAMPLER_VIEW) &&
+       screen->is_format_supported(screen, PIPE_FORMAT_R9G9B9E5_FLOAT,
+                                   PIPE_TEXTURE_2D, 0, 0,
+                                   PIPE_BIND_SAMPLER_VIEW) &&
+       screen->is_format_supported(screen, PIPE_FORMAT_R16G16B16X16_FLOAT,
+                                   PIPE_TEXTURE_2D, 0, 0,
+                                   PIPE_BIND_SAMPLER_VIEW))
+      extensions->ARB_texture_compression_bptc = true;
+
    consts->MinMapBufferAlignment =
       screen->get_param(screen, PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT);
 

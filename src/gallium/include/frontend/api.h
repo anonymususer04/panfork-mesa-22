@@ -243,6 +243,7 @@ struct st_config_options
    bool force_gl_names_reuse;
    bool transcode_etc;
    bool transcode_astc;
+   bool transcode_bptc;
    char *force_gl_vendor;
    char *force_gl_renderer;
    char *mesa_extension_override;

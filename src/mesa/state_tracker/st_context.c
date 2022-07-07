@@ -584,6 +584,22 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
       screen->is_format_supported(screen, PIPE_FORMAT_DXT5_RGBA,
                                   PIPE_TEXTURE_2D, 0, 0,
                                   PIPE_BIND_SAMPLER_VIEW);
+   st->transcode_bptc = options->transcode_bptc &&
+                       !screen->is_format_supported(screen, PIPE_FORMAT_BPTC_RGBA_UNORM,
+                                                    PIPE_TEXTURE_2D, 0, 0,
+                                                    PIPE_BIND_SAMPLER_VIEW) &&
+                       screen->is_format_supported(screen, PIPE_FORMAT_DXT5_SRGBA,
+                                                   PIPE_TEXTURE_2D, 0, 0,
+                                                   PIPE_BIND_SAMPLER_VIEW) &&
+                       screen->is_format_supported(screen, PIPE_FORMAT_DXT5_RGBA,
+                                                   PIPE_TEXTURE_2D, 0, 0,
+                                                   PIPE_BIND_SAMPLER_VIEW) &&
+                       screen->is_format_supported(screen, PIPE_FORMAT_R9G9B9E5_FLOAT,
+                                                   PIPE_TEXTURE_2D, 0, 0,
+                                                   PIPE_BIND_SAMPLER_VIEW) &&
+                       screen->is_format_supported(screen, PIPE_FORMAT_R16G16B16X16_FLOAT,
+                                                   PIPE_TEXTURE_2D, 0, 0,
+                                                   PIPE_BIND_SAMPLER_VIEW);
    st->has_astc_2d_ldr =
       screen->is_format_supported(screen, PIPE_FORMAT_ASTC_4x4_SRGB,
                                   PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_SAMPLER_VIEW);

@@ -766,7 +766,10 @@ panfrost_fence_reference(struct pipe_screen *pscreen,
         struct pipe_fence_handle *old = *ptr;
 
         if (pipe_reference(&old->reference, &fence->reference)) {
-                drmSyncobjDestroy(dev->fd, old->syncobj);
+                if (dev->kbase)
+                        dev->mali.syncobj_destroy(&dev->mali, old->kbase);
+                else
+                        drmSyncobjDestroy(dev->fd, old->syncobj);
                 free(old);
         }
 
@@ -789,6 +792,13 @@ panfrost_fence_finish(struct pipe_screen *pscreen,
         if (abs_timeout == OS_TIMEOUT_INFINITE)
                 abs_timeout = INT64_MAX;
 
+        if (dev->kbase) {
+                /* TODO: Use the timeout */
+                bool ret = dev->mali.syncobj_wait(&dev->mali, fence->kbase);
+                fence->signaled = ret;
+                return ret;
+        }
+
         ret = drmSyncobjWait(dev->fd, &fence->syncobj,
                              1,
                              abs_timeout, DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL,
@@ -807,6 +817,20 @@ panfrost_fence_create(struct panfrost_context *ctx)
 
         struct panfrost_device *dev = pan_device(ctx->base.screen);
         int fd = -1, ret;
+
+        if (dev->kbase) {
+                struct kbase_syncobj *new =
+                        dev->mali.syncobj_dup(&dev->mali, ctx->syncobj_kbase);
+
+                /* The syncobj emulation code has different semantics to
+                 * normal syncobjs... so we need to swap the objects and set
+                 * the context's syncobj to the one returned from dup(). */
+                f->kbase = ctx->syncobj_kbase;
+                ctx->syncobj_kbase = new;
+
+                pipe_reference_init(&f->reference, 1);
+                return f;
+        }
 
         /* Snapshot the last rendering out fence. We'd rather have another
          * syncobj instead of a sync file, but this is all we get.

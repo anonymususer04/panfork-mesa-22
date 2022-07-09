@@ -50,6 +50,11 @@ pack_header = """
 #include "util/macros.h"
 #include "util/u_math.h"
 
+/* Assume that the caller has done adequate bounds checking */
+typedef struct pan_command_stream {
+   uint64_t *ptr;
+} pan_command_stream;
+
 #define __gen_unpack_float(x, y, z) uif(__gen_unpack_uint(x, y, z))
 
 static inline uint64_t
@@ -129,6 +134,20 @@ __gen_unpack_padded(const uint8_t *restrict cl, uint32_t start, uint32_t end)
    unsigned odd = val >> 5;
 
    return (2*odd + 1) << shift;
+}
+
+static inline void
+__gen_clear_value(uint8_t *restrict cl, uint32_t start, uint32_t end)
+{
+   for (uint32_t byte = start / 8; byte <= end / 8; byte++) {
+      uint8_t m = 0;
+      if (byte == start / 8)
+         m |= 0xff >> (8 - start % 8);
+      if (byte == end / 8)
+         m |= 0xff << (1 + end % 8);
+
+      cl[byte] &= m;
+   }
 }
 
 #define PREFIX1(A) MALI_ ## A
@@ -217,6 +236,40 @@ v7_format_printer = """
         mali_rgb_component_order_as_str((enum mali_rgb_component_order)(format & ((1 << 12) - 1))), \\
         (format & (1 << 21)) ? " XXX BAD BIT" : "");
 
+"""
+
+with_cs_pack = """
+#define pan_pack_cs(dst, T, name) \\
+   for (struct PREFIX1(T) name = { PREFIX2(T, header) }, \\
+        *_loop_terminate = (void *) (dst); \\
+        __builtin_expect(_loop_terminate != NULL, 1); \\
+        ({ PREFIX2(T, pack_cs)(dst, &name); \\
+           _loop_terminate = NULL; }))
+
+#define pan_unpack_cs(buf, buf_unk, T, name) \\
+        struct PREFIX1(T) name; \\
+        PREFIX2(T, unpack)(buf, buf_unk, &name)
+
+static inline void
+pan_emit_cs_ins(pan_command_stream *s, uint8_t op, uint64_t instr)
+{
+   assert(instr < (1ULL << 56));
+   instr |= ((uint64_t)op << 56);
+   *((s->ptr)++) = instr;
+}
+
+static inline void
+pan_emit_cs_32(pan_command_stream *s, uint8_t index, uint32_t value)
+{
+   pan_emit_cs_ins(s, 2, ((uint64_t) index << 48) | value);
+}
+
+static inline void
+pan_emit_cs_48(pan_command_stream *s, uint8_t index, uint64_t value)
+{
+   assert(value < (1ULL << 48));
+   pan_emit_cs_ins(s, 1, ((uint64_t) index << 48) | value);
+}
 """
 
 def to_alphanum(name):
@@ -340,7 +393,7 @@ class Field(object):
 
         if ":" in str(attrs["start"]):
             (word, bit) = attrs["start"].split(":")
-            self.start = (int(word) * 32) + int(bit)
+            self.start = (int(word, 0) * 32) + int(bit)
         else:
             self.start = int(attrs["start"])
 
@@ -514,7 +567,10 @@ class Group(object):
                 words[b].contributors.append(contributor)
 
     def emit_pack_function(self):
-        self.get_length()
+        if self.cs:
+            self.length = 256 * 4
+        else:
+            self.get_length()
 
         words = {}
         self.collect_words(self.fields, 0, '', words)
@@ -535,7 +591,12 @@ class Group(object):
             elif field.modifier[0] == "log2":
                 print("   assert(util_is_power_of_two_nonzero(values->{}));".format(field.name))
 
-        for index in range(self.length // 4):
+        if self.cs:
+            index_list = sorted(words)
+        else:
+            index_list = range(self.length // 4)
+
+        for index in index_list:
             # Handle MBZ words
             if not index in words:
                 print("   cl[%2d] = 0;" % index)
@@ -546,7 +607,10 @@ class Group(object):
             word_start = index * 32
 
             v = None
-            prefix = "   cl[%2d] =" % index
+            if self.cs:
+                prefix = "   pan_emit_cs_32(s, 0x%02x," % index
+            else:
+                prefix = "   cl[%2d] = (" % index
 
             for contributor in word.contributors:
                 field = contributor.field
@@ -595,7 +659,7 @@ class Group(object):
                         s = "%s >> %d" % (s, shift)
 
                     if contributor == word.contributors[-1]:
-                        print("%s %s;" % (prefix, s))
+                        print("%s %s);" % (prefix, s))
                     else:
                         print("%s %s |" % (prefix, s))
                     prefix = "           "
@@ -619,17 +683,18 @@ class Group(object):
         words = {}
         self.collect_words(self.fields, 0, '', words)
 
-        for index in range(self.length // 4):
-            base = index * 32
-            word = words.get(index, self.Word())
-            masks = [self.mask_for_word(index, c.start, c.end) for c in word.contributors]
-            mask = reduce(lambda x,y: x | y, masks, 0)
+        if not self.cs:
+            for index in range(self.length // 4):
+                base = index * 32
+                word = words.get(index, self.Word())
+                masks = [self.mask_for_word(index, c.start, c.end) for c in word.contributors]
+                mask = reduce(lambda x,y: x | y, masks, 0)
 
-            ALL_ONES = 0xffffffff
+                ALL_ONES = 0xffffffff
 
-            if mask != ALL_ONES:
-                TMPL = '   if (((const uint32_t *) cl)[{}] & {}) fprintf(stderr, "XXX: Invalid field of {} unpacked at word {}\\n");'
-                print(TMPL.format(index, hex(mask ^ ALL_ONES), self.label, index))
+                if mask != ALL_ONES:
+                    TMPL = '   if (((const uint32_t *) cl)[{}] & {}) fprintf(stderr, "XXX: Invalid field of {} unpacked at word {}\\n");'
+                    print(TMPL.format(index, hex(mask ^ ALL_ONES), self.label, index))
 
         fieldrefs = []
         self.collect_fields(self.fields, 0, '', fieldrefs)
@@ -673,6 +738,17 @@ class Group(object):
             if field.modifier and field.modifier[0] == "align":
                 mask = hex(field.modifier[1] - 1)
                 print('   assert(!(values->{} & {}));'.format(fieldref.path, mask))
+
+        if self.cs:
+            # Clear values from the cl_unk buffer so we know which registers
+            # have been read
+            for fieldref in fieldrefs:
+                args = []
+                args.append('cl_unk')
+                args.append(str(fieldref.start))
+                args.append(str(fieldref.end))
+
+                print('   __gen_clear_value({});'.format(', '.join(args)))
 
     def emit_print_function(self):
         for field in self.fields:
@@ -735,6 +811,8 @@ class Parser(object):
                     print(v6_format_printer)
                 else:
                     print(v7_format_printer)
+                if arch >= 10:
+                    print(with_cs_pack)
         elif name == "struct":
             name = attrs["name"]
             object_name = self.gen_prefix(safe_name(name.upper()))
@@ -746,6 +824,8 @@ class Parser(object):
             self.group.align = int(attrs["align"]) if "align" in attrs else None
             self.group.no_direct_packing = attrs.get("no-direct-packing", False)
             self.group.alias = attrs.get("alias")
+            self.group.layout = attrs.get("layout", "struct")
+            self.group.cs = (self.group.layout == "cs")
 
             self.structs[attrs["name"]] = self.group
         elif name == "field":
@@ -835,16 +915,38 @@ class Parser(object):
         print("}\n\n")
 
         # Should be a whole number of words
-        assert((self.group.length % 4) == 0)
+        assert((group.length % 4) == 0)
 
-        print('#define {} {}'.format (name + "_LENGTH", self.group.length))
-        if self.group.align != None:
-            print('#define {} {}'.format (name + "_ALIGN", self.group.align))
-        print('struct {}_packed {{ uint32_t opaque[{}]; }};'.format(name.lower(), self.group.length // 4))
+        print('#define {} {}'.format (name + "_LENGTH", group.length))
+        if group.align != None:
+            print('#define {} {}'.format (name + "_ALIGN", group.align))
+        print('struct {}_packed {{ uint32_t opaque[{}]; }};'.format(name.lower(), group.length // 4))
+
+    def emit_cs_pack_function(self, name, group):
+        print("static inline void\n%s_pack_cs(pan_command_stream * restrict s,\n%sconst struct %s * restrict values)\n{" %
+              (name, ' ' * (len(name) + 6), name))
+
+        group.emit_pack_function()
+
+        print("}\n\n")
+
+        assert(group.length == 256 * 4)
 
     def emit_unpack_function(self, name, group):
         print("static inline void")
         print("%s_unpack(const uint8_t * restrict cl,\n%sstruct %s * restrict values)\n{" %
+              (name.upper(), ' ' * (len(name) + 8), name))
+
+        group.emit_unpack_function()
+
+        print("}\n")
+
+    def emit_cs_unpack_function(self, name, group):
+        print("static inline void")
+        print("%s_unpack(const uint32_t * restrict buffer, uint32_t * restrict buffer_unk,\n"
+              "%sstruct %s * restrict values)\n{\n"
+              "   const uint8_t *cl = (uint8_t *)buffer;\n"
+              "   uint8_t *cl_unk = (uint8_t *)buffer_unk;\n" %
               (name.upper(), ' ' * (len(name) + 8), name))
 
         group.emit_unpack_function()
@@ -876,9 +978,13 @@ class Parser(object):
 
         if self.group.no_direct_packing:
             pass
-        else:
+        elif self.group.layout == "struct":
             self.emit_pack_function(self.struct, self.group)
             self.emit_unpack_function(self.struct, self.group)
+        else:
+            assert(self.group.layout == "cs")
+            self.emit_cs_pack_function(self.struct, self.group)
+            self.emit_cs_unpack_function(self.struct, self.group)
 
         self.emit_print_function(self.struct, self.group)
 

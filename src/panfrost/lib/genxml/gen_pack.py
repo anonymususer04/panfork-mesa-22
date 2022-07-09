@@ -824,6 +824,7 @@ class Parser(object):
             self.group.align = int(attrs["align"]) if "align" in attrs else None
             self.group.no_direct_packing = attrs.get("no-direct-packing", False)
             self.group.alias = attrs.get("alias")
+            self.group.unpacked_alias = attrs.get("unpacked")
             self.group.layout = attrs.get("layout", "struct")
             self.group.cs = (self.group.layout == "cs")
 
@@ -891,10 +892,35 @@ class Parser(object):
             print('   0')
         print('')
 
+    def unpacked_type(self, type):
+        if type in self.structs:
+            unpacked = self.structs[type].unpacked_alias
+            if unpacked:
+                return unpacked
+        return type
+
     def emit_template_struct(self, name, group):
-        print("struct %s {" % name)
-        group.emit_template_struct("")
-        print("};\n")
+        if group.unpacked_alias:
+            unpacked_name = self.gen_prefix(safe_name(group.unpacked_alias.upper()))
+            unpacked_fields = self.structs[group.unpacked_alias].fields
+
+            for field in group.fields:
+                other = [f for f in unpacked_fields if f.name == field.name]
+
+                assert(len(other) == 1)
+                other = other[0]
+
+                field_unpacked = self.unpacked_type(field.type)
+                other_unpacked = self.unpacked_type(other.type)
+
+                assert(field_unpacked == other_unpacked)
+                assert(field.size() <= other.size())
+
+            print("#define %s %s" % (name, group.unpacked_alias))
+        else:
+            print("struct %s {" % name)
+            group.emit_template_struct("")
+            print("};\n")
 
     def emit_aggregate(self):
         aggregate = self.aggregate

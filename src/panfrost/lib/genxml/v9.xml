@@ -573,13 +573,13 @@
     <field name="RT" size="4" start="0:16" type="uint">
        <value name="MALI_BIFROST_BLEND_MAX_RT" value="8"/>
     </field>
-    <field name="Conversion" size="32" start="1:0" type="Internal Conversion"/>
+    <field name="Conversion" size="27" start="1:0" type="Internal Conversion"/>
   </struct>
 
   <struct name="Internal Blend" align="8">
     <field name="Mode" size="2" start="0:0" type="Blend Mode"/>
     <field name="Shader" size="64" start="0:0" type="Blend Shader"/>
-    <field name="Fixed-Function" size="64" start="0:0" type="Blend Fixed-Function"/>
+    <field name="Fixed-Function" size="59" start="0:0" type="Blend Fixed-Function"/>
   </struct>
 
   <struct name="Blend" size="4" align="16">
@@ -797,7 +797,7 @@
     <field name="Type" size="4" start="0:0" type="Descriptor Type" default="Plane"/>
     <field name="Plane type" size="4" start="0:4" type="Plane Type"/>
 
-    <field name="AFBC" size="32" start="0:0" type="Plane AFBC Overlay"/>
+    <field name="AFBC" size="192" start="0:0" type="Plane AFBC Overlay"/>
     <field name="ASTC" size="32" start="0:0" type="Plane ASTC Overlay"/>
 
     <!-- Not AFBC -->
@@ -1139,8 +1139,8 @@
   </struct>
 
   <struct name="Render Target" align="64">
-    <field name="YUV" size="512" start="0:0" type="Render Target YUV Overlay"/>
-    <field name="AFBC" size="512" start="0:0" type="Render Target AFBC Overlay"/>
+    <field name="YUV" size="384" start="0:0" type="Render Target YUV Overlay"/>
+    <field name="AFBC" size="384" start="0:0" type="Render Target AFBC Overlay"/>
     <field name="Internal Buffer Offset" size="12" start="0:4" type="uint" modifier="shr(4)"/>
     <field name="YUV Enable" size="1" start="0:24" type="bool"/>
     <field name="Dithered Clear" size="1" start="0:25" type="bool"/>

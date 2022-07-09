@@ -517,13 +517,13 @@
     <field name="RT" size="4" start="0:16" type="uint">
        <value name="MALI_BIFROST_BLEND_MAX_RT" value="8"/>
     </field>
-    <field name="Conversion" size="32" start="1:0" type="Internal Conversion"/>
+    <field name="Conversion" size="27" start="1:0" type="Internal Conversion"/>
   </struct>
 
   <struct name="Internal Blend">
     <field name="Mode" size="2" start="0:0" type="Blend Mode"/>
     <field name="Shader" size="64" start="0:0" type="Blend Shader"/>
-    <field name="Fixed-Function" size="64" start="0:0" type="Blend Fixed-Function"/>
+    <field name="Fixed-Function" size="59" start="0:0" type="Blend Fixed-Function"/>
   </struct>
 
   <struct name="Blend" size="4" align="16">
@@ -729,9 +729,9 @@
   </struct>
 
   <struct name="Preload" size="1">
-    <field name="Compute" size="32" start="0" type="Compute Preload"/>
-    <field name="Vertex" size="32" start="0" type="Vertex Preload"/>
-    <field name="Fragment" size="32" start="0" type="Fragment Preload"/>
+    <field name="Compute" size="15" start="0" type="Compute Preload"/>
+    <field name="Vertex" size="15" start="0" type="Vertex Preload"/>
+    <field name="Fragment" size="14" start="0" type="Fragment Preload"/>
     <field name="Uniform count" size="7" start="15" type="uint"/>
   </struct>
 
@@ -785,18 +785,18 @@
 
   <struct name="Renderer State" align="64" size="16">
     <field name="Shader" size="128" start="0:0" type="Shader"/>
-    <field name="Properties" size="32" start="4:0" type="Renderer Properties"/>
+    <field name="Properties" size="29" start="4:0" type="Renderer Properties"/>
     <field name="Depth units" size="32" start="5:0" type="float"/>
     <field name="Depth factor" size="32" start="6:0" type="float"/>
     <field name="Depth bias clamp" size="32" start="7:0" type="float"/>
     <field name="Multisample, Misc" size="32" start="8:0" type="Multisample, Misc"/>
     <field name="Stencil Mask, Misc" size="32" start="9:0" type="Stencil Mask, Misc"/>
-    <field name="Stencil front" size="32" start="10:0" type="Stencil"/>
-    <field name="Stencil back" size="32" start="11:0" type="Stencil"/>
-    <field name="Preload" size="32" start="12:0" type="Preload"/>
+    <field name="Stencil front" size="28" start="10:0" type="Stencil"/>
+    <field name="Stencil back" size="28" start="11:0" type="Stencil"/>
+    <field name="Preload" size="22" start="12:0" type="Preload"/>
     <field name="Alpha reference" size="32" start="12:0" type="float"/>
     <field name="Thread Balancing" size="16" start="13:0" type="uint"/>
-    <field name="Secondary preload" size="32" start="13:0" type="Preload"/>
+    <field name="Secondary preload" size="22" start="13:0" type="Preload"/>
     <field name="Secondary shader" size="64" start="14:0" type="address"/>
   </struct>
 
@@ -1077,8 +1077,8 @@
   </struct>
 
   <struct name="Render Target" align="64">
-    <field name="YUV" size="512" start="0:0" type="Render Target YUV Overlay"/>
-    <field name="AFBC" size="512" start="0:0" type="Render Target AFBC Overlay"/>
+    <field name="YUV" size="384" start="0:0" type="Render Target YUV Overlay"/>
+    <field name="AFBC" size="352" start="0:0" type="Render Target AFBC Overlay"/>
     <field name="Internal Buffer Offset" size="12" start="0:4" type="uint" modifier="shr(4)"/>
     <field name="YUV Enable" size="1" start="0:24" type="bool"/>
     <field name="Dithered Clear" size="1" start="0:25" type="bool"/>

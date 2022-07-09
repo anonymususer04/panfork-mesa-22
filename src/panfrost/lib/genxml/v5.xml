@@ -697,8 +697,8 @@
     <field name="Depth bias clamp" size="32" start="7:0" type="float"/>
     <field name="Multisample, Misc" size="32" start="8:0" type="Multisample, Misc"/>
     <field name="Stencil Mask, Misc" size="32" start="9:0" type="Stencil Mask, Misc"/>
-    <field name="Stencil front" size="32" start="10:0" type="Stencil"/>
-    <field name="Stencil back" size="32" start="11:0" type="Stencil"/>
+    <field name="Stencil front" size="28" start="10:0" type="Stencil"/>
+    <field name="Stencil back" size="28" start="11:0" type="Stencil"/>
     <field name="Alpha reference" size="32" start="12:0" type="float"/>
     <field name="Thread Balancing" size="16" start="13:0" type="uint"/>
     <field name="Legacy Blend Shader" size="64" start="14:0" type="address"/>
@@ -996,8 +996,8 @@
   </struct>
 
   <struct name="Render Target" align="64">
-    <field name="YUV" size="512" start="0:0" type="Render Target YUV Overlay"/>
-    <field name="AFBC" size="512" start="0:0" type="Render Target AFBC Overlay"/>
+    <field name="YUV" size="384" start="0:0" type="Render Target YUV Overlay"/>
+    <field name="AFBC" size="352" start="0:0" type="Render Target AFBC Overlay"/>
     <field name="Internal Buffer Offset" size="12" start="0:4" type="uint" modifier="shr(4)"/>
     <field name="YUV Enable" size="1" start="0:24" type="bool"/>
     <field name="Internal Format" size="6" start="0:26" type="Color Buffer Internal Format"/>

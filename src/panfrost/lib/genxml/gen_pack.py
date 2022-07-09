@@ -368,21 +368,48 @@ class Field(object):
 
         self.modifier  = parse_modifier(attrs.get("modifier"))
 
+    def size(self):
+        size = self.end - self.start + 1
+        if self.modifier is not None:
+            if self.modifier[0] == "shr":
+                size += self.modifier[1]
+            elif self.modifier[0] == "log2":
+                size = 1 << size
+            else:
+                # Not adjusting the size for minus means that the largest
+                # value cannot be stored for 32-bit fields...
+                assert(self.modifier[0] in ("minus", "align"))
+        return size
+
     def emit_template_struct(self, dim):
+        size = self.size()
+
         if self.type == 'address':
             type = 'uint64_t'
+            assert(size <= 64)
         elif self.type == 'bool':
             type = 'bool'
+            assert(size == 1)
         elif self.type == 'float':
             type = 'float'
-        elif self.type in ['uint', 'hex'] and self.end - self.start > 32:
+            assert(size == 32)
+        elif self.type in ['uint', 'hex'] and size > 32:
             type = 'uint64_t'
+            assert(size <= 64)
         elif self.type == 'int':
             type = 'int32_t'
-        elif self.type in ['uint', 'hex', 'uint/float', 'padded', 'Pixel Format']:
+            assert(size <= 32)
+        elif self.type == 'uint/float':
             type = 'uint32_t'
+            assert(size == 32)
+        elif self.type in ['uint', 'hex', 'padded', 'Pixel Format']:
+            type = 'uint32_t'
+            assert(size <= 32)
         elif self.type in self.parser.structs:
             type = 'struct ' + self.parser.gen_prefix(safe_name(self.type.upper()))
+            bit_length = self.parser.structs[self.type].get_bit_length()
+            if size != bit_length:
+                print("#error %s should have a size of %i bits" % (self.name, bit_length))
         elif self.type in self.parser.enums:
             type = 'enum ' + enum_name(self.type)
         else:
@@ -418,6 +445,12 @@ class Group(object):
             self.length = calculated
         return self.length
 
+    def get_bit_length(self):
+        if self.layout == "cs":
+            return 0
+        else:
+            assert(self.layout == "struct")
+            return max(field.end + 1 for field in self.fields)
 
     def emit_template_struct(self, dim):
         if self.count == 0:
@@ -661,7 +694,7 @@ class Group(object):
                 print('   fprintf(fp, "%*s{}: %s\\n", indent, "", {} ? "true" : "false");'.format(name, val))
             elif field.type == "float":
                 print('   fprintf(fp, "%*s{}: %f\\n", indent, "", {});'.format(name, val))
-            elif field.type in ["uint", "hex"] and (field.end - field.start) >= 32:
+            elif field.type in ["uint", "hex"] and field.size() > 32:
                 print('   fprintf(fp, "%*s{}: 0x%" PRIx64 "\\n", indent, "", {});'.format(name, val))
             elif field.type == "hex":
                 print('   fprintf(fp, "%*s{}: 0x%x\\n", indent, "", {});'.format(name, val))

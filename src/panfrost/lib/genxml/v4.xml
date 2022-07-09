@@ -682,8 +682,8 @@
     <field name="Depth bias clamp" size="32" start="7:0" type="float"/>
     <field name="Multisample, Misc" size="32" start="8:0" type="Multisample, Misc"/>
     <field name="Stencil Mask, Misc" size="32" start="9:0" type="Stencil Mask, Misc"/>
-    <field name="Stencil front" size="32" start="10:0" type="Stencil"/>
-    <field name="Stencil back" size="32" start="11:0" type="Stencil"/>
+    <field name="Stencil front" size="28" start="10:0" type="Stencil"/>
+    <field name="Stencil back" size="28" start="11:0" type="Stencil"/>
     <field name="Alpha reference" size="32" start="12:0" type="float"/>
     <field name="Thread Balancing" size="16" start="13:0" type="uint"/>
     <field name="Blend Shader" size="64" start="14:0" type="address"/>

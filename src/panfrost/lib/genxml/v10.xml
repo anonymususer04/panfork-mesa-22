@@ -600,6 +600,27 @@
     <value name="Explicit" value="3"/>
   </enum>
 
+  <struct name="Primitive" layout="cs">
+    <field name="Point size array format" size="2" start="0x38:11" type="Point Size Array Format"/>
+    <field name="Primitive restart" size="2" start="0x38:18" type="Primitive Restart"/>
+
+    <!-- These are likely 0x38, but bit positions have not been verified -->
+    <field name="Primitive Index Enable" size="1" start="0:13" type="bool"/>
+    <field name="Primitive Index Writeback" size="1" start="0:14" type="bool"/>
+    <field name="Allow rotating primitives" size="1" start="0:15" type="bool" default="true"/>
+    <field name="Low Depth Cull" size="1" start="0:16" type="bool" default="true"/>
+    <field name="High Depth Cull" size="1" start="0:17" type="bool" default="true"/>
+    <field name="Secondary Shader" size="1" start="0:18" type="bool"/>
+    <field name="Layer index enable" size="1" start="0:20" type="bool"/>
+    <field name="Scissor array enable" size="1" start="0:21" type="bool"/>
+
+    <field name="Base vertex offset" size="32" start="0x24:0" type="uint"/>
+    <field name="Index count" size="32" start="0x21:0" type="uint"/>
+
+    <!-- TODO -->
+    <field name="Instance offset" size="32" start="2:0" type="uint"/>
+  </struct>
+
   <struct name="Sampler" size="8" align="32">
     <field name="Type" size="4" start="0:0" type="Descriptor Type" default="Sampler"/>
     <field name="Wrap Mode R" size="4" start="0:8" type="Wrap Mode" default="Clamp to Edge"/>
@@ -845,6 +866,13 @@
     <field name="Register allocation" size="2" start="0:30" type="Shader Register Allocation"/>
     <field name="Preload" size="16" start="1:0" type="Preload"/>
     <field name="Binary" size="64" start="2:0" type="address"/>
+  </struct>
+
+  <struct name="Scissor" layout="cs">
+    <field name="Scissor Minimum X" size="16" start="0x2a:0" type="uint"/>
+    <field name="Scissor Minimum Y" size="16" start="0x2a:16" type="uint"/>
+    <field name="Scissor Maximum X" size="16" start="0x2b:0" type="uint"/>
+    <field name="Scissor Maximum Y" size="16" start="0x2b:16" type="uint"/>
   </struct>
 
   <struct name="Local Storage" size="8" align="64">
@@ -1206,6 +1234,18 @@
     <section name="Padding" offset="64" type="Framebuffer Padding"/>
   </aggregate>
 
+  <struct name="Fragment Job Payload" layout="cs">
+    <field name="Bound Min X" size="12" start="0x2a:0" type="uint"/>
+    <field name="Bound Min Y" size="12" start="0x2a:16" type="uint"/>
+    <field name="Bound Max X" size="12" start="0x2b:0" type="uint"/>
+    <field name="Bound Max Y" size="12" start="0x2b:16" type="uint"/>
+    <field name="Tile render order" size="3" start="0x2b:28" type="Tile Render Order" default="Z Order"/>
+    <field name="Has Tile Enable Map" size="1" start="0x2b:31" type="bool"/>
+    <field name="Framebuffer" size="48" start="0x28:0" type="address"/>
+    <field name="Tile Enable Map" size="48" start="4:0" type="address"/>
+    <field name="Tile Enable Map Row Stride" size="8" start="6:0" type="uint"/>
+  </struct>
+
   <struct name="Shader Environment" size="16" align="64">
     <field name="Attribute offset" start="0:0" size="32" type="uint"/>
     <field name="FAU count" start="1:0" size="8" type="uint"/>
@@ -1213,6 +1253,58 @@
     <field name="Shader" start="10:0" size="48" type="address"/>
     <field name="Thread storage" start="12:0" size="48" type="address"/>
     <field name="FAU" start="14:0" size="64" type="address"/>
+  </struct>
+
+  <struct name="Position Shader Environment" layout="cs" unpacked="Shader Environment">
+    <field name="Attribute offset" start="0:0" size="32" type="uint"/>
+    <field name="Resources" start="0x00:0" size="48" type="address"/>
+    <field name="Shader" start="0x10:0" size="48" type="address"/>
+    <!-- Thread storage might be swapped with the fragment environment field -->
+    <field name="Thread storage" start="0x18:0" size="48" type="address"/>
+    <field name="FAU" start="0x08:0" size="48" type="address"/>
+    <field name="FAU count" start="0x08:56" size="8" type="uint"/>
+  </struct>
+
+  <struct name="Varying Shader Environment" layout="cs" unpacked="Shader Environment">
+    <field name="Attribute offset" start="0:0" size="32" type="uint"/>
+    <field name="Resources" start="0x00:0" size="48" type="address"/>
+    <field name="Shader" start="0x12:0" size="48" type="address"/>
+    <!-- These fields alias with position shaders -->
+    <field name="Thread storage" start="0x18:0" size="48" type="address"/>
+    <field name="FAU" start="0x08:0" size="48" type="address"/>
+    <field name="FAU count" start="0x08:56" size="8" type="uint"/>
+  </struct>
+
+  <struct name="Fragment Shader Environment" layout="cs" unpacked="Shader Environment">
+    <field name="Attribute offset" start="0:0" size="32" type="uint"/>
+    <field name="Resources" start="0x04:0" size="48" type="address"/>
+    <field name="Shader" start="0x14:0" size="48" type="address"/>
+    <field name="Thread storage" start="0x1e:0" size="48" type="address"/>
+    <field name="FAU" start="0x0c:0" size="48" type="address"/>
+    <field name="FAU count" start="0x0c:56" size="8" type="uint"/>
+  </struct>
+
+  <struct name="Compute Shader Environment" layout="cs" unpacked="Shader Environment">
+    <field name="Attribute offset" start="0:0" size="32" type="uint"/>
+    <field name="Resources" start="0x06:0" size="48" type="address"/>
+    <field name="Shader" start="0x16:0" size="48" type="address"/>
+    <field name="Thread storage" start="0x1e:0" size="48" type="address"/>
+    <field name="FAU" start="0x0e:0" size="48" type="address"/>
+    <field name="FAU count" start="0x0e:56" size="8" type="uint"/>
+  </struct>
+
+  <struct name="Compute Payload" layout="cs">
+    <field name="Workgroup size X" start="0x21:0" size="10" type="uint" modifier="minus(1)"/>
+    <field name="Workgroup size Y" start="0x21:10" size="10" type="uint" modifier="minus(1)"/>
+    <field name="Workgroup size Z" start="0x21:20" size="10" type="uint" modifier="minus(1)"/>
+    <field name="Allow merging workgroups" start="0x21:31" size="1" type="bool"/>
+    <field name="Workgroup count X" start="0x25:0" size="32" type="uint"/>
+    <field name="Workgroup count Y" start="0x26:0" size="32" type="uint"/>
+    <field name="Workgroup count Z" start="0x27:0" size="32" type="uint"/>
+    <field name="Offset X" start="5:0" size="32" type="uint"/>
+    <field name="Offset Y" start="6:0" size="32" type="uint"/>
+    <field name="Offset Z" start="7:0" size="32" type="uint"/>
+    <field name="Compute" start="0x00:0" size="0" type="Compute Shader Environment"/>
   </struct>
 
   <struct name="Resource" size="4" align="16">
@@ -1261,7 +1353,43 @@
     <field name="Vertex attribute stride" size="16" start="2:16" type="uint"/>
   </struct>
 
-  <struct name="Frame Draw" align="64">
+  <struct name="Draw" layout="cs">
+    <field name="Allow forward pixel to kill" size="1" start="0x39:0" type="bool"/>
+    <field name="Allow forward pixel to be killed" size="1" start="0x39:1" type="bool"/>
+    <field name="Pixel kill operation" size="2" start="0x39:2" type="Pixel Kill"/>
+    <field name="ZS update operation" size="2" start="0x39:4" type="Pixel Kill"/>
+    <field name="Allow primitive reorder" size="1" start="0x39:6" type="bool"/>
+    <field name="Overdraw alpha0" start="0x39:7" size="1" type="bool"/>
+    <field name="Overdraw alpha1" size="1" start="0x39:8" type="bool"/>
+    <field name="Clean Fragment Write" size="1" start="0x39:9" type="bool"/>
+    <field name="Primitive Barrier" size="1" start="0x39:10" type="bool"/>
+    <field name="Evaluate per-sample" size="1" start="0x39:11" type="bool"/>
+    <field name="Single-sampled lines" size="1" start="0x39:13" type="bool"/>
+    <field name="Occlusion query" size="2" start="0x39:14" type="Occlusion Mode" default="Disabled"/>
+    <field name="Front face CCW" size="1" start="0x39:16" type="bool"/>
+    <field name="Cull front face" size="1" start="0x39:17" type="bool"/>
+    <field name="Cull back face" size="1" start="0x39:18" type="bool"/>
+    <field name="Multisample enable" size="1" start="0x39:19" type="bool"/>
+    <field name="Shader modifies coverage" size="1" start="0x39:20" type="bool"/>
+    <field name="Alpha-to-coverage Invert" size="1" start="0x39:21" type="bool"/>
+    <field name="Alpha-to-coverage" size="1" start="0x39:22" type="bool"/>
+    <field name="Scissor to bounding box" size="1" start="0x39:23" type="bool"/>
+
+    <!-- TODO: Where are these? -->
+    <field name="Sample mask" size="16" start="1:0" type="uint"/>
+    <field name="Render target mask" start="1:16" size="8" type="hex"/>
+    <field name="Vertex array" start="2:0" size="96" type="Vertex Array"/>
+
+    <field name="Minimum Z" start="0x2c:0" size="32" type="float"/>
+    <field name="Maximum Z" start="0x2d:0" size="32" type="float"/>
+    <field name="Depth/stencil" start="0x34:0" size="48" type="address"/>
+    <field name="Blend count" start="0x32:0" size="4" type="uint"/>
+    <field name="Blend" start="0x32:4" size="44" type="address" modifier="shr(4)"/>
+    <field name="Occlusion" size="48" start="0x2e:0" type="address"/>
+    <field name="Shader" start="0x0:0" size="0" type="Fragment Shader Environment"/>
+  </struct>
+
+  <struct name="Frame Draw" align="64" unpacked="Draw">
     <field name="Allow forward pixel to kill" size="1" start="0:0" type="bool"/>
     <field name="Allow forward pixel to be killed" size="1" start="0:1" type="bool"/>
     <field name="Pixel kill operation" size="2" start="0:2" type="Pixel Kill"/>
@@ -1293,5 +1421,19 @@
     <field name="Blend" start="12:4" size="44" type="address" modifier="shr(4)"/>
     <field name="Occlusion" size="48" start="14:0" type="address"/>
     <field name="Shader" start="16:0" size="0" type="Shader Environment"/>
+  </struct>
+
+  <struct name="Count" layout="cs">
+    <!-- I think this is right? -->
+    <field name="Count" start="0x22:0" size="32" type="uint"/>
+  </struct>
+
+  <struct name="Tiler Pointer" layout="cs">
+    <field name="Address" size="48" start="0x28:0" type="address"/>
+  </struct>
+
+  <struct name="Primitive Size" layout="cs">
+    <field name="Constant" size="32" start="0x3c:0" type="float"/>
+    <field name="Size Array" size="48" start="0x3c:0" type="uint"/>
   </struct>
 </panxml>

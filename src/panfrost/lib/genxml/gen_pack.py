@@ -950,7 +950,7 @@ class Parser(object):
                 assert(field_unpacked == other_unpacked)
                 assert(field.size() <= other.size())
 
-            print("#define %s %s" % (name, group.unpacked_alias))
+            print("#define %s %s" % (name, unpacked_name))
         else:
             print("struct %s {" % name)
             group.emit_template_struct("")

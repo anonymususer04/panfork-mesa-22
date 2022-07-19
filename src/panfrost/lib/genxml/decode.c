@@ -301,6 +301,7 @@ pandecode_mfbd_bfr(uint64_t gpu_va, bool is_fragment, unsigned gpu_id)
         struct pandecode_fbd info;
 
 #if PAN_ARCH >= 6
+#if PAN_ARCH < 10
         pandecode_sample_locations(fb);
 
         pan_section_unpack(fb, FRAMEBUFFER, PARAMETERS, bparams);
@@ -328,6 +329,7 @@ pandecode_mfbd_bfr(uint64_t gpu_va, bool is_fragment, unsigned gpu_id)
                 pandecode_log("Post frame:\n");
                 pandecode_dcd(&draw, MALI_JOB_TYPE_FRAGMENT, "", gpu_id);
         }
+#endif
 #endif /* PAN_ARCH >= 6 */
 
         pandecode_log("Multi-Target Framebuffer:\n");
@@ -1484,7 +1486,10 @@ pandecode_cs_command(uint64_t command,
         uint8_t arg1 = h & 0xff;
         uint8_t arg2 = h >> 8;
 
-        switch (op) {
+	if (command)
+                pandecode_log("%016"PRIx64" ", command);
+
+	switch (op) {
         case 0:
                 if (addr || value)
                         pandecode_log("nop %02x, #0x%"PRIx64"\n", addr, value);
@@ -1572,12 +1577,24 @@ pandecode_cs_command(uint64_t command,
                 if (arg1)
                         pandecode_log("add x%02x, (unk %x), x%02x, #0x%x\n",
                                       addr, arg1, arg2, l);
+                else if ((int32_t) l < 0)
+                        pandecode_log("add x%02x, x%02x, %i\n",
+                                      addr, arg2, (int32_t) l);
                 else if (l)
                         pandecode_log("add x%02x, x%02x, #0x%x\n",
                                       addr, arg2, l);
                 else
                         pandecode_log("mov x%02x, x%02x\n", addr, arg2);
 
+                break;
+        }
+        case 21: {
+                if (arg1 || (l >> 16) != 3)
+                        pandecode_log("str (unk %02x), x%02x, (unk %x), [x%02x, %x]\n",
+                                      arg1, addr, l >> 16, arg2, l & 0xffff);
+                else
+                        pandecode_log("str x%02x, [x%02x, %x]\n",
+                                      addr, arg2, l & 0xffff);
                 break;
         }
         case 23: {
@@ -1621,12 +1638,12 @@ pandecode_cs_command(uint64_t command,
                 break;
         }
         case 37: {
-                pandecode_log("str(unk) (unk %02x), w%02x, [x%02x, unk %x]\n",
+                pandecode_log("strev(unk) (unk %02x), w%02x, [x%02x, unk %x]\n",
                               addr, arg1, arg2, l);
                 break;
         }
         case 38: {
-                pandecode_log("str (unk %02x), w%02x, [x%02x, unk %x]\n",
+                pandecode_log("strev (unk %02x), w%02x, [x%02x, unk %x]\n",
                               addr, arg1, arg2, l);
                 break;
         }

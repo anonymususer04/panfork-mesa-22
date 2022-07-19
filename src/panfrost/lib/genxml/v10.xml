@@ -603,6 +603,7 @@
   <struct name="Primitive" layout="cs">
     <field name="Point size array format" size="2" start="0x38:11" type="Point Size Array Format"/>
     <field name="Primitive restart" size="2" start="0x38:18" type="Primitive Restart"/>
+    <field name="Unk 2" size="8" start="0x38:16" type="hex" default="67"/>
 
     <!-- These are likely 0x38, but bit positions have not been verified -->
     <field name="Primitive Index Enable" size="1" start="0:13" type="bool"/>
@@ -1069,6 +1070,7 @@
     <field name="ZS Clean Pixel Write Enable" size="1" start="0:31" type="bool"/>
 
     <field name="CRC Row Stride" size="32" start="1:0" type="uint"/>
+    <field name="CRC unk" size="16" start="2:0" type="hex"/>
     <field name="CRC Clear Color" size="48" start="2:16" type="hex"/>
     <field name="CRC Base" size="64" start="4:0" type="address"/>
 
@@ -1222,7 +1224,8 @@
     <field name="Layer count" size="8" start="4:0" type="uint" default="1" modifier="minus(1)"/>
     <field name="Layer offset" size="8" start="4:8" type="uint"/>
     <field name="Heap" size="64" start="6:0" type="address"/>
-    <field name="Weights" size="256" start="8:0" type="Tiler Weights"/>
+    <field name="Heap Unk" size="64" start="8:0" type="address"/>
+    <field name="Unk" size="64" start="24:0" type="address"/>
     <field name="State" size="512" start="32:0" type="Tiler State"/>
   </struct>
 
@@ -1382,10 +1385,11 @@
     <field name="Alpha-to-coverage Invert" size="1" start="0x39:21" type="bool"/>
     <field name="Alpha-to-coverage" size="1" start="0x39:22" type="bool"/>
     <field name="Scissor to bounding box" size="1" start="0x39:23" type="bool"/>
+    <field name="Render target mask" start="0x26:12" size="8" type="hex"/>
+    <field name="Sample mask" size="16" start="0x3a:0" type="uint"/>
 
-    <!-- TODO: Where are these? -->
-    <field name="Sample mask" size="16" start="1:0" type="uint"/>
-    <field name="Render target mask" start="1:16" size="8" type="hex"/>
+    <field name="Unk 1" size="1" start="0x3a:16" type="bool" default="true"/>
+
     <field name="Vertex array" start="2:0" size="96" type="Vertex Array"/>
 
     <field name="Minimum Z" start="0x2c:0" size="32" type="float"/>

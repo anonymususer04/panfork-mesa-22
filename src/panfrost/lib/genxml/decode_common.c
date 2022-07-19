@@ -30,6 +30,8 @@
 #include <string.h>
 #include <sys/mman.h>
 
+#include <fcntl.h>
+
 #include "decode.h"
 #include "util/macros.h"
 #include "util/u_debug.h"
@@ -83,6 +85,21 @@ pandecode_find_mapped_gpu_mem_containing(uint64_t addr)
         struct pandecode_mapped_memory *mem = pandecode_find_mapped_gpu_mem_containing_rw(addr);
 
         if (mem && mem->addr && !mem->ro) {
+                int pipefd[2] = {0};
+                pipe(pipefd);
+                for (unsigned i = 0; i < mem->length; i += 64) {
+                        if (write(pipefd[1], mem->addr + i, 1) == -1)
+                                continue;
+                        char ch;
+                        read(pipefd[0], &ch, 1);
+
+                        __asm__ volatile ("dc civac, %0" :: "r" (
+                                                  mem->addr + i
+                                                  ) : "memory");
+                }
+                close(pipefd[0]);
+                close(pipefd[1]);
+
                 mprotect(mem->addr, mem->length, PROT_READ);
                 mem->ro = true;
                 util_dynarray_append(&ro_mappings, struct pandecode_mapped_memory *, mem);
@@ -183,7 +200,7 @@ pointer_as_memory_reference(uint64_t ptr)
 
 static int pandecode_dump_frame_count = 0;
 
-static bool force_stderr = false;
+bool force_stderr = false;
 
 void
 pandecode_dump_file_open(void)

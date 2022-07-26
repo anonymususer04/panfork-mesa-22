@@ -226,7 +226,7 @@ pandecode_dump_file_open(void)
         }
 }
 
-static void
+void
 pandecode_dump_file_close(void)
 {
         if (pandecode_dump_stream && pandecode_dump_stream != stderr) {
@@ -273,8 +273,8 @@ pandecode_dump_mappings(void)
                 if (!it->addr || !it->length)
                         continue;
 
-                fprintf(pandecode_dump_stream, "Buffer: %s gpu %" PRIx64 "\n\n",
-                        it->name, it->gpu_va);
+                fprintf(pandecode_dump_stream, "Buffer: %s gpu %" PRIx64 " length %zu\n\n",
+                        it->name, it->gpu_va, it->length);
 
                 pan_hexdump(pandecode_dump_stream, it->addr, it->length, false);
                 fprintf(pandecode_dump_stream, "\n");

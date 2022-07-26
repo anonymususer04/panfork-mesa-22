@@ -1504,11 +1504,25 @@ pandecode_cs_command(uint64_t command,
                 pandecode_log("mov w%02x, #0x%"PRIx64"\n", addr, value);
                 break;
         case 3:
-                if (l & 0xffff || h || addr)
-                        pandecode_log("state (unk %02x), (unk %04x), "
+                if (l & 0xff00ffff || h || addr) {
+                        pandecode_log("wait (unk %02x), (unk %04x), "
                                       "%i, (unk %04x)\n", addr, h, l >> 16, l);
-                else
-                        pandecode_log("state %i\n", l >> 16);
+                } else if (l >> 16 == 0xff) {
+                        pandecode_log("wait all\n");
+                } else {
+                        pandecode_log("wait");
+                        uint8_t jobs = l >> 16;
+                        bool pr = false;
+                        for (unsigned i = 0; i < 8; ++i) {
+                                if (jobs & (1 << i)) {
+                                        pandecode_log_cont("%s%i",
+                                                           pr ? "," : " ",
+                                                           i);
+                                        pr = true;
+                                }
+                        }
+                        pandecode_log_cont("\n");
+                }
                 break;
         case 4: {
                 uint32_t masked = l & 0xffff0000;
@@ -1522,7 +1536,7 @@ pandecode_cs_command(uint64_t command,
 
                 pandecode_indent++;
 
-                pandecode_compute_job(NULL, 0, buffer, buffer_unk, gpu_id);
+                //pandecode_compute_job(NULL, 0, buffer, buffer_unk, gpu_id);
 
                 /* The gallium driver emits this even for compute jobs, clear
                  * it from unknown state */
@@ -1548,7 +1562,7 @@ pandecode_cs_command(uint64_t command,
 
                 pandecode_indent++;
 
-                pandecode_malloc_vertex_job(NULL, 0, buffer, buffer_unk, gpu_id);
+                //pandecode_malloc_vertex_job(NULL, 0, buffer, buffer_unk, gpu_id);
 
                 pandecode_cs_dump_state(buffer_unk);
                 pandecode_log("\n");
@@ -1565,7 +1579,7 @@ pandecode_cs_command(uint64_t command,
 
                 pandecode_indent++;
 
-                pandecode_fragment_job(NULL, 0, buffer, buffer_unk, gpu_id);
+                //pandecode_fragment_job(NULL, 0, buffer, buffer_unk, gpu_id);
 
                 pandecode_cs_dump_state(buffer_unk);
                 pandecode_log("\n");
@@ -1598,11 +1612,11 @@ pandecode_cs_command(uint64_t command,
                 break;
         }
         case 23: {
-                if (value >> 8 || addr)
-                        pandecode_log("select (unk %02x), (unk %"PRIx64"), "
-                                      "%i\n", addr, value >> 8, l & 0xff);
+                if (value >> 3 || addr)
+                        pandecode_log("slot (unk %02x), (unk %"PRIx64"), "
+                                      "%i\n", addr, value >> 3, l & 7);
                 else
-                        pandecode_log("select %i\n", l & 0xff);
+                        pandecode_log("slot %i\n", l);
                 break;
         }
         case 32: {
@@ -1628,9 +1642,9 @@ pandecode_cs_command(uint64_t command,
         case 34: {
                 const char *name;
                 switch (l) {
-                case 1: name = "other"; break;
+                case 1: name = "compute"; break;
                 case 2: name = "fragment"; break;
-                case 3: name = "compute"; break;
+                case 3: name = "blit"; break;
                 case 13: name = "vertex"; break;
                 default: name = "unk";
                 }

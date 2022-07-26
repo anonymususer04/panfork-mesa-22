@@ -1440,6 +1440,11 @@
     <field name="Count" start="0x22:0" size="32" type="uint"/>
   </struct>
 
+  <struct name="Allocation" layout="cs">
+    <field name="Vertex packet stride" start="0:0" size="16" type="uint"/>
+    <field name="Vertex attribute stride" start="0x30:0" size="16" type="uint"/>
+  </struct>
+
   <struct name="Tiler Pointer" layout="cs">
     <field name="Address" size="48" start="0x28:0" type="address"/>
   </struct>

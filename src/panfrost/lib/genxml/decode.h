@@ -26,6 +26,11 @@
 #ifndef __PAN_DECODE_H__
 #define __PAN_DECODE_H__
 
+#include <sys/mman.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
+
 #include "genxml/gen_macros.h"
 #include "util/rb_tree.h"
 
@@ -94,12 +99,14 @@ void GENX(pandecode_cs)(mali_ptr jc_gpu_va, unsigned size, unsigned gpu_id);
 void GENX(pandecode_abort_on_fault)(mali_ptr jc_gpu_va);
 #endif
 
-static inline void
-pan_hexdump(FILE *fp, const uint8_t *hex, size_t cnt, bool with_strings)
+static inline bool
+pan_hexdump_mem(FILE *fp, const uint8_t *hex, size_t cnt, bool with_strings, unsigned num_offset)
 {
+        bool last_run = false;
+
         for (unsigned i = 0; i < cnt; ++i) {
                 if ((i & 0xF) == 0)
-                        fprintf(fp, "%06X  ", i);
+                        fprintf(fp, "%06X  ", i + num_offset);
 
                 uint8_t v = hex[i];
 
@@ -117,9 +124,12 @@ pan_hexdump(FILE *fp, const uint8_t *hex, size_t cnt, bool with_strings)
                         if (zero_count >= 32) {
                                 fprintf(fp, "*\n");
                                 i += (zero_count & ~0xF) - 1;
+                                last_run = true;
                                 continue;
                         }
                 }
+
+                last_run = false;
 
                 fprintf(fp, "%02X ", hex[i]);
                 if ((i & 0xF) == 0xF && with_strings) {
@@ -133,6 +143,60 @@ pan_hexdump(FILE *fp, const uint8_t *hex, size_t cnt, bool with_strings)
                 if ((i & 0xF) == 0xF)
                         fprintf(fp, "\n");
         }
+
+        return last_run;
+}
+
+static inline void
+pan_hexdump(FILE *fp, const uint8_t *hex, size_t cnt, bool with_strings)
+{
+        //pan_hexdump_mem(fp, hex, cnt, with_strings, 0);
+        //fprintf(fp, "\n");
+        //return;
+
+        int fd = memfd_create("hexdump temp", MFD_CLOEXEC);
+
+        unsigned last_errno = 0;
+
+        bool last_run = false;
+
+        for (unsigned i = 0; i < cnt; i += 4096) {
+                int wr = write(fd, hex, 4096);
+                if (wr == -1) {
+                        if (errno != last_errno)
+                                fprintf(fp, "%06X  %s\n", i, strerrorname_np(errno));
+                        last_errno = errno;
+                        last_run = false;
+                        continue;
+                }
+                last_errno = 0;
+
+                if (!wr) {
+                        last_run = false;
+                        continue;
+                }
+
+                lseek(fd, 0, SEEK_SET);
+                unsigned char buf[4096] = {0};
+                read(fd, buf, wr);
+
+                bool zero = false;
+                if (last_run) {
+                        zero = true;
+                        for (unsigned a = 0; a < wr; ++a) {
+                                if (buf[a]) {
+                                        zero = false;
+                                        break;
+                                }
+                        }
+                }
+
+                if (!zero)
+                        last_run = pan_hexdump_mem(fp, buf, wr, with_strings, i);
+
+                ftruncate(fd, 0);
+        }
+        close(fd);
 
         fprintf(fp, "\n");
 }

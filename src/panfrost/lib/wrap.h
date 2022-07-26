@@ -46,6 +46,8 @@ void pandecode_initialize(bool to_stderr);
 
 void pandecode_next_frame(void);
 
+void pandecode_dump_file_close(void);
+
 void pandecode_close(void);
 
 void

@@ -1224,7 +1224,7 @@ mir_schedule_alu(
          * return address for the blend shader to jump to.  We always emit the
          * move for blend shaders themselves for ABI reasons. */
 
-        if (writeout && (ctx->inputs->is_blend || ctx->writeout_branch[1])) {
+        if (writeout && (ctx->inputs->is_blend || ctx->writeout_branch[1][0])) {
                 vadd = ralloc(ctx, midgard_instruction);
                 *vadd = v_mov(~0, make_compiler_temp(ctx));
 

@@ -1502,10 +1502,8 @@ pandecode_regmask(unsigned base, unsigned mask)
                         pandecode_log_cont("%sw%02x", comma,
                                            base + start);
                 else if (i == start + 2)
-                        pandecode_log_cont("%sw%02x, w%02x",
-                                           comma,
-                                           base + start,
-                                           base + start + 1);
+                        pandecode_log_cont("%sx%02x", comma,
+                                           base + start);
                 else
                         pandecode_log_cont("%sw%02x-w%02x", comma,
                                            base + start,
@@ -1640,18 +1638,22 @@ pandecode_cs_command(uint64_t command,
 
                 break;
         }
-        case 17: {
+
+        case 16: case 17: {
+                char wid = (op == 16) ? 'w' : 'x';
+
                 if (arg1)
-                        pandecode_log("add x%02x, (unk %x), x%02x, #0x%x\n",
-                                      addr, arg1, arg2, l);
+                        pandecode_log("add %c%02x, (unk %x), %c%02x, #0x%x\n",
+                                      wid, addr, wid, arg1, arg2, l);
                 else if ((int32_t) l < 0)
-                        pandecode_log("add x%02x, x%02x, %i\n",
-                                      addr, arg2, (int32_t) l);
+                        pandecode_log("add %c%02x, %c%02x, %i\n",
+                                      wid, addr, wid, arg2, (int32_t) l);
                 else if (l)
-                        pandecode_log("add x%02x, x%02x, #0x%x\n",
-                                      addr, arg2, l);
+                        pandecode_log("add %c%02x, %c%02x, #0x%x\n",
+                                      wid, addr, wid, arg2, l);
                 else
-                        pandecode_log("mov x%02x, x%02x\n", addr, arg2);
+                        pandecode_log("mov %c%02x, %c%02x\n",
+                                      wid, addr, wid, arg2);
 
                 break;
         }
@@ -1662,8 +1664,17 @@ pandecode_cs_command(uint64_t command,
                 /* The immediate offset must be 4-aligned (though if the
                  * address itself is unaligned, the bits will silently be
                  * masked off).
-                 * Unlike most 64-bit instructions (or at least mov), the
-                 * source register may be odd! */
+                 *
+                 * Up to 16 32-bit registers can be read or written in a
+                 * single instruction, behaviour is similar to LDM or STM
+                 * except that a base register is specified.
+                 *
+                 * These instructions are high latency. Use WAIT 0 to wait for
+                 * the result of an LDR, or for a STR to finish.
+                 *
+                 * For LDR, it is an error for the address register to be
+                 * included in the destination register set.
+                 */
 
                 if (arg1) {
                         pandecode_log("%s (unk %02x), x%02x, (mask %x), [x%02x, %i]\n",
@@ -1673,6 +1684,40 @@ pandecode_cs_command(uint64_t command,
                         pandecode_regmask(addr, l >> 16);
                         pandecode_log_cont(", [x%02x, %i]\n", arg2, (int16_t) l);
                 }
+                break;
+        }
+
+        case 22: {
+                /* The signed 32-bit source register is compared against zero
+                 * for these comparisons. For example, .GT means that the
+                 * branch is taken if the signed register value is greater
+                 * than zero. */
+                const char *m = (const char *[]) {
+                        ".gt", ".le",
+                        ".eq", ".ne",
+                        ".lt", ".ge",
+                        "" /* always */, ".(invalid: never)",
+                }[(l >> 28) & 7];
+
+                int16_t offset = l;
+
+                bool forward = (offset >= 0);
+                if (!forward)
+                        offset = -1 - offset;
+
+                if (addr || arg1 || l & 0x8fff0000) {
+                        pandecode_log("b%s (unk %02x), w%02x, (unk %02x), "
+                                      "(unk 0x%x), %s %i\n",
+                                      m, addr, arg2, arg1, l & 0x8fff0000,
+                                      forward ? "skip" : "back",
+                                      offset);
+                } else {
+                        pandecode_log("b%s w%02x, %s %i\n",
+                                      m, arg2,
+                                      forward ? "skip" : "back",
+                                      offset);
+                }
+
                 break;
         }
 
@@ -1716,14 +1761,35 @@ pandecode_cs_command(uint64_t command,
                 pandecode_log("iter %s\n", name);
                 break;
         }
-        case 37: {
-                pandecode_log("strev(unk) (unk %02x), w%02x, [x%02x, unk %x]\n",
-                              addr, arg1, arg2, l);
-                break;
-        }
-        case 38: {
-                pandecode_log("strev (unk %02x), w%02x, [x%02x, unk %x]\n",
-                              addr, arg1, arg2, l);
+
+        case 37: case 38: {
+                /*
+                 * 0b 00100101 / 00100110 -- opcode
+                 *    ????0??? -- unk. usually 1, faults if "0" bit set
+                 *    aaaaaaaa -- address register
+                 *    vvvvvvvv -- 32-bit value register
+                 *    00000000 -- seems to act as NOP if nonzero
+                 *    0xf8 (evstr0) / 0xfd / 0x4 (evstr1) -- unk
+                 *    ???????? -- seems to have no effect
+                 *    ?????s0u -- 's' disables signal to CPU,
+                 *                'u' has unknown purpose (disable GPU signal?)
+                 *
+                 * The difference between the two opcodes is unknown.
+                 */
+
+                const char *name = (op == 37) ? "evstr0" : "evstr1";
+
+                if (addr != 1 || l & 0xff00fffa)
+                        pandecode_log("%s (unk %02x), w%02x, [x%02x], "
+                                      "mode 0x%x, flags 0x%x\n",
+                                      name, addr, arg1, arg2,
+                                      l >> 16, (uint16_t) l);
+                else
+                        pandecode_log("%s w%02x, [x%02x], mode 0x%x%s%s\n",
+                                      name, arg1, arg2, l >> 16,
+                                      l & 0x4 ? "" : ", irq",
+                                      l & 0x1 ? ", nogpu?" : ", gpu?");
+
                 break;
         }
         case 39: {

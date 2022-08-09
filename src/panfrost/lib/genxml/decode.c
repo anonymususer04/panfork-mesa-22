@@ -1803,7 +1803,7 @@ pandecode_cs_command(uint64_t command,
                  * unknown.
                  */
 
-                const char *name = (op == 37) ? "evstr0" : "evstr1";
+                const char *name = (op == 37) ? "evadd" : "evstr";
 
                 if (addr != 1 || l & 0xff00fffa) {
                         pandecode_log("%s (unk %02x), w%02x, [x%02x], "

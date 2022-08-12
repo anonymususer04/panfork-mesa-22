@@ -84,7 +84,7 @@ pandecode_find_mapped_gpu_mem_containing(uint64_t addr)
 {
         struct pandecode_mapped_memory *mem = pandecode_find_mapped_gpu_mem_containing_rw(addr);
 
-        if (mem && mem->addr && !mem->ro) {
+        if (false && mem && mem->addr && !mem->ro) {
                 int pipefd[2] = {0};
                 pipe(pipefd);
                 for (unsigned i = 0; i < mem->length; i += 64) {

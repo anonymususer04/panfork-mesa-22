@@ -1544,10 +1544,11 @@ pandecode_cs_buffer(uint64_t *commands, unsigned size,
                     unsigned gpu_id);
 
 static void
-pandecode_cs_command(uint64_t command,
+pandecode_cs_command(uint64_t *command_ptr,
                      uint32_t *buffer, uint32_t *buffer_unk,
                      unsigned gpu_id)
 {
+        uint64_t command = *command_ptr;
         uint8_t op = command >> 56;
         uint8_t addr = (command >> 48) & 0xff;
         uint64_t value = command & 0xffffffffffffULL;
@@ -1821,6 +1822,15 @@ pandecode_cs_command(uint64_t command,
                         pandecode_log("evwait w%02x, [x%02x]\n", arg1, arg2);
                 break;
         }
+#if 0
+        case 11:
+        case 49:
+        case 9: {
+                pandecode_log("RMD %02x %02x, #0x%"PRIx64"\n", addr, op, value);
+                *command_ptr = 0;
+                break;
+        }
+#endif
         default:
                 pandecode_log("UNK %02x %02x, #0x%"PRIx64"\n", addr, op, value);
                 break;
@@ -1834,7 +1844,7 @@ pandecode_cs_buffer(uint64_t *commands, unsigned size,
 {
         uint64_t *end = (uint64_t *)((uint8_t *) commands + size);
 
-        for (uint64_t c = *commands; commands < end; c = *(++commands)) {
+        for (uint64_t *c = commands; c < end; ++c) {
                 pandecode_cs_command(c, buffer, buffer_unk, gpu_id);
         }
 }

@@ -1604,7 +1604,7 @@ pandecode_cs_command(uint64_t *command_ptr,
                  * it from unknown state */
                 pan_unpack_cs(buffer, buffer_unk, SCISSOR, unused_scissor);
 
-                pandecode_cs_dump_state(buffer_unk);
+                //pandecode_cs_dump_state(buffer_unk);
                 pandecode_log("\n");
                 pandecode_indent--;
 
@@ -1626,7 +1626,7 @@ pandecode_cs_command(uint64_t *command_ptr,
 
                 //pandecode_malloc_vertex_job(NULL, 0, buffer, buffer_unk, gpu_id);
 
-                pandecode_cs_dump_state(buffer_unk);
+                //pandecode_cs_dump_state(buffer_unk);
                 pandecode_log("\n");
                 pandecode_indent--;
 
@@ -1643,7 +1643,7 @@ pandecode_cs_command(uint64_t *command_ptr,
 
                 //pandecode_fragment_job(NULL, 0, buffer, buffer_unk, gpu_id);
 
-                pandecode_cs_dump_state(buffer_unk);
+                //pandecode_cs_dump_state(buffer_unk);
                 pandecode_log("\n");
                 pandecode_indent--;
 

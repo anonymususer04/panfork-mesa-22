@@ -1703,12 +1703,14 @@ pandecode_cs_command(uint64_t *command_ptr,
                  * for these comparisons. For example, .GT means that the
                  * branch is taken if the signed register value is greater
                  * than zero. */
-                const char *m = (const char *[]) {
+                const char *comparisons[] = {
                         ".gt", ".le",
                         ".eq", ".ne",
                         ".lt", ".ge",
                         "" /* always */, ".(invalid: never)",
-                }[(l >> 28) & 7];
+                };
+
+                const char *m = comparisons[(l >> 28) & 7];
 
                 int16_t offset = l;
 
@@ -1740,6 +1742,7 @@ pandecode_cs_command(uint64_t *command_ptr,
                         pandecode_log("slot %i\n", l);
                 break;
         }
+
         case 32: {
                 unsigned length = buffer[arg1];
                 uint64_t target = (((uint64_t)buffer[arg2 + 1]) << 32) | buffer[arg2];
@@ -1748,11 +1751,14 @@ pandecode_cs_command(uint64_t *command_ptr,
                 unsigned instrs = length / 8;
 
                 if (addr || l)
-                        pandecode_log("job (unk %02x), w%02x (%i instructions), x%02x (0x%"PRIx64"), (unk %x)\n",
+                        pandecode_log("call (unk %02x), w%02x (%i instructions), x%02x (0x%"PRIx64"), (unk %x)\n",
                                       addr, arg1, instrs, arg2, target, l);
                 else
-                        pandecode_log("job w%02x (%i instructions), x%02x (0x%"PRIx64")\n",
+                        pandecode_log("call w%02x (%i instructions), x%02x (0x%"PRIx64")\n",
                                       arg1, instrs, arg2, target);
+
+                if (!target || !length)
+                        break;
 
                 uint64_t *t = pandecode_fetch_gpu_mem(NULL, target, length);
                 pandecode_indent++;
@@ -1760,68 +1766,93 @@ pandecode_cs_command(uint64_t *command_ptr,
                 pandecode_indent--;
                 break;
         }
+
         case 34: {
-                const char *name;
-                switch (l) {
-                case 1: name = "compute"; break;
-                case 2: name = "fragment"; break;
-                case 3: name = "blit"; break;
-                case 13: name = "vertex"; break;
-                default: name = "unk";
-                }
-                pandecode_log("iter %s\n", name);
+                if (l & ~0xf)
+                        pandecode_log("endpt 0x%x\n", l);
+                else
+                        pandecode_log("endpt%s%s%s%s\n",
+                                      (l & 1) ? " compute" : "",
+                                      (l & 2) ? " fragment" : "",
+                                      (l & 4) ? " vertex1" : "",
+                                      (l & 8) ? " vertex2" : "");
                 break;
         }
 
-        case 37: case 38: {
+        case 37: case 38: case 51: case 52: {
                 /*
                  * 0b 00100101 / 00100110 -- opcode
                  *    ????0??? -- unk. usually 1, faults if "0" bit set
                  *    aaaaaaaa -- address register
                  *    vvvvvvvv -- 32-bit value register
                  *    00000000 -- seems to act as NOP if nonzero
-                 *    mmmmmmmm -- scoreboard mask, unknown purpose
+                 *    mmmmmmmm -- some sort of mask, unknown purpose
                  *    ???????? -- seems to have no effect
                  *    ?????s0u -- 's' disables signal to CPU,
                  *                'u' has unknown purpose (disable GPU signal?)
                  *
                  * The difference between the two opcodes is unknown.
                  *
-                 * That the 'mmmmmmmm' byte is really a scoreboard mask is
-                 * unknown.
+                 * That the 'mmmmmmmm' byte is somehow a scoreboard mask is
+                 * a possibility.
                  */
 
-                const char *name = (op == 37) ? "evstr0" : "evstr1";
+                const char *name = (op & 1) ? "evadd" : "evstr";
+                const char *type = (op > 50) ? "x" : "w";
 
                 if (addr != 1 || l & 0xff00fffa) {
-                        pandecode_log("%s (unk %02x), w%02x, [x%02x], "
-                                      "sb 0x%x, flags 0x%x\n",
-                                      name, addr, arg1, arg2,
+                        pandecode_log("%s (unk %02x), %s%02x, [x%02x], "
+                                      "unk 0x%x, flags 0x%x\n",
+                                      name, addr, type, arg1, arg2,
                                       l >> 16, (uint16_t) l);
                 } else {
-                        pandecode_log("%s w%02x, [x%02x], sb ",
-                                      name, arg1, arg2);
-                        pandecode_scoreboard_mask(l >> 16);
-                        pandecode_log_cont("%s%s\n",
-                                           l & 0x4 ? "" : ", irq",
-                                           l & 0x1 ? ", nogpu?" : ", gpu?");
+                        pandecode_log("%s %s%02x, [x%02x], unk 0x%x%s%s\n",
+                                      name, type, arg1, arg2, l >> 16,
+                                      l & 0x4 ? "" : ", irq",
+                                      l & 0x1 ? ", unk0" : "");
                 }
 
                 break;
         }
-        case 39: {
+        case 39: case 53: {
+                const char *m = (const char *[]){
+                        ".ls",
+                        ".hi",
+                }[(l >> 28) & 1];
+                const char *type = (op > 50) ? "x" : "w";
+
                 /* Wait until the value in the destination register is changed
-                 * to be *different* from the value using an evstr
-                 * instruction.
-                 */
-                if (addr || l != 0x10000000)
-                        pandecode_log("evwait (unk %02x), w%02x, "
+                 * to pass the comparison. For example, with .LS the value
+                 * in memory must be less than or same as the reference to
+                 * continue execution. */
+                if (addr || l & ~(1 << 28))
+                        pandecode_log("evwait%s (unk %02x), %s%02x, "
                                       "[x%02x, unk %x]\n",
-                                      addr, arg1, arg2, l);
+                                      m, addr, type, arg1, arg2, l);
                 else
-                        pandecode_log("evwait w%02x, [x%02x]\n", arg1, arg2);
+                        pandecode_log("evwait%s %s%02x, [x%02x]\n",
+                                      m, type, arg1, arg2);
                 break;
         }
+
+        case 40: {
+                if (addr || l >> 16 || arg1 > 1) {
+                        pandecode_log("str type %02x, (unk %02x), "
+                                      "(unk %x), [x%02x, %i]\n",
+                                      addr, arg1,
+                                      l >> 16, arg2, (int16_t) l);
+                } else {
+                        const char *type = (const char *[]) {
+                                "timestamp",
+                                "cycles",
+                        }[arg1];
+
+                        pandecode_log("str %s, [x%02x, %i]\n",
+                                      type, arg2, (int16_t) l);
+                }
+                break;
+        }
+
 #if 0
         case 11:
         case 49:
@@ -1832,6 +1863,11 @@ pandecode_cs_command(uint64_t *command_ptr,
         }
 #endif
         default:
+                /*
+                 * UNK 00 30, #0x480000000000 -- takes an eight-byte aligned
+                 * memory address.
+                 */
+
                 pandecode_log("UNK %02x %02x, #0x%"PRIx64"\n", addr, op, value);
                 break;
         }

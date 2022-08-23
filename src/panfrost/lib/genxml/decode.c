@@ -1607,7 +1607,7 @@ pandecode_cs_command(uint64_t command, mali_ptr va,
 
                 pandecode_indent++;
 
-                //pandecode_compute_job(NULL, 0, buffer, buffer_unk, gpu_id);
+                pandecode_compute_job(NULL, 0, buffer, buffer_unk, gpu_id);
 
                 /* The gallium driver emits this even for compute jobs, clear
                  * it from unknown state */

@@ -1634,11 +1634,30 @@ pandecode_cs_command(uint64_t *command_ptr,
                 break;
         }
         case 7: {
-                if (addr || value)
+                uint64_t masked = value & ~0x000100000071;
+                bool tem = value & 1;
+                bool unk = (value >> 32) & 1;
+
+                const char *order = (const char *[]){
+                        "z_order",
+                        "horizontal",
+                        "vertical",
+                        "invalid_3",
+                        "invalid_4",
+                        "reverse_horizontal",
+                        "reverse_vertical",
+                        "invalid_7",
+                }[(value >> 4) & 7];
+
+                if (addr || masked) {
                         pandecode_log("fragment (unk %02x), (unk %"PRIx64")\n\n",
                                       addr, value);
-                else
+                } else if (value) {
+                        pandecode_log("fragment tem %i, render %s, unk %i\n\n",
+                                      tem, order, unk);
+                } else {
                         pandecode_log("fragment\n\n");
+                }
 
                 pandecode_indent++;
 
@@ -1647,7 +1666,17 @@ pandecode_cs_command(uint64_t *command_ptr,
                 //pandecode_cs_dump_state(buffer_unk);
                 pandecode_log("\n");
                 pandecode_indent--;
+                break;
+        }
 
+        case 9: {
+                if (addr || l || h > 1)
+                        pandecode_log("flush_tiler (unk %02x), (unk %"PRIx64")\n",
+                                      addr, value);
+                else if (h)
+                        pandecode_log("flush_tiler unk\n");
+                else
+                        pandecode_log("flush_tiler\n");
                 break;
         }
 
@@ -1656,7 +1685,7 @@ pandecode_cs_command(uint64_t *command_ptr,
 
                 if (arg1)
                         pandecode_log("add %c%02x, (unk %x), %c%02x, #0x%x\n",
-                                      wid, addr, wid, arg1, arg2, l);
+                                      wid, addr, arg1, wid, arg2, l);
                 else if ((int32_t) l < 0)
                         pandecode_log("add %c%02x, %c%02x, %i\n",
                                       wid, addr, wid, arg2, (int32_t) l);
@@ -1705,7 +1734,7 @@ pandecode_cs_command(uint64_t *command_ptr,
                  * branch is taken if the signed register value is greater
                  * than zero. */
                 const char *comparisons[] = {
-                        ".gt", ".le",
+                        ".le", ".gt",
                         ".eq", ".ne",
                         ".lt", ".ge",
                         "" /* always */, ".(invalid: never)",
@@ -1769,14 +1798,15 @@ pandecode_cs_command(uint64_t *command_ptr,
         }
 
         case 34: {
+                /* idvs implies tiler */
                 if (l & ~0xf)
                         pandecode_log("endpt 0x%x\n", l);
                 else
                         pandecode_log("endpt%s%s%s%s\n",
                                       (l & 1) ? " compute" : "",
                                       (l & 2) ? " fragment" : "",
-                                      (l & 4) ? " vertex1" : "",
-                                      (l & 8) ? " vertex2" : "");
+                                      (l & 4) ? " tiler" : "",
+                                      (l & 8) ? " idvs" : "");
                 break;
         }
 
@@ -1815,6 +1845,7 @@ pandecode_cs_command(uint64_t *command_ptr,
 
                 break;
         }
+
         case 39: case 53: {
                 const char *m = (const char *[]){
                         ".ls",

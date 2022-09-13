@@ -1454,7 +1454,8 @@ static void
 pandecode_cs_dump_state(uint32_t *state)
 {
         uint64_t *st_64 = (uint64_t *)state;
-        for (unsigned i = 0; i < 256 / 4; ++i) {
+        /* Only registers below 0x40 seem to be actually be used by jobs */
+        for (unsigned i = 0; i < 0x40 / 4; ++i) {
                 uint64_t v1 = st_64[i * 2];
                 uint64_t v2 = st_64[i * 2 + 1];
 

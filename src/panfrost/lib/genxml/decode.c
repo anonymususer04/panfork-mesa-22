@@ -301,13 +301,11 @@ pandecode_mfbd_bfr(uint64_t gpu_va, bool is_fragment, unsigned gpu_id)
         struct pandecode_fbd info;
 
 #if PAN_ARCH >= 6
-#if PAN_ARCH < 10
         pandecode_sample_locations(fb);
 
         pan_section_unpack(fb, FRAMEBUFFER, PARAMETERS, bparams);
         unsigned dcd_size = pan_size(FRAME_DRAW);
-        struct pandecode_mapped_memory *dcdmem =
-                pandecode_find_mapped_gpu_mem_containing(bparams.frame_shader_dcds);
+        struct pandecode_mapped_memory *dcdmem = NULL;
 
         if (bparams.pre_frame_0 != MALI_PRE_POST_FRAME_SHADER_MODE_NEVER) {
                 const void *PANDECODE_PTR_VAR(dcd, dcdmem, bparams.frame_shader_dcds + (0 * dcd_size));
@@ -329,7 +327,6 @@ pandecode_mfbd_bfr(uint64_t gpu_va, bool is_fragment, unsigned gpu_id)
                 pandecode_log("Post frame:\n");
                 pandecode_dcd(&draw, MALI_JOB_TYPE_FRAGMENT, "", gpu_id);
         }
-#endif
 #endif /* PAN_ARCH >= 6 */
 
         pandecode_log("Multi-Target Framebuffer:\n");

@@ -1,3 +1,5 @@
+#define DECODE_JOBS 0
+
 /*
  * Copyright (C) 2017-2019 Alyssa Rosenzweig
  * Copyright (C) 2017-2019 Connor Abbott
@@ -1596,7 +1598,8 @@ pandecode_cs_command(uint64_t *command_ptr,
 
                 pandecode_indent++;
 
-                //pandecode_compute_job(NULL, 0, buffer, buffer_unk, gpu_id);
+                if (DECODE_JOBS)
+                        pandecode_compute_job(NULL, 0, buffer, buffer_unk, gpu_id);
 
                 /* The gallium driver emits this even for compute jobs, clear
                  * it from unknown state */
@@ -1620,16 +1623,19 @@ pandecode_cs_command(uint64_t *command_ptr,
                         pandecode_log("idvs w%02x, w%02x, mode %i index %i\n\n",
                                       arg1, arg2, mode, index);
 
-                pandecode_indent++;
+                if (DECODE_JOBS) {
+                        pandecode_indent++;
 
-                //pandecode_malloc_vertex_job(NULL, 0, buffer, buffer_unk, gpu_id);
+                        pandecode_malloc_vertex_job(NULL, 0, buffer, buffer_unk, gpu_id);
+                        pandecode_cs_dump_state(buffer_unk);
 
-                //pandecode_cs_dump_state(buffer_unk);
-                pandecode_log("\n");
-                pandecode_indent--;
+                        pandecode_log("\n");
+                        pandecode_indent--;
+                }
 
                 break;
         }
+
         case 7: {
                 uint64_t masked = value & ~0x000100000071;
                 bool tem = value & 1;
@@ -1656,13 +1662,16 @@ pandecode_cs_command(uint64_t *command_ptr,
                         pandecode_log("fragment\n\n");
                 }
 
-                pandecode_indent++;
+                if (DECODE_JOBS) {
+                        pandecode_indent++;
 
-                //pandecode_fragment_job(NULL, 0, buffer, buffer_unk, gpu_id);
+                        pandecode_fragment_job(NULL, 0, buffer, buffer_unk, gpu_id);
+                        //pandecode_cs_dump_state(buffer_unk);
 
-                //pandecode_cs_dump_state(buffer_unk);
-                pandecode_log("\n");
-                pandecode_indent--;
+                        pandecode_log("\n");
+                        pandecode_indent--;
+                }
+
                 break;
         }
 

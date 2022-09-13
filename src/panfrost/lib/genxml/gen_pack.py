@@ -948,7 +948,7 @@ class Parser(object):
                 other_unpacked = self.unpacked_type(other.type)
 
                 assert(field_unpacked == other_unpacked)
-                assert(field.size() <= other.size())
+                assert(not other.size() or field.size() <= other.size())
 
             print("#define %s %s" % (name, unpacked_name))
         else:

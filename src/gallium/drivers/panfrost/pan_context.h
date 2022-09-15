@@ -132,7 +132,6 @@ struct panfrost_cs {
         unsigned mask;
         mali_ptr event_ptr;
         uint64_t seqnum;
-        bool init;
 };
 
 struct panfrost_context {

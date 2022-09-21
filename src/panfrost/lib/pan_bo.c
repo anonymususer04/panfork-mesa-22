@@ -283,7 +283,7 @@ panfrost_bo_cache_put(struct panfrost_bo *bo)
 
         /* Add us to the LRU list and update the last_used field. */
         list_addtail(&bo->lru_link, &dev->bo_cache.lru);
-        clock_gettime(CLOCK_MONOTONIC, &time);
+        clock_gettime(CLOCK_MONOTONIC_COARSE, &time);
         bo->last_used = time.tv_sec;
 
         /* Let's do some cleanup in the BO cache while we hold the

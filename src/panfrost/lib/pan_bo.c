@@ -230,11 +230,9 @@ panfrost_bo_cache_fetch(struct panfrost_device *dev,
 }
 
 static void
-panfrost_bo_cache_evict_stale_bos(struct panfrost_device *dev)
+panfrost_bo_cache_evict_stale_bos(struct panfrost_device *dev,
+                                  struct timespec current_time)
 {
-        struct timespec time;
-
-        clock_gettime(CLOCK_MONOTONIC, &time);
         list_for_each_entry_safe(struct panfrost_bo, entry,
                                  &dev->bo_cache.lru, lru_link) {
                 /* We want all entries that have been used more than 1 sec
@@ -245,7 +243,7 @@ panfrost_bo_cache_evict_stale_bos(struct panfrost_device *dev)
                  * seconds old, but we don't really care, as long as unused BOs
                  * are dropped at some point.
                  */
-                if (time.tv_sec - entry->last_used <= 2)
+                if (current_time.tv_sec - entry->last_used <= 2)
                         break;
 
                 list_del(&entry->bucket_link);
@@ -289,7 +287,7 @@ panfrost_bo_cache_put(struct panfrost_bo *bo)
         /* Let's do some cleanup in the BO cache while we hold the
          * lock.
          */
-        panfrost_bo_cache_evict_stale_bos(dev);
+        panfrost_bo_cache_evict_stale_bos(dev, time);
 
         /* Update the label to help debug BO cache memory usage issues */
         bo->label = "Unused (BO cache)";

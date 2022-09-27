@@ -1346,11 +1346,8 @@ pandecode_compute_job(const struct pandecode_mapped_memory *mem,
 	pandecode_shader(payload.compute.shader, "Shader", gpu_id);
 	if (payload.compute.thread_storage)
 		pandecode_local_storage(payload.compute.thread_storage, 0);
-#if PAN_ARCH < 10
-        // TODO v10 (does FAU even work the same way?
 	if (payload.compute.fau)
 		dump_fau(payload.compute.fau, payload.compute.fau_count, "FAU");
-#endif
 	if (payload.compute.resources)
 		pandecode_resource_tables(payload.compute.resources, "Resources");
 

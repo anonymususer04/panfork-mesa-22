@@ -69,6 +69,7 @@ static const struct debug_named_value panfrost_debug_options[] = {
         {"linear",    PAN_DBG_LINEAR,   "Force linear textures"},
         {"nocache",   PAN_DBG_NO_CACHE, "Disable BO cache"},
         {"dump",      PAN_DBG_DUMP,     "Dump all graphics memory"},
+        {"tiler",     PAN_DBG_TILER,    "Decode the tiler heap"},
         DEBUG_NAMED_VALUE_END
 };
 

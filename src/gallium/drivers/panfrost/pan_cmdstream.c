@@ -3257,9 +3257,7 @@ panfrost_emit_primitive(struct panfrost_batch *batch,
                       info->mode == PIPE_PRIM_LINE_STRIP);
 
         pan_pack_cs_v10(out, &batch->cs_vertex, PRIMITIVE, cfg) {
-#if PAN_ARCH < 10
                 cfg.draw_mode = pan_draw_mode(info->mode);
-#endif
                 if (panfrost_writes_point_size(ctx))
                         cfg.point_size_array_format = MALI_POINT_SIZE_ARRAY_FORMAT_FP16;
 
@@ -3282,13 +3280,10 @@ panfrost_emit_primitive(struct panfrost_batch *batch,
 
                 cfg.job_task_split = 6;
 #else
-// TODO: Verify bit is correct, this shouldn't be hard
-#if PAN_ARCH == 9
                 struct panfrost_shader_state *fs =
                         panfrost_get_shader_state(ctx, PIPE_SHADER_FRAGMENT);
 
                 cfg.allow_rotating_primitives = !(lines || fs->info.bifrost.uses_flat_shading);
-#endif
                 cfg.primitive_restart = info->primitive_restart;
 
                 /* Non-fixed restart indices should have been lowered */
@@ -3297,9 +3292,7 @@ panfrost_emit_primitive(struct panfrost_batch *batch,
 
                 cfg.index_count = ctx->indirect_draw ? 1 : draw->count;
                 enum mali_index_type index_type = panfrost_translate_index_size(info->index_size);
-#if PAN_ARCH < 10
                 cfg.index_type = index_type;
-#endif
 
                 if (PAN_ARCH >= 9) {
                         /* Base vertex offset on Valhall is used for both
@@ -3323,10 +3316,7 @@ panfrost_emit_primitive(struct panfrost_batch *batch,
                 }
 
 #if PAN_ARCH >= 6
-#if PAN_ARCH < 10
-                /* Appears to be gone/moved in v10 */
                 cfg.secondary_shader = secondary_shader;
-#endif
 #endif
         }
 }
@@ -3951,11 +3941,7 @@ panfrost_direct_draw(struct panfrost_batch *batch,
            batch, info, draw, indices, secondary_shader, tiler.cpu);
 
 #if PAN_ARCH >= 10
-        pan_pack_ins(&batch->cs_vertex, IDVS_LAUNCH, cfg) {
-                cfg.draw_mode = pan_draw_mode(info->mode);
-                cfg.index_type = panfrost_translate_index_size(info->index_size);
-                cfg.secondary_shader = secondary_shader;
-        }
+        pan_pack_ins(&batch->cs_vertex, IDVS_LAUNCH, _);
         batch->scoreboard.first_job = 1;
         batch->scoreboard.first_tiler = NULL + 1;
 

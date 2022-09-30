@@ -274,7 +274,7 @@ panfrost_query_afbc(struct panfrost_device *dev, unsigned arch)
 void
 panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
 {
-        if (kbase_open(&dev->mali, fd, 4)) {
+        if (kbase_open(&dev->mali, fd, 4, (dev->debug & PAN_DBG_PERF))) {
                 // TODO: Remove this once bugs are fixed
                 if (!dev->debug)
                         dev->debug = PAN_DBG_NO_CACHE | PAN_DBG_LINEAR | PAN_DBG_NO_AFBC;

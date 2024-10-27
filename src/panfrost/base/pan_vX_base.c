@@ -758,25 +758,29 @@ kbase_syncobj_destroy(kbase k, struct kbase_syncobj *o)
 static struct kbase_syncobj *
 kbase_syncobj_dup(kbase k, struct kbase_syncobj *o)
 {
-        struct kbase_syncobj *dup = kbase_syncobj_create(k);
+    struct kbase_syncobj *dup = kbase_syncobj_create(k);
+    if (!dup) {
+        return NULL;
+    }
 
-        /* Updates are passed from older to newer syncobjs, so reference the
-         * new object */
-        kbase_syncobj_ref(dup);
+    kbase_syncobj_ref(dup);
+    pthread_mutex_lock(&o->child_mtx);
 
-        pthread_mutex_lock(&o->child_mtx);
-
-        ++o->child_count;
-        o->children = reallocarray(o->children, o->child_count,
-                                   sizeof(*o->children));
-
-        o->children[o->child_count - 1] = dup;
-
-        dup->job_count = o->job_count;
-
+    size_t new_count = o->child_count + 1;
+    struct kbase_syncobj **new_children = realloc(o->children, new_count * sizeof(*o->children));
+    if (new_children) {
+        o->children = new_children;
+        o->children[o->child_count] = dup;
+        o->child_count = new_count;
+    } else {
         pthread_mutex_unlock(&o->child_mtx);
+        return NULL;
+    }
 
-        return dup;
+    dup->job_count = o->job_count;
+    pthread_mutex_unlock(&o->child_mtx);
+
+    return dup;
 }
 
 static void
@@ -1032,7 +1036,7 @@ kbase_update_syncobjs(kbase k,
         while (*list) {
                 struct kbase_sync_link *link = *list;
 
-                LOG("seq %lx %lx\n", seqnum, link->seqnum);
+                LOG("seq %llx %llx\n", seqnum, link->seqnum);
 
                 /* Remove the link if the syncobj is now signaled */
                 if (seqnum > link->seqnum) {
@@ -1064,8 +1068,8 @@ kbase_handle_events(kbase k)
                 uint64_t seqnum = event_mem[i * 2];
                 uint64_t cmp = k->event_slots[i].last;
 
-                LOG("MAIN SEQ %lx > %lx?\n", seqnum, cmp);
-
+                LOG("MAIN SEQ %llx > %llx?\n", seqnum, cmp);
+           
                 if (seqnum < cmp) {
                         fprintf(stderr, "seqnum at offset %i went backward "
                                 "from %"PRIu64" to %"PRIu64"!\n",

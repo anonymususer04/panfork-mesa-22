@@ -74,14 +74,5 @@ debug_backtrace_print(FILE *f,
                       const debug_stack_frame *backtrace,
                       unsigned nr_frames)
 {
-   for (unsigned i = 0; i < nr_frames; i++) {
-      if (backtrace[i].procname)
-         fprintf(f,
-                 "%s(+0x%x)\t%012" PRIx64 ": %s+0x%x\n",
-                 backtrace[i].map,
-                 backtrace[i].map_off,
-                 backtrace[i].start_ip,
-                 backtrace[i].procname,
-                 backtrace[i].off);
-   }
+   
 }

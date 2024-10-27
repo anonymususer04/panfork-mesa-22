@@ -1026,6 +1026,7 @@ kbase_read_event(kbase k)
 }
 
 static void
+static void
 kbase_update_syncobjs(kbase k,
                       struct kbase_event_slot *slot,
                       uint64_t seqnum)
@@ -1036,7 +1037,7 @@ kbase_update_syncobjs(kbase k,
         while (*list) {
                 struct kbase_sync_link *link = *list;
 
-                LOG("seq %llx %llx\n", seqnum, link->seqnum);
+                LOG("seq %llu %llu\n", seqnum, link->seqnum);
 
                 /* Remove the link if the syncobj is now signaled */
                 if (seqnum > link->seqnum) {
@@ -1068,7 +1069,7 @@ kbase_handle_events(kbase k)
                 uint64_t seqnum = event_mem[i * 2];
                 uint64_t cmp = k->event_slots[i].last;
 
-                LOG("MAIN SEQ %llx > %llx?\n", seqnum, cmp);
+                LOG("MAIN SEQ %llu > %llu?\n", seqnum, cmp);
            
                 if (seqnum < cmp) {
                         fprintf(stderr, "seqnum at offset %i went backward "

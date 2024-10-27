@@ -1026,7 +1026,6 @@ kbase_read_event(kbase k)
 }
 
 static void
-static void
 kbase_update_syncobjs(kbase k,
                       struct kbase_event_slot *slot,
                       uint64_t seqnum)
@@ -1037,7 +1036,7 @@ kbase_update_syncobjs(kbase k,
         while (*list) {
                 struct kbase_sync_link *link = *list;
 
-                LOG("seq %llu %llu\n", seqnum, link->seqnum);
+                LOG("seq %lu %lu\n", (unsigned long)seqnum, (unsigned long)link->seqnum);
 
                 /* Remove the link if the syncobj is now signaled */
                 if (seqnum > link->seqnum) {
@@ -1048,8 +1047,6 @@ kbase_update_syncobjs(kbase k,
                                 slot->back = list;
                         free(link);
                 } else {
-                        // TODO: Assume that later syncobjs will have higher
-                        // values and so skip checking?
                         list = &link->next;
                 }
         }
@@ -1058,25 +1055,21 @@ kbase_update_syncobjs(kbase k,
 static void
 kbase_handle_events(kbase k)
 {
-        /* This will clear the event count, so there's no need to do it in a
-         * loop. */
         kbase_read_event(k);
 
         uint64_t *event_mem = k->event_mem.cpu;
 
-        /* TODO: Locking? */
         for (unsigned i = 0; i < k->event_slot_usage; ++i) {
                 uint64_t seqnum = event_mem[i * 2];
                 uint64_t cmp = k->event_slots[i].last;
 
-                LOG("MAIN SEQ %llu > %llu?\n", seqnum, cmp);
+                LOG("MAIN SEQ %lu > %lu?\n", (unsigned long)seqnum, (unsigned long)cmp);
            
                 if (seqnum < cmp) {
                         fprintf(stderr, "seqnum at offset %i went backward "
                                 "from %"PRIu64" to %"PRIu64"!\n",
                                 i, cmp, seqnum);
                 } else if (seqnum > cmp) {
-                        /* TODO: Atomic operations? */
                         k->event_slots[i].last = seqnum;
 
                         kbase_update_syncobjs(k, &k->event_slots[i], seqnum);

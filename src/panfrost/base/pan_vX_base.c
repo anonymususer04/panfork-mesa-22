@@ -463,10 +463,10 @@ static struct kbase_op kbase_main[] = {
 #endif
 #if PAN_BASE_API >= 1
         { init_mem_exec, NULL, "Initialise EXEC_VA zone" },
-        { init_mem_jit, NULL, "Initialise JIT allocator" },
 #endif
 #if PAN_BASE_API >= 2
         { alloc_event_mem, free_event_mem, "Allocate event memory" },
+        { init_mem_jit, NULL, "Initialise JIT allocator" },
 #endif
 };
 

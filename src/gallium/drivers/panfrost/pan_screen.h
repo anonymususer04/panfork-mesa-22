@@ -111,6 +111,7 @@ struct panfrost_screen {
         struct {
                 struct panfrost_pool bin_pool;
         } indirect_draw;
+        struct sw_winsys *sw_winsys;
 
         struct panfrost_vtable vtbl;
 };

@@ -68,7 +68,8 @@ const struct panfrost_model panfrost_model_list[] = {
         MODEL(0x7211, "G76", "TNOx", HAS_ANISO, {}),
         MODEL(0x7212, "G52", "TGOx", HAS_ANISO, {}),
         MODEL(0x7402, "G52 r1", "TGOx", HAS_ANISO, {}),
-        MODEL(0x9093, "G57", "TNAx", HAS_ANISO, {}),
+        MODEL(0x9093, "G57 r1", "TNAx", HAS_ANISO, {}),
+        MODEL(0x9091, "G57", "TNAx", HAS_ANISO, {}),
         MODEL(0xa867, "G610", "LODx", HAS_ANISO, {}),
         /* Matching the kbase dummy model, probably not real GPUs */
         MODEL(0xa802, "G710", "TODx", HAS_ANISO, {}),

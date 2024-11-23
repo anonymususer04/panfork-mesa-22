@@ -961,12 +961,20 @@ struct pipe_screen *
 panfrost_create_screen_sw(struct sw_winsys *winsys)
 {
         int fd = drmOpenWithType("panfrost", NULL, DRM_NODE_RENDER);
-        if (fd < 0)
+
+        if (fd < 0) {
+                fd = open("/dev/mali0", O_RDWR | O_CLOEXEC | O_NONBLOCK);
+        }
+
+        if (fd < 0) {
                 return NULL;
+        }
 
         struct pipe_screen *scr = panfrost_create_screen(fd, NULL);
 
-        if (scr)
+        if (scr) {
                 pan_screen(scr)->sw_winsys = winsys;
+        }
+
         return scr;
 }
